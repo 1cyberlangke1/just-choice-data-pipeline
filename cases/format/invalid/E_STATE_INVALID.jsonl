@@ -1,0 +1,2 @@
+{"id":"fmt-train-0000001","state":"   ","questions":{"ask":{"type":"choice","instructions":"where next?","criteria":{"up":null,"down":null}}},"answers":{"ask":{"type":"choice","choice":0}}}
+{"id":"fmt-train-0000002","state":5,"questions":{"ask":{"type":"choice","instructions":"where next?","criteria":{"up":null,"down":null}}},"answers":{"ask":{"type":"choice","choice":0}}}

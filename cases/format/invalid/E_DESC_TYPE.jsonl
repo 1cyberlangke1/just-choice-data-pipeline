@@ -1,0 +1,3 @@
+{"id":"fmt-train-0000001","state":"state text","questions":{"ask":{"type":"choice","instructions":"where next?","criteria":{"up":1,"down":null}}},"answers":{"ask":{"type":"choice","choice":0}}}
+{"id":"fmt-train-0000002","state":"state text","questions":{"ask":{"type":"score","instructions":"how much?","criteria":["ok",3]}},"answers":{"ask":{"type":"score","score":0}}}
+{"id":"fmt-train-0000003","state":"state text","questions":{"ask":{"type":"noul","instructions":"yes or no?","criteria":{"true":1}}},"answers":{"ask":{"type":"noul","noul":true}}}

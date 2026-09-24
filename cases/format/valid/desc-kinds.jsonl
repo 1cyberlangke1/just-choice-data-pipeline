@@ -1,0 +1,3 @@
+{"id":"fmt-train-0000022","state":"desc kinds","questions":{"ask":{"type":"choice","instructions":"where next?","criteria":{"up":"go north","right":{"dx":1,"dy":0},"down":["south","下行"],"left":null}}},"answers":{"ask":{"type":"choice","choice":0}}}
+{"id":"fmt-train-0000023","state":"noul desc","questions":{"ask":{"type":"noul","instructions":"yes or no?","criteria":{"true":"看起来是","false":null}}},"answers":{"ask":{"type":"noul","noul":true}}}
+{"id":"fmt-train-0000024","state":"score desc","questions":{"ask":{"type":"score","instructions":"how much?","criteria":["低",{"hint":"偏低"},["偏低","偏低"]]}},"answers":{"ask":{"type":"score","score":0}}}

@@ -1,0 +1,138 @@
+"""命令行入口（通用层）：python -m jc <命令>。
+
+命令：
+- workflows  列出已注册的 workflow
+- locales    列出某个 workflow 支持的语言
+- cases      打印某个 workflow 的 case 矩阵规模（不开工生成，先看覆盖）
+- gen        按 case 矩阵生成数据（写 dataset/<run_id>/）
+- audit      审计已生成的数据集（委托 workflow 实现）
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from . import pipeline
+from .workflow import discover, load
+
+
+def _add_workflow_arg(parser: argparse.ArgumentParser) -> None:
+    """给子命令加统一的 --workflow 参数。"""
+    parser.add_argument("--workflow", required=True, help="workflow 名（见 `jc workflows`）")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """构造参数解析器。"""
+    parser = argparse.ArgumentParser(prog="jc", description="JEV 风格选择题数据合成管线")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    gen = sub.add_parser("gen", help="生成数据")
+    _add_workflow_arg(gen)
+    gen.add_argument("--split", default="train")
+    gen.add_argument("--locale", action="append", dest="locales", default=None, help="可重复；默认 zh")
+    gen.add_argument("--per-case", type=int, default=1, help="每个 case 生成多少条样本")
+    gen.add_argument("--seed", type=int, default=20260924)
+    gen.add_argument("--out", default="dataset")
+    gen.add_argument("--run-id", default="")
+    gen.add_argument("--balance-tolerance", type=float, default=0.03, help="答案占比偏离均匀的上限")
+    gen.add_argument("--balance-strict", action="store_true", help="超容差直接让整批失败")
+
+    cases = sub.add_parser("cases", help="打印 case 矩阵")
+    _add_workflow_arg(cases)
+    cases.add_argument("--split", default="train")
+    cases.add_argument("--per-case", type=int, default=1)
+
+    aud = sub.add_parser("audit", help="审计已生成的数据集")
+    _add_workflow_arg(aud)
+    aud.add_argument("--dir", required=True, help="run 目录，如 dataset/<run_id>")
+    aud.add_argument("--split", action="append", dest="splits", default=None)
+    aud.add_argument("--locale", default="zh")
+
+    sub.add_parser("workflows", help="列出已注册的 workflow")
+
+    loc = sub.add_parser("locales", help="列出某个 workflow 支持的语言")
+    _add_workflow_arg(loc)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """入口函数。输入：argv（None 取 sys.argv）。输出：进程退出码。"""
+    args = _build_parser().parse_args(argv)
+
+    if args.command == "workflows":
+        for name in discover():
+            print(name)
+        return 0
+
+    if args.command == "locales":
+        for name in load(args.workflow).available_locales():
+            print(name)
+        return 0
+
+    if args.command == "cases":
+        workflow = load(args.workflow)
+        config = workflow.config_for(args.split)
+        cases = workflow.build_cases(config)
+        print(
+            f"workflow {workflow.name} v{workflow.version}，切分 {args.split}："
+            f"{len(cases)} 个 case × {args.per_case} 条 = {len(cases) * args.per_case} 条样本"
+        )
+        for case in cases[:10]:
+            print("  " + workflow.case_label(case))
+        if len(cases) > 10:
+            print(f"  …（其余 {len(cases) - 10} 个）")
+        return 0
+
+    if args.command == "audit":
+        workflow = load(args.workflow)
+        splits = tuple(args.splits) if args.splits else workflow.split_names()
+        report, missing = workflow.audit(Path(args.dir), splits, args.locale)
+        for split, counts in report.items():
+            print(f"=== {split}：{counts['samples']} 条 ===")
+            print(f"  渲染格式：{dict(counts['formats'])}")
+            print(f"  题型：{dict(counts['types'])}")
+            print(
+                f"  带历史：{counts['history']}；选项写目标方块：{counts['option_cell']}；"
+                f"标记走过的路：{counts['trail']}；无当前位置标记：{counts['cut_samples']}"
+            )
+            print(
+                f"  走偏 1 格：{counts['off_by_one']} 题（实测偏离恰为 1 的 {counts['off_by_one_dev1']} 题）；"
+                f"沿最优路径走：{counts['next_step_on_path']}/{counts['next_step']}"
+            )
+            print(f"  题族：{dict(counts['families'])}")
+            if counts["unparsed"]:
+                print(f"  ⚠️ 无法反解：{counts['unparsed']} 条")
+        if missing:
+            print("审计不通过：")
+            for item in missing:
+                print(f"  - {item}")
+            return 1
+        print("审计通过：要求的 case 都在产物里。")
+        return 0
+
+    config = pipeline.RunConfig(
+        workflow=args.workflow,
+        split=args.split,
+        locales=tuple(args.locales) if args.locales else ("zh",),
+        run_seed=args.seed,
+        per_case=args.per_case,
+        out_root=Path(args.out),
+        run_id=args.run_id,
+        balance_tolerance=args.balance_tolerance,
+        balance_strict=args.balance_strict,
+    )
+    result = pipeline.run(config)
+    print(f"合格 {result.accepted} 条；被拒 {len(result.rejected)} 条")
+    print(f"产物目录：{result.run_dir}")
+    if result.stats.get("reject_codes"):
+        print(f"拒绝码：{result.stats['reject_codes']}")
+    unbalanced = [item for item in result.stats.get("balance", []) if not item["ok"]]
+    if unbalanced:
+        print(f"答案分布超容差的题族（{len(unbalanced)} 个）：")
+        for item in unbalanced:
+            print(
+                f"  {item['key']}：n={item['total']} 最大偏差={item['max_dev']:.3f} "
+                f"噪声地板={item['noise']:.3f}"
+            )
+    return 0

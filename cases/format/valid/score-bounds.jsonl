@@ -1,0 +1,3 @@
+{"id":"fmt-train-0000031","state":"two levels, lowest","questions":{"ask":{"type":"score","instructions":"how much?","criteria":["低","高"]}},"answers":{"ask":{"type":"score","score":0}}}
+{"id":"fmt-train-0000032","state":"two levels, highest","questions":{"ask":{"type":"score","instructions":"how much?","criteria":["低","高"]}},"answers":{"ask":{"type":"score","score":1}}}
+{"id":"fmt-train-0000033","state":"ten levels, highest","questions":{"ask":{"type":"score","instructions":"how much?","criteria":["第 1 档","第 2 档","第 3 档","第 4 档","第 5 档","第 6 档","第 7 档","第 8 档","第 9 档","第 10 档"]}},"answers":{"ask":{"type":"score","score":9}}}

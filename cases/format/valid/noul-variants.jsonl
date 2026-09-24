@@ -1,0 +1,3 @@
+{"id":"fmt-train-0000028","state":"criteria omitted","questions":{"ask":{"type":"noul","instructions":"yes or no?"}},"answers":{"ask":{"type":"noul","noul":true}}}
+{"id":"fmt-train-0000029","state":"both keys","questions":{"ask":{"type":"noul","instructions":"yes or no?","criteria":{"true":"是","false":"否"}}},"answers":{"ask":{"type":"noul","noul":true}}}
+{"id":"fmt-train-0000030","state":"null values","questions":{"ask":{"type":"noul","instructions":"yes or no?","criteria":{"true":null,"false":null}}},"answers":{"ask":{"type":"noul","noul":false}}}

@@ -1,0 +1,40 @@
+# 项目声明：src 布局（src/jc 是通用层，workflows/ 是各 workflow）。
+# 装法：.venv\Scripts\python.exe -m pip install -e . --no-build-isolation
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "just-choice"
+version = "0.1.0"
+description = "JEV 风格选择题数据合成管线：通用层（src/jc）+ workflow（workflows/）"
+requires-python = ">=3.11"
+dependencies = []  # 通用层与迷宫 workflow 都只用标准库
+
+[project.optional-dependencies]
+# LLM 后端（PLAN 3.1）的可选依赖：只有需要调模型的 workflow 才装。
+# 刻意不引 LiteLLM——它核心依赖 22 个包（含 boto3 / tokenizers），而我们只需要
+# OpenAI 兼容端点，instructor 已经覆盖；多夹一层还会让端点能力探测失真。
+llm = [
+    "instructor>=1.17",
+    "pydantic>=2.8",
+    "openai>=2.0",
+    "pyrate-limiter>=4.0",
+    "pybreaker>=1.4",
+    "tenacity>=9.0",  # 重试退避；instructor 也依赖它，这里显式声明免得被上游改动连坐
+]
+
+[tool.setuptools]
+packages = ["jc", "jc.backend", "workflows", "workflows.maze"]
+
+[tool.setuptools.package-dir]
+jc = "src/jc"
+workflows = "workflows"
+
+[tool.setuptools.package-data]
+"workflows.maze" = ["locales/*.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

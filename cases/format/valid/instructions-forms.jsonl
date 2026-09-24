@@ -1,0 +1,3 @@
+{"id":"fmt-train-0000025","state":"string","questions":{"ask":{"type":"choice","instructions":"which one?","criteria":{"a":null,"b":null}}},"answers":{"ask":{"type":"choice","choice":0}}}
+{"id":"fmt-train-0000026","state":"object","questions":{"ask":{"type":"noul","instructions":{"ask":"是不是","hint":"只看下一格"}}},"answers":{"ask":{"type":"noul","noul":true}}}
+{"id":"fmt-train-0000027","state":"array","questions":{"ask":{"type":"score","instructions":["第一步","第二步"],"criteria":["low","high"]}},"answers":{"ask":{"type":"score","score":0}}}

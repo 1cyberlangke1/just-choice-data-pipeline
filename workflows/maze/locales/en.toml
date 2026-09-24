@@ -1,0 +1,125 @@
+lang = "en"
+
+[dirs]
+up = "up"
+right = "right"
+down = "down"
+left = "left"
+
+[moves]
+up = "up"
+right = "right"
+down = "down"
+left = "left"
+
+[legend]
+wall = "wall"
+passage = "passage"
+start = "start"
+exit = "exit"
+current = "current position"
+trail = "path already walked"
+marks = "marked cell"
+
+[history]
+prefix = "Most recent decisions (walking from S):"
+sep = " -> "
+empty = "(no moves yet)"
+
+[cell]
+wall = "a wall (blocked)"
+passage = "a normal passage"
+start = "the start S"
+exit = "the exit E"
+mark = "marked cell {letter}"
+trail = "a cell already walked"
+outside = "outside the maze"
+
+[fam.next_step]
+q = [
+  "From the current position, which direction is the next step on the fastest route to the exit E?",
+  "The current position is marked @. To reach E fastest, which way should the next step go?",
+  "Starting from @, which direction is the first step toward E?",
+]
+
+[fam.off_by_one]
+q = [
+  "The current position is 1 cell off the optimal S-to-E path. Which direction returns to the optimal path?",
+  "The @ cell is not on the optimal path and is exactly 1 step away. Which single step gets back on it?",
+  "Which way should the next step from @ go to return to the optimal S-to-E path? (currently 1 cell off)",
+]
+
+[fam.on_optimal]
+q = [
+  "Is the current position @ on the shortest path from the start S to the exit E?",
+  "Does the current cell belong to the optimal S-to-E path?",
+  "Does the shortest path from S to E pass through the current position @?",
+]
+
+[fam.deviation]
+q = [
+  "How many steps is the current position off the optimal S-to-E path?",
+  "How far is the @ cell from the optimal S-to-E path?",
+  "How distant is the current cell from the optimal path?",
+]
+levels = ["on the optimal path", "1 step off", "2 steps off", "3 or more steps off"]
+
+[fam.step_result]
+q = [
+  "Where do you end up if you step {dir} from marked cell {letter}?",
+  "One step {dir} from {letter} lands on what?",
+  "What is {dir} of marked cell {letter}, one step away?",
+]
+options = ["blocked by a wall", "a normal passage", "the start S", "the exit E", "outside the maze"]
+
+[fam.can_move]
+q = [
+  "Can you step {dir} directly from marked cell {letter}?",
+  "Is there a passage {dir} of marked cell {letter}?",
+  "From {letter}, can you move {dir}?",
+]
+
+[fam.dead_end]
+q = [
+  "Is marked cell {letter} a dead end (only one direction open)?",
+  "At {letter}, is only one direction passable?",
+  "Is {letter} a dead end?",
+]
+
+[fam.exits]
+q = [
+  "How many directions are open around marked cell {letter}?",
+  "How many ways out does {letter} have?",
+  "From {letter}, how many directions can you take?",
+]
+levels = ["dead end (only 1 direction open)", "corner (2 directions open)", "T junction or crossroads (3-4 directions open)"]
+
+[fam.path_via]
+q = [
+  "Which marked cell lies on the shortest path from S to E?",
+  "Which of these marks does the optimal S-to-E path pass through?",
+  "Which marked cell is on the shortest path from S to E?",
+]
+none = "none of them"
+
+[fam.on_path]
+q = [
+  "Is marked cell {letter} on the shortest path from S to E?",
+  "Does the optimal S-to-E path pass through {letter}?",
+  "Is {letter} part of the shortest S-to-E path?",
+]
+
+[fam.reachable]
+q = [
+  "Can you walk from the start S to the exit E?",
+  "Are S and E connected in this maze?",
+  "Is E reachable from S?",
+]
+
+[fam.path_length]
+q = [
+  "What is the fewest number of steps from S to E?",
+  "How long is the shortest path from S to E, in steps?",
+  "How many steps at minimum does S to E take?",
+]
+levels = ["1-3 steps", "4-7 steps", "8 or more steps"]

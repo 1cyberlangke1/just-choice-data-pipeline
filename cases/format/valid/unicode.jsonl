@@ -1,0 +1,2 @@
+{"id":"fmt-train-0000039","state":"中文 state：起点在左上角，出口在右下角。","questions":{"ask":{"type":"choice","instructions":"下一步往哪走？","criteria":{"上":"向北走","下":null,"左":"向西走","右":null}}},"answers":{"ask":{"type":"choice","choice":0}}}
+{"id":"fmt-train-0000040","state":{"备注":"对象形态的 state 也可以","格子":["S","E"]},"questions":{"ask":{"type":"score","instructions":"可读性如何？","criteria":["很差","一般","很好"]}},"answers":{"ask":{"type":"score","score":2}}}
