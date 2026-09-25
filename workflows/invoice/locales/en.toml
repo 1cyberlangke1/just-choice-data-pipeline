@@ -1,0 +1,156 @@
+# English strings for the invoice workflow: field labels (canonical + alias), table
+# columns, question phrasings, option texts, word lists. See `zh.toml` for the rules.
+
+[meta]
+title = "Expense Settlement Document"
+intro = "The document lists the following fields"
+items_title = "Line items"
+note_label = "Note"
+note_value = "Please settle the payment before the due date"
+# Punctuation lives in the locale so an English document never carries CJK marks.
+colon = ": "
+sep = "; "
+
+[money]
+tpl = "{symbol}{amount}"
+
+[rate]
+tpl = "{rate}%"
+
+[date.dashed]
+tpl = "{y:04d}-{m:02d}-{d:02d}"
+
+[date.slashed]
+tpl = "{y:04d}/{m:02d}/{d:02d}"
+
+[date.dotted]
+tpl = "{y:04d}.{m:02d}.{d:02d}"
+
+[currency.cny]
+symbol = "¥"
+
+[currency.usd]
+symbol = "$"
+
+[currency.eur]
+symbol = "€"
+
+[field.doc]
+labels = ["Document No.", "Invoice No."]
+
+[field.po]
+labels = ["PO Number", "Purchase Order"]
+
+[field.contract]
+labels = ["Contract No.", "Agreement No."]
+
+[field.issue]
+labels = ["Issue Date", "Date of Issue"]
+
+[field.due]
+labels = ["Due Date", "Payment Due"]
+
+[field.received]
+labels = ["Received Date", "Date Received"]
+
+[field.issuer]
+labels = ["Issuer", "Seller"]
+
+[field.payer]
+labels = ["Payer", "Buyer"]
+
+[field.ship_to]
+labels = ["Ship To", "Deliver To"]
+
+[field.handler]
+labels = ["Handler", "Prepared By"]
+
+[field.subtotal]
+labels = ["Subtotal", "Net Amount"]
+
+[field.shipping]
+labels = ["Shipping", "Freight"]
+
+[field.tax_rate]
+labels = ["Tax Rate", "VAT Rate"]
+
+[field.tax]
+labels = ["Tax", "VAT Amount"]
+
+[field.total]
+labels = ["Total", "Grand Total"]
+
+[column.name]
+labels = ["Item", "Description"]
+
+[column.qty]
+labels = ["Qty", "Quantity"]
+
+[column.unit]
+labels = ["Unit Price", "Price per Unit"]
+
+[column.amount]
+labels = ["Amount", "Line Amount"]
+
+[ask.doc]
+q = ["Which one is the document number?", "What is the document number on this document?", "Which option states the document number?"]
+
+[ask.po]
+q = ["Which one is the PO number?", "What is the purchase order number on this document?", "Which option states the PO number?"]
+
+[ask.contract]
+q = ["Which one is the contract number?", "What is the contract number on this document?", "Which option states the contract number?"]
+
+[ask.issue]
+q = ["Which one is the issue date?", "What is the issue date shown on the document?", "Which option is the issue date?"]
+
+[ask.due]
+q = ["Which one is the due date?", "What is the due date shown on the document?", "Which option is the due date?"]
+
+[ask.received]
+q = ["Which one is the received date?", "What is the received date shown on the document?", "Which option is the received date?"]
+
+[ask.issuer]
+q = ["Which one is the issuer?", "Who issued this document?", "Which option names the issuer?"]
+
+[ask.payer]
+q = ["Which one is the payer?", "Who pays this document?", "Which option names the payer?"]
+
+[ask.ship_to]
+q = ["Which one is the ship-to party?", "Where is this document shipped to?", "Which option names the ship-to party?"]
+
+[ask.subtotal]
+q = ["What is the subtotal?", "Which option is the subtotal amount?", "How much is the subtotal?"]
+
+[ask.shipping]
+q = ["What is the shipping fee?", "Which option is the shipping amount?", "How much is the shipping?"]
+
+[ask.tax]
+q = ["What is the tax amount?", "Which option is the tax amount?", "How much is the tax?"]
+
+[ask.total]
+q = ["What is the grand total?", "Which option is the grand total?", "How much is the total?"]
+
+[ask.line_unit]
+q = ["What is the unit price on line {n}?", "Which option is the unit price of line {n}?", "How much does one unit cost on line {n}?"]
+
+[fam.subtotal_consistent]
+q = ["Does the sum of the line amounts equal the subtotal?", "Is the subtotal consistent with the line amounts?", "Add up the line amounts: does the result equal the subtotal?"]
+criteria = { "true" = "equal", "false" = "not equal" }
+
+[fam.tax_consistent]
+q = ["Does the tax amount equal the subtotal times the tax rate?", "Is the tax amount consistent with subtotal times rate?", "Is the stated tax amount equal to the subtotal multiplied by the rate?"]
+criteria = { "true" = "equal", "false" = "not equal" }
+
+[fam.bad_lines]
+q = ["How many lines have an amount that does not match quantity times unit price?", "In how many lines is the amount inconsistent with quantity times unit price?", "Counting quantity times unit price, how many line amounts are wrong?"]
+levels = ["0 lines", "1 line", "2 lines", "3 or more lines"]
+
+[word.vendor]
+items = ["Northwind Trading", "Silverline Logistics", "Cobalt Systems", "Riverstone Supply", "Lumen Electric", "Cedar Works", "Harbor Analytics", "Bluepeak Foods", "Greenfield Agri", "Vertex Chemicals", "Meridian Pharma", "Ironwood Materials"]
+
+[word.service]
+items = ["system maintenance", "data cleansing", "site inspection", "equipment calibration", "warehouse lease", "staff training", "network cabling", "security review", "freight delivery", "material purchase", "design service", "tech consulting"]
+
+[word.handler]
+items = ["Alice Reed", "Ben Carter", "Chloe Dunn", "Daniel Fox", "Elena Gray", "Felix Hart", "Grace Ives", "Hugo Lane", "Irene Moss", "Jack Nolan", "Kara Olsen", "Liam Pratt"]

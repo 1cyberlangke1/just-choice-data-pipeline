@@ -8,7 +8,7 @@
 | `tools` | `TOOLS` | 工具调用（「取巧」那条路） |
 | `md_json` | `MD_JSON` | 提示词 + 从文本里抠 JSON（最兜底） |
 
-采样参数默认**不发 `max_tokens`**（PLAN 3.1.2）：推理模型会把预算烧在 `reasoning` 上，
+采样参数**永不发 `max_tokens`**、也不给开关（PLAN 3.1.2）：推理模型会把预算烧在 `reasoning` 上，
 `max_tokens` 越小越容易「想一半被砍死」。
 
 输入/输出：`EngineRequest` → `EngineResult`。预期行为：所有异常都转成 `types` 里的分类异常，
@@ -102,11 +102,39 @@ def _retry_after_s(exc: openai.APIStatusError) -> float | None:
         return None
 
 
+#: instructor 的「重试用尽」里，只有这几类原因**不是**「模型答错」，要还原后原样上抛：
+#: 认证（这个 key 废了）、限流（该退避 / 换 key）、不吃这一档 schema（该降档）、
+#: 端点故障（该重试 / 换下一家）。
+_NON_DRAFT_ERRORS = (AuthError, RateLimitError, SchemaUnsupportedError, TransportError)
+
+
+def _unwrap_retry_cause(exc: InstructorRetryException) -> BaseException | None:
+    """输入：instructor 的「重试用尽」异常。输出：最后一次真正抛出的异常，取不到给 None。
+
+    预期行为：优先用 `__cause__`（instructor 是 `raise InstructorRetryException(...) from
+    last_exception`），没有就退回 `failed_attempts` 的最后一条。**沿链走到底，并记下已访问
+    的 id**：异常可能被嵌套包好几层，也可能自引用成环，不能无限递归。
+    """
+    seen = {id(exc)}
+    current: BaseException | None = exc
+    while isinstance(current, InstructorRetryException):
+        cause: BaseException | None = current.__cause__
+        if cause is None:
+            attempts = getattr(current, "failed_attempts", None) or []
+            cause = getattr(attempts[-1], "exception", None) if attempts else None
+        if cause is None or id(cause) in seen:
+            return None
+        seen.add(id(cause))
+        current = cause
+    return current
+
+
 def classify_exception(exc: BaseException) -> BackendError:
     """输入：任意异常。输出：分类好的 `BackendError` 子类。
 
     预期行为：**「模型答错」绝不能算 provider 故障**——所以解析 / 校验类失败统一归到
     `DraftInvalidError`（`counts_as_fault = False`）；只有网络、5xx、429 才算故障。
+    `InstructorRetryException` 会**先还原底层原因**再分类（见 `_unwrap_retry_cause`）。
     已经是 `BackendError` 的原样返回；认不出来的异常归到基类（不算故障），避免误熔断。
     """
     if isinstance(exc, BackendError):
@@ -122,10 +150,19 @@ def classify_exception(exc: BaseException) -> BackendError:
         (openai.APIConnectionError, openai.APITimeoutError, openai.InternalServerError),
     ):
         return TransportError(f"网络或服务端故障：{exc}")
+    if isinstance(exc, InstructorRetryException):
+        # 实测坑（NVIDIA NIM）：端点读超时 / 504 会被 instructor 包成「重试用尽」，
+        # 若一律归到 DraftInvalidError，重试、熔断、降级全都不触发，还会把原因记成
+        # 「模型没给出合格草稿」。所以先把底层原因还原出来，只有真答错才算草稿不合格。
+        cause = _unwrap_retry_cause(exc)
+        if cause is not None:
+            classified = classify_exception(cause)
+            if isinstance(classified, _NON_DRAFT_ERRORS):
+                return classified
+        return DraftInvalidError(f"模型没给出合格草稿：{exc}")
     if isinstance(
         exc,
         (
-            InstructorRetryException,
             IncompleteOutputException,
             ResponseParsingError,
             ValidationError,
@@ -200,7 +237,7 @@ class InstructorEngine:
 
         预期行为：校验失败由 instructor 按 `max_retries` 回喂重试；重试耗尽抛
         `InstructorRetryException`，这里统一转成 `DraftInvalidError`。
-        **不传 `max_tokens`**（PLAN 3.1.2）。
+        **永不传 `max_tokens`**，请求体里没这个字段、也没这个开关（PLAN 3.1.2）。
         """
         client = self._client(request)
         messages: list[dict[str, Any]] = []

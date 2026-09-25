@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from jc.backend.config import Limits
+from jc.backend.engine import EngineResult
 from jc.backend.keys import fingerprint
 from jc.backend.provider import ProviderChain, _is_not_fault
 from jc.backend.types import (
@@ -27,6 +28,68 @@ from jc.backend.types import (
 
 #: 默认关掉限速与重试，只留被测的那一项，免得测试被限速拖慢。
 _BASE = Limits(requests_per_minute=0, min_interval_ms=0, max_attempts=1)
+
+
+class SlowEngine:
+    """会睡的假引擎：用来量「同一家 provider 能不能同时发多个请求」。"""
+
+    name = "slow"
+
+    def __init__(self, delay: float) -> None:
+        """输入：每次调用睡多久。输出：SlowEngine 实例。"""
+        self.delay = delay
+        self.peak = 0
+        self._in_flight = 0
+        self._lock = threading.Lock()
+
+    def extract(self, request: Any) -> Any:
+        """输入：一次请求。输出：成功结果。预期行为：记下峰值并发再返回。"""
+        with self._lock:
+            self._in_flight += 1
+            self.peak = max(self.peak, self._in_flight)
+        time.sleep(self.delay)
+        with self._lock:
+            self._in_flight -= 1
+        return EngineResult(
+            data={"answer": "x"},
+            raw_text='{"answer":"x"}',
+            usage={},
+            reasoning=None,
+            mode="json_schema",
+        )
+
+
+def test_provider_does_not_serialise_calls(provider_factory: Any, task_factory: Any) -> None:
+    """3 个线程同时 `extract`，必须真的并行。
+
+    输入：3 个 key、并发上限 5、每次调用占 0.15 秒。
+    输出：引擎观测到的峰值并发 = 3，总耗时远小于串行的 0.45 秒。
+    预期行为：**这条守的是「熔断器不许锁住调用」**——旧实现用 pybreaker，
+    它的 `call()` 把网络调用放在自己的 RLock 里，这里峰值会掉到 1、耗时变成 3 倍。
+    """
+    engine = SlowEngine(0.15)
+    provider = provider_factory(
+        engine,
+        keys=("k1", "k2", "k3"),
+        limits=limits(max_concurrency=5, max_concurrency_per_key=1),
+    )
+    barrier = threading.Barrier(3)
+
+    def worker() -> None:
+        """输入：无。输出：无。预期行为：等到三个线程都就位再一起发。"""
+        barrier.wait()
+        assert provider.extract(task_factory(), "json_schema")[1]  # key 指纹非空 = 真跑通了
+
+    threads = [threading.Thread(target=worker) for _ in range(3)]
+    started = time.monotonic()
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    elapsed = time.monotonic() - started
+
+    assert engine.peak == 3, f"请求被串行化了：峰值并发只有 {engine.peak}"
+    assert elapsed < 0.4, f"耗时 {elapsed:.2f}s 接近串行（0.45s），说明调用被锁住了"
 
 
 def limits(**overrides: Any) -> Limits:
@@ -94,20 +157,18 @@ def test_transport_failures_do_open_the_breaker(
 ) -> None:
     """连续 fail_max 次真故障要打开熔断，之后直接报「不可用」而**不发请求**。
 
-    注意 pybreaker 的 `throw_new_error_on_trip`：第 fail_max 次失败本身就抛
-    `CircuitBreakerError`（被我们包成 `ProviderUnavailable`），而不是抛原始异常。
+    第 fail_max 次失败**原样抛它自己的异常**（真实原因不能被吃掉），
+    从下一次起才被熔断闸门挡住——这样日志里始终能看到「上一次到底为什么挂」。
     """
     engine = fake_engine(script=[TransportError("500")] * 5)
     provider = provider_factory(engine, limits=limits(fail_max=3))
-    for _ in range(2):
+    for _ in range(3):
         with pytest.raises(TransportError):
             provider.extract(task_factory(), "json_schema")
-    assert provider.breaker_state == "closed"
-    with pytest.raises(ProviderUnavailable):
-        provider.extract(task_factory(), "json_schema")  # 第三次触到阈值，当场熔断
     assert provider.breaker_state == "open"
-    with pytest.raises(ProviderUnavailable):
+    with pytest.raises(ProviderUnavailable, match="正在熔断"):
         provider.extract(task_factory(), "json_schema")
+    assert provider.breaker_state == "open"
     assert len(engine.calls) == 3  # 熔断打开后一次请求都没再发出去
 
 
@@ -158,6 +219,41 @@ def test_auth_error_retires_the_key(
     assert provider.available is True
     _, key_fp, _ = provider.extract(task_factory(), "json_schema")
     assert key_fp == fingerprint("k2")
+
+
+def test_daily_quota_retires_the_key(
+    fake_engine: Any, provider_factory: Any, result_factory: Any, task_factory: Any
+) -> None:
+    """每日配额烧干是「这个 key 今天没了」：降速救不回来，必须换 key。
+
+    输入：一个带 `PerDay` 标记的 429，然后一个成功结果。
+    输出：无。预期行为：第一次抛 429 且该 key 退场，第二次自动换到第二个 key。
+    """
+    engine = fake_engine(
+        script=[
+            RateLimitError("429 RESOURCE_EXHAUSTED quotaId=GenerateRequestsPerDayPerProject"),
+            result_factory(),
+        ]
+    )
+    provider = provider_factory(engine, keys=("k1", "k2"), limits=limits())
+    with pytest.raises(RateLimitError):
+        provider.extract(task_factory(), "json_schema")
+    assert provider.available is True
+    _, key_fp, _ = provider.extract(task_factory(), "json_schema")
+    assert key_fp == fingerprint("k2")
+
+
+def test_minute_rate_limit_keeps_the_key(
+    fake_engine: Any, provider_factory: Any, result_factory: Any, task_factory: Any
+) -> None:
+    """分钟级 429 只降速、不退 key——否则一波限流就把好 key 全扔了。"""
+    engine = fake_engine(script=[RateLimitError("429 Too Many Requests"), result_factory()])
+    provider = provider_factory(engine, keys=("k1",), limits=limits())
+    with pytest.raises(RateLimitError):
+        provider.extract(task_factory(), "json_schema")
+    assert provider.available is True
+    _, key_fp, _ = provider.extract(task_factory(), "json_schema")
+    assert key_fp == fingerprint("k1")
 
 
 def test_pool_empty_raises_auth_error(

@@ -1,0 +1,92 @@
+# 混合式 workflow 的英文文案。键与中文文件一一对应，见 zh.toml 顶部的约定。
+
+language_name = "English"
+
+[meta]
+title = "Meeting schedule"
+sep = " · "
+colon = ": "
+span = "{start}–{end}"
+
+[time]
+tpl = "{h:02d}:00"
+
+[date]
+tpl = "{y:04d}-{m:02d}-{d:02d}"
+
+[bullet]
+line = "{n}. {span}{sep}{room}{sep}{lead}"
+title_label = "Title"
+agenda_label = "Agenda"
+
+[column]
+n = "#"
+start = "Start"
+end = "End"
+room = "Room"
+lead = "Host"
+title = "Title"
+agenda = "Agenda"
+
+[prompt]
+intro = "Below is a \"meeting schedule\" style material. Write two pieces of text for each meeting so the material reads like a real schedule."
+rules = [
+  "There are {count} meetings; write one entry per meeting, in order.",
+  "The title is 2~5 words, like a real meeting name; the agenda is one sentence, 6~18 words.",
+  "Do **not** write any clock time, time span, date or weekday (e.g. \"9am\", \"afternoon\", \"Wednesday\", \"this week\").",
+  "Do **not** write any room name.",
+  "Titles must be pairwise distinct, and agendas must be pairwise distinct.",
+  "Do not write numbers, host names, room names, vertical bars or line breaks.",
+  "Write everything in {language}.",
+]
+
+[ask.earliest_start]
+q = ["Which meeting starts earliest?", "What time does the earliest meeting start?", "Which of these meetings has the earliest start time?"]
+
+[ask.meeting_day]
+q = ["What weekday is the date on the schedule?", "Which day of the week is this date?", "Tell me the weekday of the schedule date."]
+
+[ask.duration_of]
+q = ["How many hours does meeting {n} last?", "What is the duration of meeting {n}?", "From start to end, how many hours long is meeting {n}?"]
+
+[ask.room_of]
+q = ["Which room is meeting {n} in?", "Which room is meeting {n} assigned to?", "Meeting {n} uses which room?"]
+
+[ask.lead_of]
+q = ["Who hosts meeting {n}?", "Who is the host of meeting {n}?", "Which host is responsible for meeting {n}?"]
+
+[ask.title_of]
+q = ["What is the title of meeting {n}?", "Which title is written for meeting {n}?", "Meeting {n} is titled what?"]
+
+[ask.agenda_of]
+q = ["What is the agenda of meeting {n}?", "What will meeting {n} discuss?", "Which agenda is written for meeting {n}?"]
+
+[fam.no_overlap]
+q = ["Do the meetings overlap in time? Judge whether \"no two meetings overlap\" holds.", "Is there any time overlap between two meetings?", "No two of these meetings share a time slot, right?"]
+criteria = { "true" = "no overlap", "false" = "there is overlap" }
+
+[fam.room_free]
+q = ["Is every room used by at most one meeting at any moment? Judge whether \"there is no room conflict\" holds.", "Do two meetings occupy the same room at the same time?", "There is no room booking conflict, right?"]
+criteria = { "true" = "no conflict", "false" = "there is a conflict" }
+
+[fam.busy_level]
+q = ["How many whole hours between 12:00 and 16:00 are occupied by meetings?", "In the 12:00–16:00 window, how many hours are taken by meetings?", "Count the whole hours covered by meetings within 12:00–16:00."]
+levels = [
+  "0: no meeting between 12:00 and 16:00",
+  "1: 1 whole hour occupied",
+  "2: 2 whole hours occupied",
+  "3: 3 whole hours occupied",
+  "4: 4 or more whole hours occupied",
+]
+
+[word.room]
+items = ["Lily Hall", "Pine Hall", "Egret Hall", "Bamboo Hall", "Osmanthus Hall", "Plane Hall"]
+
+[word.lead]
+items = ["Alice Chen", "Brian Li", "Carol Zhang", "David Wu", "Emma Liu", "Frank Zhao", "Grace Sun", "Henry Zhou"]
+
+[word.weekday]
+names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+[word.duration]
+items = ["1 hour", "2 hours", "3 hours", "4 hours"]

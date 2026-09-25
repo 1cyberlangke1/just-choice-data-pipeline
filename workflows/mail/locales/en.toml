@@ -1,0 +1,240 @@
+lang = "en"
+language_name = "English"
+
+[dims]
+sender = "sender identity"
+lure = "technique"
+ask = "request"
+link = "link"
+tone = "tone"
+
+[prompt]
+intro = "Below is the **feature sheet** for one email. Write it as a natural, believable email."
+official_domain_line = "official domain: {domain}"
+bullet = "- {dim}: {brief} (how: {hint})"
+rules = [
+  "Never introduce a feature that is not on the sheet: if the sheet says there is no link, no URL may appear anywhere (signature included) and there must be no \"click here\" wording; write only the one request the sheet names (when the sheet asks for nothing, make no request at all) and never smuggle in a second one",
+  "Write 3-8 natural sentences; the signature is its **own field** and every mail needs one (at least a sign-off), and the \"official domain\" line goes in the signature",
+  "The link has its **own field**: when the sheet has a link, fill it in; when it does not, leave it as an empty string (and then no URL may appear anywhere)",
+  "Write every URL in full, starting with http:// or https:// (the signature line \"official domain\" is the exception - there write the bare domain)",
+  "No URL in the body; the body may invite a click (\"click here\", \"sign in at\") only when the sheet's request is explicitly to click a link - when the request is anything else, the body must not even nudge the reader (\"you can check this at\", \"see the details\", \"for more information\"), it just states the matter",
+  "Plain text only: no HTML or Markdown markup anywhere (e.g. <br>, <b>, <hr>, **bold**) - use real line breaks to break lines",
+  "The pressure / incentive signals in the text must match the technique exactly: \"no pressure and no incentive\" allows no deadline, no consequence and no reward; \"time pressure\" must not describe a consequence; \"consequences\" may also give a deadline",
+  "When the sheet says the link text does not match its target, write both addresses - the displayed text and the real target (e.g. https://www.example-bank.com/verify (actually points to http://example-bank-secure.example/verify)); with a single address the reader cannot tell",
+  "A mail that claims an organisation must end with a line \"official domain: <domain>\" giving that organisation's real domain; a personal mail that claims no organisation must not have that line",
+  "Address a plain ordinary person; do not use any real company, brand or person",
+  "Do not explain the features and do not write anything like \"this is a phishing email\"",
+  "Write everything in {language}; invented English-looking names and domains read most naturally",
+]
+
+[feature.sender.known_vendor]
+brief = "the sender is a legitimate vendor the recipient knows"
+hint = "display name is the vendor name, the sender domain is that vendor's official domain, and the official-domain field repeats the same domain"
+
+[feature.sender.unknown_personal]
+brief = "the sender is a stranger writing as an individual"
+hint = "display name is an ordinary person's name, the sender address is at a free mail provider, and the signature has no official-domain line"
+
+[feature.sender.forged_brand]
+brief = "the sender impersonates a well-known organisation (the display name is theirs, the real domain is not)"
+hint = "use a brand / bank / platform name as the display name, send from a lookalike domain that does not belong to it, and put the organisation's real domain in the official-domain field"
+
+[feature.lure.none]
+brief = "no pressure and no incentive, purely business as usual"
+hint = "no deadlines, no threats, no freebies; keep the tone matter-of-fact, and do not write \"we spotted an unusual login / a risk / a violation\" - that only makes the reader anxious; do not tease the unknown either, e.g. \"there is something about you\" or \"someone mentioned you\""
+
+[feature.lure.urgency]
+brief = "creates time pressure"
+hint = "give a very short window only, e.g. \"within 24 hours\" or \"by the end of today\"; write no \"otherwise ...\" or \"late payments will ...\" consequence clause"
+
+[feature.lure.reward]
+brief = "dangles an unexpected benefit"
+hint = "e.g. a prize, cashback, free credit, exclusive discount, unclaimed subsidy"
+
+[feature.lure.fear]
+brief = "applies fear to pressure the reader"
+hint = "describe a consequence, e.g. the account broke the rules, will be frozen, has arrears, is already in a review process; a deadline may also be given"
+
+[feature.lure.curiosity]
+brief = "piques curiosity without saying what it is"
+hint = "build suspense only: say there is something about the reader (\"someone mentioned you\", \"a record about you\") without telling what it is; write no consequence such as a violation, a freeze or a risk (that is the fear bucket), no concrete benefit such as a prize, cashback or discount (that is the reward bucket), and no deadline (that is the urgency bucket)"
+
+[feature.ask.none]
+brief = "asks the recipient for nothing at all"
+hint = "state or notify only; make no request; when the sheet has a link it is a reference URL in the signature only - never write \"click here / sign in at / follow this link\", nor any softer nudge such as \"you can check this at / see the details / for more information\""
+
+[feature.ask.credentials]
+brief = "asks for account credentials"
+hint = "ask for a password, a one-time code or an ID number; do **not** mention a card number (that belongs to the payment / payout bucket), and do not add \"click the link / visit this page\" as a nudge (the link is a reference URL in the signature only)"
+
+[feature.ask.payment]
+brief = "asks for a payment or a change of payment details"
+hint = "ask the reader to transfer money, settle an amount, give or update a card number, or change payout details; do not add \"click the link / visit this page\" as a nudge (the link is a reference URL in the signature only)"
+
+[feature.ask.click_link]
+brief = "asks the reader to click a link"
+hint = "explicitly tell them to click a link in the mail to confirm, claim or review something"
+
+[feature.ask.attachment]
+brief = "asks the reader to open an attachment"
+hint = "tell them to download and open the attached file; no need to describe its contents; do not also ask them to click a link"
+
+[feature.link.none]
+brief = "the email contains no link at all"
+hint = "no URL anywhere (signature included); leave the link field as an empty string"
+
+[feature.link.official_honest]
+brief = "there is a link on the official domain and its text matches the target"
+hint = "e.g. https://www.example-bank.com/notices/123, and the link text is that address or the organisation name"
+
+[feature.link.official_mismatch]
+brief = "there is a link on the official domain but its text pretends to be a different address"
+hint = "give both addresses: the displayed text is some other address (actually points to https://www.example-bank.com/verify)"
+
+[feature.link.lookalike_honest]
+brief = "there is a link on a lookalike domain and its text matches the target"
+hint = "if the brand is example-bank.com, use a similar domain such as example-bank-secure.example"
+
+[feature.link.lookalike_mismatch]
+brief = "there is a link on a lookalike domain and its text pretends to be the official address"
+hint = "give both addresses: the displayed text is the official domain (actually points to the lookalike, e.g. http://example-bank-secure.example/verify)"
+
+[feature.link.ip_honest]
+brief = "the link target is a bare IP address and its text matches the target"
+hint = "e.g. http://203.0.113.47/verify and the link text is that address"
+
+[feature.link.ip_mismatch]
+brief = "the link target is a bare IP address but its text pretends to be the official domain"
+hint = "give both addresses: the displayed text is the official domain (actually points to http://203.0.113.47/verify)"
+
+[feature.link.shortener_honest]
+brief = "the link uses a shortener service and its text matches the target"
+hint = "e.g. https://s.example/abc123 and the link text is that short address"
+
+[feature.link.shortener_mismatch]
+brief = "the link target is a shortener but its text pretends to be the official domain"
+hint = "give both addresses: the displayed text is the official domain (actually points to https://s.example/abc123)"
+
+[feature.tone.formal]
+brief = "formal and written"
+hint = "the register of an official notice or letter"
+
+[feature.tone.friendly]
+brief = "warm and friendly"
+hint = "small talk, thanks, good wishes"
+
+[feature.tone.casual]
+brief = "casual and conversational"
+hint = "like a quick note a colleague fires off"
+
+[feature.tone.curt]
+brief = "blunt and businesslike"
+hint = "short, no pleasantries, no honorifics, straight to the point"
+
+[fam.requested]
+q = [
+  "What does this email ask the recipient to do?",
+  "What action does the sender want the recipient to take?",
+  "What is being requested of the recipient?",
+]
+
+[fam.requested.criteria]
+none = "Nothing - it only informs or states something (a reference URL in the signature does not count)"
+credentials = "Hand over a secret credential (password, one-time code, ID number) - a bank card number does not count"
+payment = "Transfer money, pay, settle an amount, or give / change a bank card number or payout details"
+click_link = "The body asks the reader to click a link, or nudges them toward one (\"you can check this at\", \"see the details\", \"for more information\") - either counts; \"see the attachment\" does not (that is the attachment option)"
+attachment = "Download and open the attachment"
+
+[fam.pressure]
+q = [
+  "Which technique does this email use?",
+  "What is the sender leaning on to get compliance?",
+  "What is the main pressure or incentive in this message?",
+]
+
+[fam.pressure.criteria]
+none = "No pressure and no incentive at all: no deadline, no consequence, no reward, and not even the teaser of something unknown"
+urgency = "Time pressure only (a deadline, it lapses today) and no consequence described"
+reward = "An unexpected benefit (prize, cashback, free credit)"
+fear = "The reader is threatened with a consequence (frozen account, violation, arrears, legal action) - pick this one whenever such a consequence appears, even if a deadline is also given; merely mentioning \"we spotted something unusual\" does not count"
+curiosity = "Only says there is something about the reader without ever telling what it is; no deadline, no consequence and no benefit"
+
+[fam.link_text]
+q = [
+  "Does the link text match where the link actually points?",
+  "Is the link text an honest description of its target?",
+  "Does any link text pretend to be a different address?",
+]
+
+[fam.link_text.criteria]
+no_link = "The email has no link (such mail is never asked this question; it appears in the verify prompt only)"
+matches = "The link text is the real target itself, or just an organisation / page name (no other address is written)"
+mismatched = "The link text is an address different from the real target (pretending to be another domain / a shortener / an IP)"
+
+[fam.sender_identity]
+q = [
+  "Does the organisation named in the display name match the sender domain?",
+  "Is the sender who the message says it is (official domain vs sender address)?",
+  "Is the sender impersonating anyone?",
+]
+
+[fam.sender_identity.criteria]
+matches = "The organisation named in the display name: its official domain (the signature line) equals the sender address domain"
+no_claim = "The display name claims no organisation at all - an ordinary person's name (and no official-domain line in the signature)"
+forged = "The display name claims an organisation, but the signature has no official-domain line, or that line differs from the sender address domain"
+
+[fam.is_phishing]
+q = [
+  "Is this email a phishing attempt?",
+  "Does this message belong to a phishing attack?",
+  "Is it out to steal credentials or money, or to push a suspicious link?",
+]
+
+[fam.is_phishing.criteria]
+"true" = "Yes: it seeks credentials or money, or pushes a suspicious link"
+"false" = "No, it is not phishing"
+
+[fam.is_spam]
+q = [
+  "Is this email unsolicited promotion or bait?",
+  "Should this message be treated as spam?",
+  "Is it bulk marketing or an unsolicited pitch?",
+]
+
+[fam.is_spam.criteria]
+"true" = "Yes: unsolicited promotion, bait, or a stranger making demands"
+"false" = "No: normal correspondence or mail the recipient expects"
+
+[fam.severity]
+q = [
+  "What is the risk level of this email?",
+  "On a scale from harmless to certain attack, how does this rate?",
+  "How suspicious is this message?",
+]
+levels = [
+  "Level 0: normal mail, nothing suspicious",
+  "Level 1: mildly odd but plausible",
+  "Level 2: clearly suspicious, worth a second look",
+  "Level 3: highly suspicious, high risk",
+  "Level 4: very high risk, act now",
+]
+
+[fam.action]
+q = [
+  "How should this email be handled?",
+  "Which action should be taken on this message?",
+  "What should be done with this mail?",
+]
+
+[fam.action.criteria]
+deliver = "Deliver normally, no extra handling"
+review = "Deliver with a warning and queue for human review"
+quarantine = "Quarantine to the junk folder until the user confirms"
+block = "Block outright, do not deliver"
+
+[verify]
+intro = "Read the email below and answer each question. Pick exactly one option per question."
+state_header = "EMAIL:"
+questions_header = "QUESTIONS:"
+option_line = "   - {name}: {desc}"
+extra_question = "Apart from the one you picked above, which of these does the mail ALSO ask the recipient for? List every one that applies (by option name); leave it empty if there is none"

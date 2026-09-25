@@ -26,6 +26,21 @@ from jc.backend.types import (
 )
 
 
+def test_starting_mode_reports_the_configured_mode_not_the_probe(
+    fake_engine: Any, provider_factory: Any
+) -> None:
+    """后端自报的起始档位必须是**真正**要试的第一档，而不是探测结论。
+
+    输入：一个写死 `json_schema` 档位的 provider（没探测）。输出：无。
+    预期行为：探测没开时 `capabilities` 是空的，`starting_mode()` 会答 `md_json`；
+    拿它记账会把实际从 `json_schema` 起步的 run 记成 `md_json`（错账）。
+    """
+    provider = provider_factory(fake_engine(script=[]), name="a", mode="json_schema")
+    backend = LLMBackend(ProviderChain([provider]))
+    assert backend.capabilities.starting_mode() == "md_json"
+    assert backend.starting_mode == "json_schema"
+
+
 def test_generate_returns_draft_with_full_provenance(
     fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
 ) -> None:
@@ -119,15 +134,20 @@ def test_all_providers_down_when_no_key_is_left(
         backend.generate(task_factory())
 
 
-def test_all_providers_down_when_every_provider_fails(
+def test_every_provider_giving_junk_is_a_reject_not_a_batch_stop(
     fake_engine: Any, provider_factory: Any, task_factory: Any
 ) -> None:
-    """两家都没成 → 报「全部 provider 都不可用」，并把名单带上方便排查。"""
+    """两家都活着、但都给不出合格草稿 → 这一条不合格，**不是**「全部 provider 都挂了」。
+
+    实测踩坑：kimi 在 tools 档偶尔不回 tool_calls，instructor 抛 IndexError，
+    被这里误判成 AllProvidersDown，把整批掐了（docs 黑盒API…调研 §9.11）。
+    """
     first = provider_factory(fake_engine(script=[DraftInvalidError("答非所问")]), name="a")
     second = provider_factory(fake_engine(script=[DraftInvalidError("答非所问")]), name="b")
     backend = LLMBackend(ProviderChain([first, second]))
-    with pytest.raises(AllProvidersDown, match="全部 provider 都不可用"):
+    with pytest.raises(DraftInvalidError, match="答非所问"):
         backend.generate(task_factory())
+    assert first.available and second.available  # 两家都还在，谁都没被误判成挂了
 
 
 def test_generate_many_skips_finished_tasks(
@@ -185,7 +205,7 @@ def test_generate_many_keeps_progress_when_a_task_fails(
     sink = RunSink(tmp_path / "data.jsonl", tmp_path / "progress.jsonl")
     engine = fake_engine(script=[result_factory(), DraftInvalidError("答非所问")])
     backend = LLMBackend(ProviderChain([provider_factory(engine, name="a")]), sink=sink)
-    with pytest.raises(AllProvidersDown):
+    with pytest.raises(DraftInvalidError):
         backend.generate_many([task_factory("t1"), task_factory("t2")])
     assert list(sink.progress.completed()) == ["t1"]
     assert sink.rows == 1

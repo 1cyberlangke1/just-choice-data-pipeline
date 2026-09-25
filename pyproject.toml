@@ -21,19 +21,30 @@ llm = [
     "pydantic>=2.8",
     "openai>=2.0",
     "pyrate-limiter>=4.0",
-    "pybreaker>=1.4",
     "tenacity>=9.0",  # 重试退避；instructor 也依赖它，这里显式声明免得被上游改动连坐
 ]
 
 [tool.setuptools]
-packages = ["jc", "jc.backend", "workflows", "workflows.maze"]
+packages = [
+    "jc",
+    "jc.backend",
+    "workflows",
+    "workflows.maze",
+    "workflows.mail",
+    "workflows.invoice",
+    "workflows.hybrid",
+]
 
 [tool.setuptools.package-dir]
 jc = "src/jc"
 workflows = "workflows"
 
 [tool.setuptools.package-data]
+jc = ["locales/judge/*.toml"]
 "workflows.maze" = ["locales/*.toml"]
+"workflows.mail" = ["locales/*.toml"]
+"workflows.invoice" = ["locales/*.toml"]
+"workflows.hybrid" = ["locales/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

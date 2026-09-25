@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from jc import cover
 
 
@@ -62,3 +64,46 @@ def test_missing_pairs_reports_uncovered() -> None:
     ) == {("a", "1", "b", "y"), ("a", "2", "b", "x")}
     all_rows = [{"a": "1", "b": "x"}, {"a": "2", "b": "y"}, {"a": "1", "b": "y"}, {"a": "2", "b": "x"}]
     assert cover.missing_pairs(dims, all_rows) == set()
+
+
+def _not_both_a1_and_bx(dim_a: str, value_a: str, dim_b: str, value_b: str) -> bool:
+    """示例取值对约束：`a=1` 与 `b=x` 不能同时出现（顺序无关）。"""
+    return frozenset({(dim_a, value_a), (dim_b, value_b)}) != frozenset(
+        {("a", "1"), ("b", "x")}
+    )
+
+
+def test_full_enumeration_honours_the_pair_rule() -> None:
+    """全枚举路径也要遵守取值对约束：被禁的行直接不进结果，其余顺序不变。"""
+    dims = {"a": ("1", "2"), "b": ("x", "y")}
+    rows = cover.cover_dims(dims, allow_pair=_not_both_a1_and_bx)
+    assert rows == [{"a": "1", "b": "y"}, {"a": "2", "b": "x"}, {"a": "2", "b": "y"}]
+
+
+def test_pairwise_honours_the_pair_rule() -> None:
+    """成对覆盖路径也要遵守约束，并且「被禁的对」不算没覆盖。"""
+    dims = {f"d{i}": (f"{i}a", f"{i}b", f"{i}c") for i in range(6)}  # 3^6 = 729
+
+    def rule(dim_a: str, value_a: str, dim_b: str, value_b: str) -> bool:
+        """约束：`d0=0a` 与 `d1=1a` 不能同时出现。"""
+        pair = frozenset({(dim_a, value_a), (dim_b, value_b)})
+        return pair != frozenset({("d0", "0a"), ("d1", "1a")})
+
+    rows = cover.cover_dims(dims, max_full=100, allow_pair=rule)
+    assert rows
+    assert all(rule("d0", row["d0"], "d1", row["d1"]) for row in rows)
+    assert cover.missing_pairs(dims, rows, allow_pair=rule) == set()
+    # 不带约束地查，被禁的那一对必须报成「没覆盖」——证明确实被排除了
+    assert ("d0", "0a", "d1", "1a") in cover.missing_pairs(dims, rows)
+
+
+def test_impossible_constraints_are_reported() -> None:
+    """约束太紧（某维没有任何可选取值）时报人话，不许静默少给行。"""
+    dims = {"a": ("1",), "b": ("x", "y"), "c": ("m",)}
+
+    def rule(dim_a: str, value_a: str, dim_b: str, value_b: str) -> bool:
+        """约束：`a` 维与 `b` 维的任何取值都不能共存。"""
+        return {dim_a, dim_b} != {"a", "b"}
+
+    with pytest.raises(ValueError, match="没有任何可选取值"):
+        cover.cover_dims(dims, max_full=1, allow_pair=rule)

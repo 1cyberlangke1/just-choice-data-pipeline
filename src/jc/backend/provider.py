@@ -3,8 +3,9 @@
 一个 provider 把四件事组合起来：
 - **key 池**：`keys.KeyPool`（手写——没有库管「N 个 key 挑哪个」）；
 - **限速**：`pyrate-limiter`，provider 级滑动窗口 RPM + 单 key 最小间隔；
-- **熔断**：`pybreaker`，`fail_max` / `reset_timeout` 对应 PLAN 的「连续 3 次 / 冷却 60 秒」；
-  关键是用 `exclude=[_is_not_fault]` 把「模型答错」排除在故障之外；
+- **熔断**：`breaker.Breaker`（手写，见那里的说明：pybreaker 会把被保护的调用锁在它自己的
+  RLock 里，等于把同一家的请求串行化），`fail_max` / `reset_timeout_s` 对应 PLAN 的
+  「连续 3 次 / 冷却 60 秒」；关键是用 `_is_not_fault` 把「模型答错」排除在故障之外；
 - **重试退避**：`tenacity` 指数退避 + 抖动；429 带 `Retry-After` 时以服务端要求为准。
 
 输入/输出：`Provider.extract()` 收任务与档位，出 `(EngineResult, key 指纹, 尝试次数)`。
@@ -16,9 +17,8 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
-from typing import Any
+from typing import Any, Final
 
-import pybreaker
 from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
 from tenacity import (
     RetryCallState,
@@ -28,6 +28,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
+from .breaker import Breaker
 from .config import ProviderConfig
 from .engine import Engine, EngineRequest, EngineResult
 from .keys import KeyPool, fingerprint
@@ -48,9 +49,30 @@ def _is_not_fault(exc: BaseException) -> bool:
     """输入：异常。输出：True 表示「不是 provider 故障、不计入熔断」。
 
     预期行为：只有 `types` 里 `counts_as_fault` 为真的才算故障；认不出的异常一律不算，
-    免得我们自己的 bug 把 provider 误熔断。这是 pybreaker `exclude` 的回调。
+    免得我们自己的 bug 把 provider 误熔断。这是熔断器记账前的判据。
     """
     return not (isinstance(exc, BackendError) and exc.counts_as_fault)
+
+
+#: 服务端把「这个 key 今天没了」写进报错正文时的标记（各家措辞不一样，只认最常见的几种）。
+_DAILY_QUOTA_MARKERS: Final[tuple[str, ...]] = (
+    "perday",
+    "per day",
+    "per-day",
+    "daily quota",
+    "daily limit",
+)
+
+
+def _is_daily_quota(exc: RateLimitError) -> bool:
+    """输入：一个 429 异常。输出：它是不是「每日配额已用尽」。
+
+    预期行为：这两种 429 的救法完全不同——**分钟级限流要降速，每日配额要退 key**。
+    降速救不回每日配额（等一小时也没用），退 key 又会误伤只是被限流的好 key。
+    认不出来时按分钟级处理（保守：降速最多慢一点，退 key 会白扔一个 key）。
+    """
+    text = str(exc).lower()
+    return any(marker in text for marker in _DAILY_QUOTA_MARKERS)
 
 
 def _wait_honouring_retry_after(base: Any) -> Any:
@@ -113,11 +135,9 @@ class Provider:
             if config.limits.min_interval_ms > 0
             else None
         )
-        self._breaker = pybreaker.CircuitBreaker(
+        self._breaker = Breaker(
             fail_max=config.limits.fail_max,
-            reset_timeout=config.limits.cooldown_s,
-            exclude=[_is_not_fault],
-            name=config.name,
+            reset_timeout_s=config.limits.cooldown_s,
         )
 
     @property
@@ -134,7 +154,7 @@ class Provider:
     def available(self) -> bool:
         """这家现在还有没有戏：key 池非空。
 
-        预期行为：**熔断状态不在这里判断**——pybreaker 的冷却到点是在 `call()` 里推进的，
+        预期行为：**熔断状态不在这里判断**——冷却到点是在 `allow()` 里推进的，
         所以让它自己说话，熔断打开时 `extract()` 会抛 `ProviderUnavailable`。
         """
         return self._pool.available() > 0
@@ -142,7 +162,7 @@ class Provider:
     @property
     def breaker_state(self) -> str:
         """当前熔断状态（closed / open / half-open），供记账与调试。"""
-        return str(self._breaker.current_state)
+        return self._breaker.state
 
     @property
     def effective_rpm(self) -> int:
@@ -220,16 +240,26 @@ class Provider:
                     timeout_s=self.config.timeout_s,
                     max_retries=self.config.max_retries,
                 )
+                # 熔断闸门：判定与记账各占一次短锁，**网络调用不在锁里**（见 breaker.py 的说明）。
+                if not self._breaker.allow():
+                    raise ProviderUnavailable(
+                        f"{self.name} 正在熔断：连续 {self.config.limits.fail_max} 次故障，"
+                        f"冷却 {self.config.limits.cooldown_s} 秒中"
+                    )
                 try:
-                    result = self._breaker.call(self._engine.extract, request)
-                except pybreaker.CircuitBreakerError as exc:
-                    raise ProviderUnavailable(f"{self.name} 正在熔断：{exc}") from exc
-                except AuthError:
-                    self._pool.mark_invalid(key)  # 这个 key 废了，下次换一个
+                    result = self._engine.extract(request)
+                except BaseException as exc:
+                    if not _is_not_fault(exc):
+                        self._breaker.record_fault()
+                    if isinstance(exc, AuthError):
+                        self._pool.mark_invalid(key)  # 这个 key 废了，下次换一个
+                    elif isinstance(exc, RateLimitError):
+                        if _is_daily_quota(exc):
+                            self._pool.mark_invalid(key)  # 今天这个 key 没了，换下一个
+                        else:
+                            self._on_rate_limited()
                     raise
-                except RateLimitError:
-                    self._on_rate_limited()
-                    raise
+                self._breaker.record_ok()
                 self._on_success()
                 return result, fingerprint(key)
 

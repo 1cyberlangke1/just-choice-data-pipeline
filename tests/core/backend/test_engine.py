@@ -8,10 +8,11 @@ from typing import Any
 import httpx2
 import openai
 import pytest
-from instructor.core import IncompleteOutputException, InstructorRetryException
+from instructor.core import FailedAttempt, IncompleteOutputException, InstructorRetryException
 from pydantic import BaseModel, ValidationError
 
 from jc.backend import engine as engine_module
+from jc.backend.config import Limits, ProviderConfig
 from jc.backend.engine import EngineRequest, InstructorEngine, _split_raw, classify_exception
 from jc.backend.types import (
     MODE_JSON_SCHEMA,
@@ -37,6 +38,33 @@ def status_error(cls: type, status: int, headers: dict[str, str] | None = None) 
     request = httpx2.Request("POST", "https://example.test/v1/chat/completions")
     response = httpx2.Response(status, request=request, headers=headers or {})
     return cls("boom", response=response, body=None)
+
+
+def retry_wrapper(
+    cause: BaseException | None = None, *, only_attempts: bool = False
+) -> InstructorRetryException:
+    """造一个 instructor 的「重试用尽」异常。
+
+    输入：底层原因异常；`only_attempts=True` 时只填 `failed_attempts`、不挂 `__cause__`。
+    输出：InstructorRetryException。
+    预期行为：默认把原因挂在 `__cause__` 上，与 instructor 真实的
+    `raise InstructorRetryException(...) from last_exception` 保持一致。
+    """
+    if cause is not None and only_attempts:
+        return InstructorRetryException(
+            "Max retries exceeded",
+            n_attempts=1,
+            total_usage=0,
+            failed_attempts=[FailedAttempt(attempt_number=1, exception=cause, completion=None)],
+        )
+    exc = InstructorRetryException("Max retries exceeded", n_attempts=1, total_usage=0)
+    exc.__cause__ = cause
+    return exc
+
+
+def timeout_error() -> Any:
+    """输入：无。输出：一个读超时的 openai 异常。预期行为：当「被包起来的底层原因」用。"""
+    return openai.APITimeoutError(request=httpx2.Request("POST", "https://example.test/v1"))
 
 
 def test_classify_auth_failures() -> None:
@@ -91,6 +119,67 @@ def test_classify_model_misbehaviour_is_not_a_fault() -> None:
 def test_classify_keeps_backend_errors_as_is() -> None:
     original = TransportError("网络挂了")
     assert classify_exception(original) is original
+
+
+def test_classify_unwraps_transport_cause_hidden_in_retry_wrapper() -> None:
+    """实测坑：NIM 端点读超时 / 504 被 instructor 包成「重试用尽」，必须还原成故障。
+
+    输入：底层是读超时与 504 的重试异常。
+    输出：分类结果。
+    预期行为：两者都是 `TransportError`（`counts_as_fault` 为真）——否则重试、熔断、
+    provider 降级全都不触发，整批会一直打一个已经挂掉的端点，还把原因记成「草稿不合格」。
+    """
+    for cause in (timeout_error(), status_error(openai.InternalServerError, 504)):
+        classified = classify_exception(retry_wrapper(cause))
+        assert isinstance(classified, TransportError)
+        assert classified.counts_as_fault is True
+
+
+def test_classify_unwraps_rate_limit_cause_keeping_retry_after() -> None:
+    """429 被包起来也要还原，而且 `Retry-After` 不能丢——退避与自适应降速都靠它。"""
+    wrapped = retry_wrapper(status_error(openai.RateLimitError, 429, {"retry-after": "7"}))
+    classified = classify_exception(wrapped)
+    assert isinstance(classified, RateLimitError)
+    assert classified.retry_after_s == 7.0
+
+
+def test_classify_unwraps_auth_and_schema_causes() -> None:
+    """认证失败要还原成 `AuthError`（key 得被剔除），400 要还原成 `SchemaUnsupportedError`（该降档）。"""
+    auth = classify_exception(retry_wrapper(status_error(openai.AuthenticationError, 401)))
+    schema = classify_exception(retry_wrapper(status_error(openai.BadRequestError, 400)))
+    assert isinstance(auth, AuthError)
+    assert isinstance(schema, SchemaUnsupportedError)
+
+
+def test_classify_keeps_validation_cause_as_draft_invalid() -> None:
+    """底层真是「模型答错」时口径不变：`DraftInvalidError`，且绝不算 provider 故障。"""
+    try:
+        Answer(answer=1)
+    except ValidationError as exc:
+        validation: BaseException = exc
+    classified = classify_exception(retry_wrapper(validation))
+    assert isinstance(classified, DraftInvalidError)
+    assert classified.counts_as_fault is False
+
+
+def test_classify_reads_failed_attempts_when_cause_is_missing() -> None:
+    """没有 `__cause__`（别的 instructor 版本）时退回 `failed_attempts` 的最后一条。"""
+    wrapped = retry_wrapper(timeout_error(), only_attempts=True)
+    assert isinstance(classify_exception(wrapped), TransportError)
+
+
+def test_classify_survives_self_referential_retry_wrapper() -> None:
+    """`__cause__` 指向自己（或成环）时必须收敛，不能递归到爆栈。"""
+    exc = InstructorRetryException("boom", n_attempts=1, total_usage=0)
+    exc.__cause__ = exc
+    assert isinstance(classify_exception(exc), DraftInvalidError)
+
+
+def test_extract_unwraps_wrapped_transport_errors(patched: dict[str, Any]) -> None:
+    """端到端走生产路径：客户端抛「重试用尽（底层读超时）」，引擎必须抛 `TransportError`。"""
+    patched["next_client"] = FakeClient(error=retry_wrapper(timeout_error()))
+    with pytest.raises(TransportError):
+        InstructorEngine().extract(request_for())
 
 
 def test_classify_pydantic_validation_error() -> None:
@@ -181,12 +270,24 @@ def test_extract_returns_parsed_data(patched: dict[str, Any]) -> None:
 
 
 def test_extract_never_sends_max_tokens(patched: dict[str, Any]) -> None:
-    """PLAN 3.1.2：默认不发 max_tokens，字段根本不该出现。"""
+    """PLAN 3.1.2：永不发 max_tokens，字段根本不该出现。"""
     engine = InstructorEngine()
     engine.extract(request_for())
     kwargs = patched["clients"][0].kwargs
     assert "max_tokens" not in kwargs
     assert "max_completion_tokens" not in kwargs
+
+
+def test_no_max_tokens_knob_anywhere() -> None:
+    """PLAN 3.1.2：不是「默认不发」，而是「根本没这个开关」。
+
+    输入：无。输出：无。预期行为：请求对象、provider 配置、限额配置三处都不存在
+    `max_tokens` 字段——用户没有任何入口能把上限塞进请求。
+    """
+    for cls in (EngineRequest, ProviderConfig, Limits):
+        names = set(cls.__dataclass_fields__)
+        assert "max_tokens" not in names, cls
+        assert "max_completion_tokens" not in names, cls
 
 
 def test_extract_always_sends_the_model(patched: dict[str, Any]) -> None:

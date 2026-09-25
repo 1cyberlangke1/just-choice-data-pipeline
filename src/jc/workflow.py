@@ -19,9 +19,12 @@ import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from .judge import Judge
+
+if TYPE_CHECKING:  # 只在类型检查时引入：核心层不装 [llm] extra 也能跑构造式 workflow
+    from .backend.types import GenerationBackend
 
 
 @dataclass(frozen=True)
@@ -62,7 +65,8 @@ class Workflow(Protocol):
     - `judges`：默认判别器名单（由 `make_judges` 实例化）。
 
     方法：`plan_sample` 决定怎么造这一条（题族、变体等），`sample/render/ask` 是三步生成，
-    `reparse` 供往返校验，`audit` 供产物审计。
+    `reparse` 供往返校验，`audit` 供产物审计；
+    `bind_backend` 只给模型驱动式用（`needs` 非空时由管线注入后端，`render` 阶段调它写文本）。
     """
 
     name: str
@@ -113,6 +117,18 @@ class Workflow(Protocol):
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, Any], list[str]]:
         """输入：run 目录、切分、语言。输出：(各切分审计计数, 缺失项列表)。"""
+
+    def bind_backend(self, backend: GenerationBackend) -> None:
+        """输入：生成后端。输出：无。
+
+        预期行为：`needs` 非空的 workflow 在这里存下后端（`render` 阶段要用它写文本）；
+        纯构造式 workflow（`needs` 为空）**根本不会被调用**——收到后端就说明接线错了，
+        实现里应当直接报错，别静默吞掉。
+        后端**只出草稿**，编号 / 题号 / `type` 仍然只由组装器产生（PLAN 3.1 不变量①）。
+        """
+
+    def available_locales(self) -> list[str]:
+        """输入：无。输出：该 workflow 支持的语言标签列表（`jc locales` 用它）。"""
 
 
 _REGISTRY: dict[str, Callable[[], Workflow]] = {}

@@ -472,3 +472,11 @@ class MazeWorkflow:
     def available_locales(self) -> list[str]:
         """支持的语言列表。"""
         return locales.available()
+
+    def bind_backend(self, backend: Any) -> None:
+        """空操作：迷宫是纯构造式（`needs` 为空），管线不会给后端，也不该给。
+
+        输入：生成后端（实际不会收到）。输出：无。
+        预期行为：留着这个方法只为满足 `Workflow` 协议；收到后端说明接线错了，直接报错。
+        """
+        raise AssertionError("迷宫 workflow 是纯构造式的，不该被绑定生成后端")

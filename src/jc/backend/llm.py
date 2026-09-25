@@ -8,7 +8,8 @@
        ├─ 服务端不吃这一档  → 降档继续
        ├─ provider 熔断 / key 用尽 → 换下一家
        ├─ 网络 / 5xx / 429（已重试用尽）→ 换下一家
-       └─ 模型答非所问 → 换下一家
+       └─ 模型答非所问 → 换下一家；全都没给出合格草稿时抛 DraftInvalidError（这一条被拒，
+          整批继续），只有「一家都没活着」才抛 AllProvidersDown（整批停下）
 ```
 
 输入/输出：`generate()` 收任务出 `Draft`；`generate_many()` 额外负责断点续跑记账。
@@ -73,34 +74,60 @@ class LLMBackend:
         """按顺序列出 provider 名。"""
         return self._chain.names
 
+    @property
+    def starting_mode(self) -> str:
+        """输入：无。输出：这一批**真正**会最先尝试的档位。
+
+        预期行为：取自链上第一家的档位序列（配置写死了档位时就是那一档）。
+        **不能拿 `capabilities.starting_mode()` 顶替它**——那是探测结论，探测没开时
+        一律是 `md_json`，会把实际从 `json_schema` 起步的 run 记成 `md_json`。
+        """
+        first = next(iter(self._chain), None)
+        return first.modes()[0] if first is not None else ""
+
     def generate(self, task: GenerationTask) -> Draft:
         """输入：一个任务。输出：草稿。
 
-        预期行为：按 3.1.1 的档位降级与 3.1.4 的 provider 降级依次尝试；
-        全部 provider 都不可用时抛 `AllProvidersDown`（这是整批停下的唯一条件）。
+        预期行为：按 3.1.1 的档位降级与 3.1.4 的 provider 降级依次尝试。
+        全部 provider 都**挂了**（熔断 / key 用尽 / 网络）才抛 `AllProvidersDown`——
+        这是整批停下的唯一条件；若只是「provider 都活着、但都给不出合格草稿」，
+        抛 `DraftInvalidError`（`fatal_for_run` 为假），由管线记成这一条被拒、整批继续。
+
+        这两件事必须分开：实测踩坑——kimi-k3 在 `tools` 档偶尔不回 `tool_calls`，
+        `instructor` 抛 `IndexError` 再包成 `InstructorRetryException`，被这里误判成
+        「全部 provider 都不可用」，6 条样本跑到第 5 条把整批掐了（端点当场验证是健康的）。
         """
         providers = self._chain.usable()
         if not providers:
             raise AllProvidersDown(f"没有可用的 provider（配置了 {self._chain.names}）")
         last: BackendError | None = None
+        junk: DraftInvalidError | None = None
         for provider in providers:
-            draft = self._try_provider(provider, task)
+            try:
+                draft = self._try_provider(provider, task)
+            except DraftInvalidError as exc:
+                junk = exc  # 这家活着，只是没给出合格草稿：换下一家，但不算「挂了」
+                continue
             if draft is not None:
                 return draft
             last = ProviderUnavailable(f"{provider.name} 这次没成")
+        if junk is not None:
+            raise junk
         raise AllProvidersDown(f"全部 provider 都不可用：{self._chain.names}") from last
 
     def _try_provider(self, provider: Provider, task: GenerationTask) -> Draft | None:
         """输入：一个 provider 与任务。输出：草稿，或 None（这家没成，该换下一家）。
 
-        预期行为：档位从严到松依次试；「不吃这一档」继续降档，其余失败立刻换 provider。
+        预期行为：档位从严到松依次试；「不吃这一档」继续降档，provider 级失败立刻换下一家。
+        **`DraftInvalidError` 直接往外抛**——provider 是活的，该由 `generate` 决定它是
+        「换下一家」还是「整批停」，这里不替它记账。
         """
         for mode in provider.modes():
             try:
                 result, key_fp, attempts = provider.extract(task, mode)
             except SchemaUnsupportedError:
                 continue  # 服务端不吃这一档，降档重试
-            except (ProviderUnavailable, TransportError, AuthError, DraftInvalidError):
+            except (ProviderUnavailable, TransportError, AuthError):
                 return None  # 这家没戏了，换下一家
             return Draft(
                 data=result.data,

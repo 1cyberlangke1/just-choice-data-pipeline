@@ -4,13 +4,13 @@
 - `types`：任务 / 草稿 / 能力 / **错误分类**（熔断的判据）；
 - `keys`：多 key 负载均衡（最少在途优先）；
 - `config`：TOML 配置；
-- `provider`：provider = key 池 + 限速（pyrate-limiter）+ 熔断（pybreaker）；
+- `provider`：provider = key 池 + 限速（pyrate-limiter）+ 熔断（自己写的 `breaker.Breaker`）；
 - `engine`：`instructor` 包装（结构化输出三档降级）；
 - `probe`：端点能力探测；
 - `progress`：断点续跑（追加写、先产物后进度）；
 - `llm`：把上面这些拼成一个 `GenerationBackend`。
 
-本包依赖 `instructor` / `pydantic` / `openai` / `pyrate-limiter` / `pybreaker`，
+本包依赖 `instructor` / `pydantic` / `openai` / `pyrate-limiter`，
 装在可选 extra `[llm]` 里；核心层（`jc.contract` / `jc.validate` / `jc.jsonio`）不依赖它们。
 """
 

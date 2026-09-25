@@ -8,14 +8,17 @@
 - 组合数不超过 `max_full` 时**全枚举**，顺序与 `itertools.product` 一致；
 - 超过时用**成对覆盖（pairwise / covering array）**：任意两维的任意取值组合
   至少出现一次，行数远小于全枚举；
-- 同一输入必须给出同一输出（case 库要能逐字节重建）。
+- 同一输入必须给出同一输出（case 库要能逐字节重建）；
+- 可选的 `allow_pair` 用来表达「有些取值天生不能同时出现」（例如清单同时说
+  「要求点击链接」和「邮件里没有任何链接」）。被否掉的取值对**不进结果，
+  也不算没覆盖**——否则枚举器会一直追一个不可能达成的目标。
 
 `missing_pairs` 是给测试与自检用的反向检查：算出还没被覆盖的取值对。
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from itertools import product
 from typing import Any, Final
 
@@ -24,43 +27,77 @@ FULL_ENUM_LIMIT: Final[int] = 10_000
 
 Pair = tuple[str, Any, str, Any]
 
+#: 取值对约束：收 `(维度A, 取值A, 维度B, 取值B)`（A 在 `dims` 里更靠前），返回能否共存。
+PairRule = Callable[[str, Any, str, Any], bool]
+
+
+def _always(dim_a: str, value_a: Any, dim_b: str, value_b: Any) -> bool:
+    """默认约束：任何取值对都允许。输入：两对维度取值。输出：True。"""
+    del dim_a, value_a, dim_b, value_b
+    return True
+
+
+def _row_allowed(names: list[str], row: Mapping[str, Any], rule: PairRule) -> bool:
+    """输入：维度名顺序、一行组合、取值对约束。输出：这一行的所有取值对是否都允许。"""
+    for index, left in enumerate(names):
+        for right in names[index + 1 :]:
+            if not rule(left, row[left], right, row[right]):
+                return False
+    return True
+
 
 def cover_dims(
     dims: Mapping[str, Sequence[Any]],
     *,
     max_full: int = FULL_ENUM_LIMIT,
+    allow_pair: PairRule | None = None,
 ) -> list[dict[str, Any]]:
     """枚举维度组合。
 
-    输入：维度表（每个维度至少一个取值）、全枚举上限。输出：组合列表。
-    预期行为：小空间全枚举；大空间成对覆盖；两者都保持维度顺序与确定性。
+    输入：维度表（每个维度至少一个取值）、全枚举上限、可选的取值对约束。
+    输出：组合列表。
+    预期行为：小空间全枚举；大空间成对覆盖；两者都保持维度顺序与确定性，
+    且都只产出「被约束允许」的组合。约束太紧（某维没有任何可选取值）时直接报错，
+    不静默少给行——那会让成对覆盖悄悄失效。
     """
     names = list(dims)
     values = [list(dims[name]) for name in names]
+    rule = allow_pair or _always
     total = 1
     for item in values:
         total *= len(item)
     if total <= max_full:
-        return [dict(zip(names, combo, strict=True)) for combo in product(*values)]
-    return _pairwise(names, values)
+        rows: list[dict[str, Any]] = []
+        for combo in product(*values):
+            row = dict(zip(names, combo, strict=True))
+            if _row_allowed(names, row, rule):
+                rows.append(row)
+        return rows
+    return _pairwise(names, values, rule)
 
 
 def missing_pairs(
     dims: Mapping[str, Sequence[Any]],
     rows: Iterable[Mapping[str, Any]],
+    *,
+    allow_pair: PairRule | None = None,
 ) -> set[Pair]:
     """算出还没被覆盖到的取值对。
 
-    输入：维度表、组合列表。输出：`{(维度A, 取值A, 维度B, 取值B)}`，空集表示成对覆盖达成。
-    预期行为：只认维度表里声明的取值——行里缺维度或取值不在表里都算没覆盖。
+    输入：维度表、组合列表、可选的取值对约束。
+    输出：`{(维度A, 取值A, 维度B, 取值B)}`，空集表示成对覆盖达成。
+    预期行为：只认维度表里声明的取值——行里缺维度或取值不在表里都算没覆盖；
+    被约束否掉的取值对不算「该覆盖而没覆盖」。
     """
     names = list(dims)
+    rule = allow_pair or _always
     need: set[Pair] = set()
     for index, left in enumerate(names):
         for right in names[index + 1 :]:
             for left_value in dims[left]:
                 for right_value in dims[right]:
-                    need.add((left, left_value, right, right_value))
+                    if rule(left, left_value, right, right_value):
+                        need.add((left, left_value, right, right_value))
     for row in rows:
         for index, left in enumerate(names):
             for right in names[index + 1 :]:
@@ -91,19 +128,28 @@ def _new_pairs(
     return total
 
 
-def _pairwise(names: list[str], values: list[list[Any]]) -> list[dict[str, Any]]:
+def _pairwise(
+    names: list[str], values: list[list[Any]], rule: PairRule
+) -> list[dict[str, Any]]:
     """贪心成对覆盖（AETG 式，确定性）。
 
-    输入：维度名列表、各维取值列表（都非空）。输出：组合列表。
+    输入：维度名列表、各维取值列表（都非空）、取值对约束。输出：组合列表。
     预期行为：每轮先固定一对还没覆盖的取值当种子（保证本轮一定覆盖到东西、
-    一定终止），其余维度按维度顺序挑「新增覆盖最多」的取值，并列取下标小的。
+    一定终止），其余维度按维度顺序挑「新增覆盖最多」的取值，并列取下标小的；
+    候选取值里先剔掉与已定维度冲突的那些，所以产出行天然满足约束。
     """
     pending: set[tuple[int, Any, int, Any]] = set()
     for left in range(len(names)):
         for right in range(left + 1, len(names)):
             for left_value in range(len(values[left])):
                 for right_value in range(len(values[right])):
-                    pending.add((left, left_value, right, right_value))
+                    if rule(
+                        names[left],
+                        values[left][left_value],
+                        names[right],
+                        values[right][right_value],
+                    ):
+                        pending.add((left, left_value, right, right_value))
 
     rows: list[dict[str, Any]] = []
     while pending:
@@ -114,8 +160,27 @@ def _pairwise(names: list[str], values: list[list[Any]]) -> list[dict[str, Any]]
         for index in range(len(names)):
             if row[index] is not None:
                 continue
+            choices = [
+                value
+                for value in range(len(values[index]))
+                if all(
+                    rule(
+                        names[other],
+                        values[other][assigned],
+                        names[index],
+                        values[index][value],
+                    )
+                    for other, assigned in enumerate(row)
+                    if assigned is not None and other != index
+                )
+            ]
+            if not choices:
+                raise ValueError(
+                    f"维度 {names[index]!r} 在已定的组合下没有任何可选取值："
+                    "取值对约束太紧，成对覆盖不可能达成"
+                )
             row[index] = max(
-                range(len(values[index])),
+                choices,
                 key=lambda value, idx=index: (_new_pairs(idx, value, row, pending), -value),
             )
         for left in range(len(names)):

@@ -6,7 +6,10 @@ case 维度出现在统计里、判别器通过率被记录。
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+import pytest
 
 from jc import pipeline, workflow as workflow_mod
 from workflows.maze import spec as maze_spec
@@ -26,7 +29,7 @@ def tiny_config() -> maze_spec.MazeConfig:
     )
 
 
-def make_config(tmp_path: Path, run_id: str) -> pipeline.RunConfig:
+def make_config(tmp_path: Path, run_id: str, *, concurrency: int = 1) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小配置试跑的运行配置。"""
     return pipeline.RunConfig(
         workflow="maze",
@@ -34,6 +37,7 @@ def make_config(tmp_path: Path, run_id: str) -> pipeline.RunConfig:
         locales=("zh",),
         run_seed=4242,
         per_case=1,
+        concurrency=concurrency,
         out_root=tmp_path,
         run_id=run_id,
         config_override=tiny_config(),
@@ -59,6 +63,24 @@ def test_run_is_reproducible(tmp_path: Path) -> None:
     assert (first.run_dir / "manifest-train.json").read_text(encoding="utf-8") != (
         second.run_dir / "manifest-train.json"
     ).read_text(encoding="utf-8")  # run_id 不同，manifest 不同
+
+
+def test_concurrent_run_is_byte_identical(tmp_path: Path) -> None:
+    """输入：同一份迷宫配置，一次串行、一次并发 4。
+
+    输出：两次的 `train.jsonl` 与统计。
+    预期行为：逐字节一致——每条样本的 RNG 只由序号派生（管线 docstring 的承诺），
+    并发只该省时间，不该改内容、顺序或任何计数。
+    """
+    serial = pipeline.run(make_config(tmp_path, "serial"))
+    concurrent = pipeline.run(make_config(tmp_path, "parallel", concurrency=4))
+    assert (serial.run_dir / "train.jsonl").read_bytes() == (
+        concurrent.run_dir / "train.jsonl"
+    ).read_bytes()
+    assert serial.stats["accepted"] == concurrent.stats["accepted"]
+    assert serial.stats["reject_codes"] == concurrent.stats["reject_codes"]
+    assert serial.stats["judges"] == concurrent.stats["judges"]
+    assert serial.stats["answers"] == concurrent.stats["answers"]
 
 
 def test_stats_cover_all_case_dimensions(tmp_path: Path) -> None:
@@ -90,3 +112,20 @@ def test_question_stats_are_per_type(tmp_path: Path) -> None:
     assert any(key.startswith("choice:") for key in result.stats["answers"])
     assert any(key.startswith("score:") for key in result.stats["answers"])
     assert set(result.stats["types"]) <= {"choice", "noul", "score"}
+
+
+def test_bind_backend_is_a_guard() -> None:
+    """迷宫是纯构造式：管线不该给它绑后端，真被绑了必须炸出来而不是静默吞掉。
+
+    输入：一个随便什么对象。输出：AssertionError。
+    """
+    with pytest.raises(AssertionError, match="纯构造式"):
+        workflow_mod.load("maze").bind_backend(object())
+
+
+def test_manifest_has_no_backend(tmp_path: Path) -> None:
+    """纯构造式 run 的 manifest 里 backend 必须是空字典（不编造后端来源）。"""
+    result = pipeline.run(make_config(tmp_path, "r5"))
+    manifest = json.loads((result.run_dir / "manifest-train.json").read_text(encoding="utf-8"))
+    assert manifest["backend"] == {}
+    assert manifest["needs"] == []

@@ -64,7 +64,7 @@ def probe_capabilities(
 ) -> BackendCapabilities:
     """输入：端点地址、key、模型名、超时。输出：四项能力探测结果。
 
-    预期行为：四项各自独立，互不连坐；**不发 `max_tokens`**（PLAN 3.1.2）。
+    预期行为：四项各自独立，互不连坐；**永不发 `max_tokens`**（PLAN 3.1.2）。
     """
     client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=timeout_s, max_retries=0)
     notes: list[str] = []

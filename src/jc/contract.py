@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
+import json
 import re
-from typing import Final
+from typing import Any, Final
 
 # ---------- 顶层字段（只允许这四个，多出即拒绝） ----------
 TOP_FIELDS: Final[tuple[str, ...]] = ("id", "state", "questions", "answers")
@@ -155,3 +156,29 @@ def desc_kind_ok(value: object) -> bool:
     输出：bool。预期行为：数字、布尔一律 False。
     """
     return json_kind(value) in DESC_KINDS
+
+
+def gold_text(question: dict[str, Any], answer: dict[str, Any]) -> str:
+    """把金答案还原成**文字**（人看、模型看、比对都用它）。
+
+    输入：一道题、它的答案。输出：选项 / 等级的文字，或 noul 的文案。
+    预期行为：
+    - 编号越界给 `?`——越界是校验器该报的错，这里只保证调用方不炸；
+    - noul 的 criteria 是可选的，没有文案就退回布尔字面量；
+    - 认不出的形态原样给 JSON，总比给个空字符串强。
+    """
+    criteria = question.get("criteria")
+    kind = answer.get("type")
+    if kind == TYPE_CHOICE and isinstance(criteria, dict):
+        values = list(criteria.values())
+        index = answer.get("choice")
+        return str(values[index]) if is_index(index) and 0 <= index < len(values) else "?"
+    if kind == TYPE_SCORE and isinstance(criteria, list):
+        index = answer.get("score")
+        return str(criteria[index]) if is_index(index) and 0 <= index < len(criteria) else "?"
+    if kind == TYPE_NOUL:
+        value = bool(answer.get("noul"))
+        if isinstance(criteria, dict):
+            return str(criteria.get("true" if value else "false", value))
+        return str(value)
+    return json.dumps(answer, ensure_ascii=False)

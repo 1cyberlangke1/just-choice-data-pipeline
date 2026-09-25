@@ -1,0 +1,57 @@
+# Quality-check prompts (English).
+#
+# Conventions (locked by tests/core/test_llmjudge.py):
+# - `perspectives` must cover every entry of llmjudge.PERSPECTIVES, each with non-empty rules;
+# - only "how to look" belongs here, **no domain vocabulary** - the core layer knows no workflow.
+
+language_name = "English"
+
+intro = "You are quality-checking a batch of synthetic data. Below is the data itself: the material, the questions, and the gold answers."
+material_head = "[material]"
+question_head = "[questions and gold answers]"
+options_label = "options"
+levels_label = "levels"
+answer_label = "gold answer"
+perspective_head = "Your perspective"
+rules_head = "Criteria:"
+closing = "Answer with the verdict only: verdict=true means this perspective found no problem, score is your confidence in that verdict (0~1), reason is one sentence naming the exact spot or the exact defect. Do not rewrite or complete the data."
+
+[perspectives.solvable]
+title = "solvability"
+rules = [
+  "From the material and the question alone, is the answer uniquely determined;",
+  "missing information (the material simply does not contain it) counts as a problem;",
+  "two options that both hold (ambiguity) also count as a problem.",
+]
+
+[perspectives.answer]
+title = "answer correctness"
+rules = [
+  "Do not trust the gold answer - it is what is being checked; recompute it from the material;",
+  "when a question asks for the n-th item, check that the order in the question is the order in the material;",
+  "a gold answer that contradicts the material is a problem even when it looks plausible.",
+]
+
+[perspectives.distractors]
+title = "distractor quality"
+rules = [
+  "distractors must be of the same kind and granularity as the answer, not trivially excludable;",
+  "option texts must be pairwise different - a duplicate option means two correct answers;",
+  "an option value that does not appear in the material at all is a problem.",
+]
+
+[perspectives.levels]
+title = "level exclusivity"
+rules = [
+  "level descriptions must be mutually exclusive: one material fits exactly one level;",
+  "levels must cover the whole range from mildest to worst, with no gap;",
+  "levels must not contain one another (e.g. '2: at least two' and '3: three or more' overlap at the boundary).",
+]
+
+[perspectives.wording]
+title = "wording"
+rules = [
+  "the question must read naturally and unambiguously, like something a person would really ask;",
+  "the language must match the material - no mixed languages, no leftover template placeholders;",
+  "no context-dependent phrasing such as 'see above' or 'as shown'.",
+]

@@ -4,7 +4,7 @@
 - 后端**只出草稿**，绝不碰契约（编号 / key / `type` 只由 Assembler 产生）；
 - 错误必须分类：熔断（3.1.3）要区分「provider 故障」与「草稿不合格」。把「模型答错」
   算成故障，会把一个正常但能力弱的 provider 误熔断。判据就是类属性 `counts_as_fault`；
-- 采样参数默认**不发 `max_tokens`**（3.1.2）；推理字段单独存、不回喂。
+- 采样参数**永不发 `max_tokens`**、也不给开关（3.1.2）；推理字段单独存、不回喂。
 
 输入/输出：本模块只有数据类、协议常量与异常类型；无副作用、不发网络请求。
 **刻意不 import pydantic**：草稿模型是 workflow 提供的，这里只用 `type[Any]` 作注解，
@@ -51,6 +51,9 @@ class BackendError(Exception):
     """
 
     counts_as_fault: bool = False
+    #: 这次失败是不是「整批该停下」。通用层（`jc.pipeline`）只看这个类属性、
+    #: 不 import 任何后端模块，所以任何后端实现都能用同一套判据。
+    fatal_for_run: bool = False
 
 
 class TransportError(BackendError):
@@ -91,6 +94,9 @@ class ProviderUnavailable(BackendError):
 
 class AllProvidersDown(BackendError):
     """所有 provider 都不可用——这是整批停下的唯一条件（PLAN 3.1.4）。"""
+
+    #: 整批停下：继续跑只会产出一整个「全被拒」的假数据集，还白烧配额。
+    fatal_for_run = True
 
 
 # ---- 数据类 -----------------------------------------------------------------
