@@ -7,11 +7,13 @@
 - 每条样本的 RNG 由 `sha256(run_seed, workflow, 切分, 序号)` 派生，任何一条都能单独重算，
   并行与续跑都不会改变 id 或内容；
 - 序号对 case 矩阵长度取模，保证每个 case 都被轮到；
-- **产物边跑边追加**，同时把「这个序号完成了」写进 `progress.jsonl`：进程被杀 / 断电后
-  重启会跳过已完成的序号，不重跑也不重写（3.1.5 的顺序铁律：先产物、后进度）；
+- **产物边跑边追加**，同时把「这个序号完成了」写进 `progress-<split>.jsonl`：进程被杀 /
+  断电后重启会跳过已完成的序号，不重跑也不重写（3.1.5 的顺序铁律：先产物、后进度）；
 - 产物：`dataset/<run_id>/<split>.jsonl`（合格）、`rejected.jsonl`（被拒）、
-  `judge-skipped.jsonl`（没判成）、`progress.jsonl`（续跑用）、
+  `judge-skipped.jsonl`（没判成）、`progress-<split>.jsonl`（续跑用）、
   `stats-<split>.md`（统计 + 均衡）、`manifest-<split>.json`（溯源）。
+  一个 run 目录可以装多个切分，所以**进度日志与合格产物一样按切分分文件**：序号在每档里
+  都从 0 起，共用一份日志会让后跑的切分把先跑切分的序号当成「已完成」（见 10.51）。
 
 输入：RunConfig。
 输出：RunResult（计数与路径）。
@@ -331,9 +333,61 @@ def _attempt_case(
     )
 
 
-def _journal_path(run_dir: Path) -> Path:
-    """输入：run 目录。输出：进度日志路径（PLAN 3.1.5 的 `progress.jsonl`）。"""
-    return run_dir / "progress.jsonl"
+def _journal_path(run_dir: Path, split: str) -> Path:
+    """输入：run 目录、切分名。输出：进度日志路径（PLAN 3.1.5 的 `progress-<split>.jsonl`）。
+
+    预期行为：**按切分分文件**——它与合格产物是一对（`<split>.jsonl`），而一个 run 目录
+    可以装多个切分（`stats-<split>.md` / `manifest-<split>.json` 同理）。共用一个日志时，
+    每档都从 0 起编号的序号会互相冒充「已完成」，既漏生成又对不上产物行号（10.51）。
+    """
+    return run_dir / f"progress-{split}.jsonl"
+
+
+def _check_journal_matches_products(
+    done: dict[int, dict[str, Any]],
+    samples: list[dict[str, Any]],
+    rejecteds: list[dict[str, Any]],
+    skips: list[dict[str, Any]],
+    artifacts: "_Artifacts",
+) -> None:
+    """输入：进度日志、三个产物在本次启动时读回来的行、产物路径。输出：无（不一致就抛）。
+
+    预期行为：续跑靠记录里的 `row` 与两个区间把当时的 outcome 从产物里取回来，所以
+    「进度说的行号」必须真的落在产物里。这里一次查完、报人话点名是哪两个文件对不上——
+    否则要等到回放时才翻车，抛的是裸 `IndexError`，看不出哪一步坏了（实测踩过）。
+    查的是**这一档自己的一对**（`<split>.jsonl` ↔ `progress-<split>.jsonl`）：
+    被拒 / 跳过两个文件是各档共用的诊断账，只做区间越界的兜底。
+    """
+    ok_rows = sum(1 for record in done.values() if record["status"] == "ok")
+    if ok_rows != len(samples):
+        raise ValueError(
+            f"进度日志 {artifacts.journal.name} 说这一档完成了 {ok_rows} 条合格样本，"
+            f"但产物 {artifacts.sample.name} 只有 {len(samples)} 行——两者不一致。"
+            "继续跑会从第 0 条重来、把同一条样本再追加一遍（同一个 id 写两行）。"
+            "请恢复产物 / 进度日志，或换一个 run-id 重跑。"
+        )
+    for seq in sorted(done):
+        record = done[seq]
+        row = int(record["row"])
+        if row > len(samples):
+            raise ValueError(
+                f"进度日志 {artifacts.journal.name} 的第 {seq} 条说样本在第 {row} 行，"
+                f"但 {artifacts.sample.name} 只有 {len(samples)} 行——两者不一致。"
+            )
+        r_start, r_count = (int(part) for part in record["rejected"])
+        if r_start + r_count > len(rejecteds):
+            raise ValueError(
+                f"进度日志 {artifacts.journal.name} 的第 {seq} 条说被拒行是 "
+                f"[{r_start}, {r_start + r_count})，但 {artifacts.rejected.name} "
+                f"只有 {len(rejecteds)} 行——两者不一致。"
+            )
+        s_start, s_count = (int(part) for part in record["skipped"])
+        if s_start + s_count > len(skips):
+            raise ValueError(
+                f"进度日志 {artifacts.journal.name} 的第 {seq} 条说没判成的行是 "
+                f"[{s_start}, {s_start + s_count})，但 {artifacts.skipped.name} "
+                f"只有 {len(skips)} 行——两者不一致。"
+            )
 
 
 def _read_rows(path: Path) -> list[dict[str, Any]]:
@@ -481,6 +535,14 @@ def run(config: RunConfig) -> RunResult:
         config.config_override if config.config_override is not None else workflow.config_for(config.split)
     )
     cases = workflow.build_cases(config_for_split)
+    if not cases:
+        # 空表要当场拦下：`compatible` 之类把组合全排掉时，管线拿着空 case 表往下跑
+        # 会在取 case 的那一步抛 `ZeroDivisionError: integer modulo by zero`，
+        # 完全看不出是哪一步坏了（PLAN 3.3：采样参数写错要报人话）。
+        raise ValueError(
+            f"workflow {workflow.name!r} 在切分 {config.split!r} 下一个 case 都没有——"
+            "采样参数把所有组合都排掉了（见该 workflow 的 `compatible`）"
+        )
     run_dir = Path(config.out_root) / config.resolved_run_id()
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -489,7 +551,7 @@ def run(config: RunConfig) -> RunResult:
         sample=run_dir / f"{config.split}.jsonl",
         rejected=run_dir / "rejected.jsonl",
         skipped=run_dir / "judge-skipped.jsonl",
-        journal=_journal_path(run_dir),
+        journal=_journal_path(run_dir, config.split),
     )
     # 续跑：启动时先把已写下的产物读回来。统计、`RunResult` 与「哪些序号已完成」
     # 都从它重建，所以重启既不重跑判别器，也不会把同一条写两遍。
@@ -502,6 +564,11 @@ def run(config: RunConfig) -> RunResult:
         "skipped": len(skipped_all),
     }
     done = _read_journal(artifacts.journal)
+    # 产物与进度日志是**一对**：只有产物、没有进度，是不一致状态。继续跑会把「已完成」当成
+    # 空集，从 seq 0 重跑再**追加**到已有行后面——同一个 id 写两行。实测踩过：四个 `sweep-*`
+    # 产物各多出「恰好一个切分 case 数」的行，多余行数正好等于 case 数。宁可报人话停下，
+    # 也不静默产出坏数据（`jc audit` 现在也会跨行查 id 唯一，但那是事后发现）。
+    _check_journal_matches_products(done, samples, rejected_all, skipped_all, artifacts)
     stats: dict[str, Any] = {
         "cases": len(cases),
         "requested": total,

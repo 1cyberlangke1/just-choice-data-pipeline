@@ -12,6 +12,8 @@ import random
 from dataclasses import dataclass
 from typing import Any, Final
 
+from jc.knobs import require_pool
+
 # ---------- 维度取值 ----------
 
 LAYOUTS: Final[tuple[str, ...]] = ("labeled_lines", "pipe_table", "aligned_table", "paragraph")
@@ -139,6 +141,25 @@ class InvoiceConfig:
     tax_states: tuple[str, ...] = TAX_STATES
     phrasings: tuple[int, ...] = (0, 1, 2)
     ood_only: bool = False
+
+    def __post_init__(self) -> None:
+        """输入：无。输出：无。预期行为：空取值表在构造期就报人话，不拖到采样阶段。
+
+        以前空表会活到 `rng.choice`，抛 `Cannot choose from an empty sequence`
+        （校验规则见 `jc.knobs`）。
+        """
+        for field, values in (
+            ("layouts", self.layouts),
+            ("label_styles", self.label_styles),
+            ("currencies", self.currencies),
+            ("date_formats", self.date_formats),
+            ("line_counts", self.line_counts),
+            ("defect_counts", self.defect_counts),
+            ("subtotal_flags", self.subtotal_flags),
+            ("tax_states", self.tax_states),
+            ("phrasings", self.phrasings),
+        ):
+            require_pool(field, values)
 
 
 def build_cases(config: InvoiceConfig) -> list[InvoiceCase]:

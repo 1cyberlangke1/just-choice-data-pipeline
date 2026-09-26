@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import random
 import re
 from typing import Any
@@ -20,7 +21,7 @@ def _render(case: sp.HybridCase, lang: str, seed: int = 5) -> sp.HybridSpec:
 
     预期行为：`written` 由 `check_draft` 填好（走生产同一条路），返回的规格可直接 `build`。
     """
-    spec = sp.sample_spec(random.Random(seed), case, "train", 0, 0)
+    spec = sp.sample_spec(random.Random(seed), case, "train", 0, 0, 0)
     loc = locales.load(lang)
     backend = _fake()
     draft = backend.generate(render.build_task(spec, loc, spec.text_task_id))
@@ -103,7 +104,12 @@ def test_build_needs_written_text() -> None:
     预期行为：渲染阶段必须先拿到后端文本；没写就直接报错，不许写出半份日程。
     """
     spec = sp.sample_spec(
-        random.Random(3), sp.HybridCase(2, "early", "none", "bullet", 1, "short"), "train", 0, 0
+        random.Random(3),
+        sp.HybridCase(2, "early", "none", "bullet", 1, "short"),
+        "train",
+        0,
+        0,
+        0,
     )
     with pytest.raises(KeyError, match="还没写"):
         render.build(spec, locales.load("zh"))
@@ -176,6 +182,21 @@ def test_prompt_carries_no_skeleton_facts(make_spec: Any) -> None:
         assert render.lead_text(spec, index, loc) not in prompt
 
 
+def test_prompt_carries_the_theme_direction(make_spec: Any) -> None:
+    """输入：两份只差主题方向的规格。输出：两段提示词。
+
+    预期行为：提示词里出现该语言的**主题词**，且换个方向就换一段提示词。写文本的提示词里
+    只有「共 N 场会」一个变量时，同场数的样本提示词**逐字相同**，模型会把标题塌成套话
+    （真端点实测：114 个标题里只有 75 个不同），这条锁住那个不变量。
+    """
+    loc = locales.load("zh")
+    themes = loc["prompt"]["themes"]
+    first = render.build_prompt(dataclasses.replace(make_spec(11), theme=0), loc)
+    second = render.build_prompt(dataclasses.replace(make_spec(11), theme=5), loc)
+    assert themes[0] in first and themes[5] in second
+    assert first != second
+
+
 def test_build_task_only_exposes_the_meeting_count(make_spec: Any) -> None:
     """输入：一份规格。输出：后端任务。
 
@@ -198,7 +219,12 @@ def test_check_draft_accepts_a_clean_draft(make_spec: Any) -> None:
     预期行为：条数对得上、文本干净、标题 / 议题两两不同就收下，顺序与日程一致。
     """
     spec = sp.sample_spec(
-        random.Random(5), sp.HybridCase(3, "early", "none", "bullet", 3, "short"), "train", 0, 0
+        random.Random(5),
+        sp.HybridCase(3, "early", "none", "bullet", 3, "short"),
+        "train",
+        0,
+        0,
+        0,
     )
     loc = locales.load("zh")
     draft = _fake().generate(render.build_task(spec, loc, "t"))

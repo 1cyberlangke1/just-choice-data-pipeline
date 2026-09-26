@@ -28,6 +28,30 @@ DIM_ORDER: Final[tuple[str, ...]] = ("sender", "lure", "ask", "link", "tone")
 # 而「有没有链接」这道判别器宁可漏检也不能误判（漏检只是少拒几条，误判会拒掉好数据）。
 URL_PATTERN: Final[re.Pattern[str]] = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
 
+#: 数地址用的「写全的网址」：**只吃 ASCII 网址字符**，遇到中文标点或括号就停。
+#: 不能拿 `URL_PATTERN`（`\S+`）来数：它会把紧跟其后的中文一起吞掉
+#: （`https://a.test/x（实际指向 …` 变成一个匹配），于是「同一个地址在括号里又写了一遍」
+#: 会被数成两个不同的地址——模型很爱这么写（实跑抓到过
+#: 「订单查询入口：http://…（链接文字与目标一致，均指向 http://…）」）。
+FULL_URL_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"(?:https?://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&'*+,;=%]+",
+    re.IGNORECASE,
+)
+
+#: 在「写全的网址」之外再算上**裸域名**（`mall.example.com`）。只在清单说这封邮件有链接时
+#: 才该用：模型偶尔把「显示的文字」写成不带 scheme 的裸域名（实跑 141 条里 2 条），
+#: 那种写法确实把两个地址都写清楚了，不该因此拒掉。没有链接的邮件最后一行是落款或
+#: 「官方域名」行，那里的裸域名不算地址——否则每一封机构来信都会被数出一个地址。
+ADDRESS_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"(?:https?://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&'*+,;=%]+"
+    r"|[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+",
+    re.IGNORECASE,
+)
+
+#: `From: 显示名 <地址>` 里的地址部分。只认尖括号里那一段：显示名里也可能带域名
+#: （「汇信银行 huixinbank.com 客服」），拿整行去找域名会把显示名误当成发件地址。
+FROM_ADDRESS_PATTERN: Final[re.Pattern[str]] = re.compile(r"^From:.*?<([^>]*)>", re.MULTILINE)
+
 
 class MailDraft(BaseModel):
     """后端要填的草稿：一封邮件的五个可见部分。
@@ -86,6 +110,39 @@ def parse_state(state: Any) -> ParsedMail:
     return ParsedMail(tuple(URL_PATTERN.findall(state)))
 
 
+def link_line_urls(state: Any, *, bare_domains: bool = False) -> tuple[str, ...]:
+    """输入：state、是否把裸域名也算地址。输出：**最后一行**里的不同地址（去重、保持顺序）。
+
+    预期行为：「链接那一行」由 `to_state` 追加在末尾，所以最后一行就是链接行——
+    这条布局不变量由本模块的测试盯着。去重是因为模型会把同一个地址在括号里再写一遍
+    （实跑抓到过「订单查询入口：http://…（链接文字与目标一致，均指向 http://…）」）。
+    没有链接的邮件，最后一行是落款或「官方域名」行，这里自然返回空（`bare_domains` 见上）。
+    """
+    if not isinstance(state, str):
+        return ()
+    lines = state.splitlines()
+    if not lines:
+        return ()
+    pattern = ADDRESS_PATTERN if bare_domains else FULL_URL_PATTERN
+    return tuple(dict.fromkeys(pattern.findall(lines[-1])))
+
+
+def link_text_of(state: Any, *, bare_domains: bool = False) -> str:
+    """输入：state、是否把裸域名也算地址。输出：这一族的答案（`no_link` / `matches` / `mismatched`）。
+
+    预期行为：纯代码反解——渲染规则要求「链接文字与真实目标不一致时两个地址都写」，
+    所以**数链接行里的不同地址**就够了：0 个 → 没有链接、1 个 → 文字就是目标、
+    2 个及以上 → 文字与目标不是同一个地址。2026-09-26 在 130 条真端点产物上核过：
+    `matches` 恰好 1 个、`mismatched` 恰好 2 个、`no_link` 0 个，去重后 129/130 一致
+    （唯一一条例外是模型把显示地址写成不带 scheme 的裸域名——规则 4 本来就要求网址写全，
+    所以那种写法该拒）。
+    """
+    urls = link_line_urls(state, bare_domains=bare_domains)
+    if not urls:
+        return "no_link"
+    return "matches" if len(urls) == 1 else "mismatched"
+
+
 def build_prompt(tags: TagSet, loc: dict[str, Any]) -> str:
     """组装渲染提示词。
 
@@ -142,6 +199,49 @@ def strip_owned_domain_lines(text: str, loc: dict[str, Any]) -> str:
     prefix = domain_line_prefix(loc)
     kept = [line for line in text.splitlines() if not line.strip().startswith(prefix)]
     return "\n".join(kept).strip()
+
+
+def official_domain_of(state: Any, loc: dict[str, Any]) -> str:
+    """输入：state、语言字典。输出：「官方域名」那一行里的域名（没有那一行 → 空串）。
+
+    预期行为：只认行首标记那一行、只取标记之后的文本（去空白）。这一行**归渲染器写**，
+    而 `check_official_domain` 又强制「声称机构 ⟺ 这一行非空」——所以「这一行在不在」
+    就等于「这封信有没有声称机构身份」，`sender_identity` 那一族的真值全靠它。
+    """
+    if not isinstance(state, str):
+        return ""
+    prefix = domain_line_prefix(loc)
+    for line in state.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            return stripped[len(prefix) :].strip()
+    return ""
+
+
+def sender_domain_of(state: Any) -> str:
+    """输入：state。输出：`From:` 行里发件地址（解析不出 → 空串）。
+
+    预期行为：只取尖括号里那一段——显示名里也可能带域名，不能被当成发件地址。
+    返回的是地址原文（含 `@` 前面那段），归一化交给 `host_of`。
+    """
+    if not isinstance(state, str):
+        return ""
+    match = FROM_ADDRESS_PATTERN.search(state)
+    return match.group(1).strip() if match else ""
+
+
+def host_of(text: str) -> str:
+    """输入：域名或邮箱地址。输出：小写、去掉 `www.` 的域名。
+
+    预期行为：有 `@` 就取 `@` 后面那段，否则整串当域名；空串返回空串（调用方据此判
+    「读不到」）。去掉 `www.` 是因为模型偶尔把官方域名写成 `www.example.test`，
+    那与 `example.test` 是同一个站点，不该被算成「冒充」。
+    """
+    lowered = text.strip().lower()
+    if not lowered:
+        return ""
+    host = lowered.rsplit("@", 1)[-1] if "@" in lowered else lowered
+    return host[4:] if host.startswith("www.") else host
 
 
 def to_state(data: dict[str, Any], loc: dict[str, Any]) -> str:

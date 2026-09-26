@@ -1,0 +1,140 @@
+# 工单分诊 workflow 的英文文案：标签、词表、正文模板、题面判据与选项描述。
+#
+# 与中文文案一一对应；标签两语互不重叠，`reparse` 才能用合并表做语言无关的反解。
+
+[meta]
+title = "Ticket triage desk"
+colon = ": "
+# 正文里三句话之间的连接符：英文句子之间要留一个空格。
+sent_sep = " "
+ticket_label = "Ticket ID"
+area_label = "Area"
+tier_label = "Tier"
+impact_label = "Impact"
+urgency_label = "Urgency"
+compliance_label = "Compliance"
+created_label = "Created"
+current_label = "Now"
+body_label = "Body"
+
+[area]
+payments = "payments"
+storage = "storage"
+analytics = "analytics"
+identity = "identity"
+
+[tier]
+free = "free"
+pro = "pro"
+enterprise = "enterprise"
+
+[impact]
+single_user = "a single user"
+team = "one team"
+all_users = "all users"
+
+[urgency]
+can_wait = "can wait"
+blocked = "work is blocked"
+deadline = "has a deadline"
+
+[compliance]
+none = "none"
+gdpr = "data deletion request"
+security = "security report"
+
+[body.issue]
+outage = "The {area} service has been broadly unavailable since this morning and we cannot continue at all."
+data_loss = "We noticed that a batch of records is missing from {area} and the data may already be gone."
+bug = "{area} behaves differently from the documentation, which looks like a defect."
+howto = "We would like to confirm the correct way to use {area}."
+feature = "We hope {area} can support a new way of doing this."
+
+[body.impact]
+single_user = "So far only I am affected."
+team = "The whole team is stuck here."
+all_users = "Every customer is affected."
+
+[body.urgency]
+can_wait = "No rush, whenever there is time."
+blocked = "This path is completely unusable and the work has stopped."
+deadline = "We need a conclusion before the end of the day."
+
+[fam.severity]
+q = [
+  "Which severity band is this ticket in? Severity matrix (impact x urgency): a single user -> can wait s4, work is blocked s4, has a deadline s3; one team -> can wait s3, work is blocked s2, has a deadline s2; all users -> can wait s3, work is blocked s1, has a deadline s1.",
+  "Grade this ticket with the severity matrix (impact x urgency): a single user -> can wait s4, work is blocked s4, has a deadline s3; one team -> can wait s3, work is blocked s2, has a deadline s2; all users -> can wait s3, work is blocked s1, has a deadline s1.",
+  "Which severity band does this ticket land in? Matrix (impact x urgency): a single user -> can wait s4, work is blocked s4, has a deadline s3; one team -> can wait s3, work is blocked s2, has a deadline s2; all users -> can wait s3, work is blocked s1, has a deadline s1.",
+]
+
+[option.severity]
+s1 = "s1: all users blocked or on a deadline"
+s2 = "s2: one team blocked or on a deadline"
+s3 = "s3: a single user on a deadline, or a team / all users who can wait"
+s4 = "s4: a single user blocked or able to wait"
+
+[fam.queue]
+q = [
+  "Which queue should this ticket go to? Routing rules, first match wins: 1) how-to -> tier-1 support; 2) compliance flag is a data deletion request and the issue is data loss or a feature request -> privacy ops; 3) compliance flag is a security report and the issue is an outage, data loss or a defect -> security incident; 4) the issue is an outage or data loss -> incident response; 5) the issue is a defect -> engineering; 6) otherwise -> product backlog.",
+  "Pick a queue with the routing rules (first match wins): 1) how-to -> tier-1 support; 2) compliance flag is a data deletion request and the issue is data loss or a feature request -> privacy ops; 3) compliance flag is a security report and the issue is an outage, data loss or a defect -> security incident; 4) the issue is an outage or data loss -> incident response; 5) the issue is a defect -> engineering; 6) otherwise -> product backlog.",
+]
+
+[option.queue]
+support_l1 = "tier-1 support: takes how-to tickets"
+engineering = "engineering: takes defect tickets"
+incident_response = "incident response: takes outages and data loss"
+privacy_ops = "privacy ops: takes data deletion requests"
+security_incident = "security incident: takes security reports"
+product_backlog = "product backlog: takes feature requests"
+
+[fam.escalation]
+q = [
+  "Should this ticket be escalated to an owner? Escalation rules: compliance flag is a security report -> security lead; it is a data deletion request -> privacy lead; no compliance flag -> no escalation.",
+  "Who should be escalated to? Rules: compliance flag is a security report -> security lead; it is a data deletion request -> privacy lead; no compliance flag -> no escalation.",
+]
+
+[option.escalation]
+none = "no escalation"
+security_lead = "escalate to the security lead"
+privacy_lead = "escalate to the privacy lead"
+
+[fam.critical_area]
+q = [
+  "Is this ticket in a critical product area? There are only two critical areas: payments and identity.",
+  "Does the product area fall in a critical area? Only two are critical: payments and identity.",
+]
+criteria = { "true" = "yes, the area is critical (payments or identity)", "false" = "no, the area is not critical" }
+
+[fam.needs_human]
+q = [
+  "Does this ticket need a human? Rule: severity is s1 or s2; or the compliance flag is a security report and the tier is enterprise - either one means a human is required.",
+  "Should a human look at this ticket? Rule: severity s1 / s2; or a security report on an enterprise tier - either one requires a human.",
+]
+criteria = { "true" = "a human is required", "false" = "no human needed" }
+
+[fam.sla_breach]
+q = [
+  "Has this ticket passed its first-response deadline? Limit table (severity -> free / pro / enterprise, minutes): s1 -> 10 / 5 / 3; s2 -> 30 / 15 / 10; s3 -> 120 / 60 / 30; s4 -> 480 / 300 / 200. Waiting time = now minus created; it counts as breached only when waiting time is strictly greater than the limit.",
+  "Is the first response overdue? Limit table (severity -> free / pro / enterprise, minutes): s1 -> 10 / 5 / 3; s2 -> 30 / 15 / 10; s3 -> 120 / 60 / 30; s4 -> 480 / 300 / 200. Waiting = now minus created, strictly greater than the limit counts as breached.",
+]
+criteria = { "true" = "breached (waiting strictly exceeds the limit)", "false" = "not breached (waiting does not exceed the limit)" }
+
+[fam.data_risk]
+q = [
+  "Does this ticket go through the data incident process? Rule: the issue is data loss, or the compliance flag is a data deletion request - either one means yes.",
+  "Should this be handled as a data incident? Rule: the issue is data loss, or the compliance flag is a data deletion request.",
+]
+criteria = { "true" = "goes through the data incident process", "false" = "no data incident process needed" }
+
+[fam.priority]
+q = [
+  "Which priority band does this ticket get? Priority table (severity x tier): s1 -> band 4 (any tier); s2 and s3 -> free 1, pro 2, enterprise 3; s4 -> band 0 (any tier).",
+  "Set the priority band (severity x tier): s1 -> 4; s2 and s3 -> free 1, pro 2, enterprise 3; s4 -> 0.",
+]
+levels = [
+  "band 0: severity s4",
+  "band 1: severity s2 or s3 on the free tier",
+  "band 2: severity s2 or s3 on the pro tier",
+  "band 3: severity s2 or s3 on the enterprise tier",
+  "band 4: severity s1",
+]

@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from . import pipeline
+from . import pipeline, validate
 from .workflow import discover, load
 
 
@@ -156,12 +156,29 @@ def main(argv: list[str] | None = None) -> int:
             for key, value in counts.items():
                 if key != "samples":
                     print(f"  {key}：{_format_counter(value)}")
-        if missing:
+        # 通用层再拿**契约校验器**把每个产物重新过一遍：`validate.validate_file` 带「已见 id 集合」，
+        # 所以能查出逐样本校验器查不到的**跨行**不变量（`E_ID_DUP`）。四个 `sweep-*` 产物各多出
+        # 「恰好一个切分 case 数」的重复行，就是这么漏过去的——workflow 自己的审计也只看覆盖。
+        problems = list(missing)
+        for split in splits:
+            path = Path(args.dir) / f"{split}.jsonl"
+            if not path.is_file():
+                continue  # 「产物不存在」已由 workflow 的审计报过，别报两遍
+            checked = validate.validate_file(path)
+            issues = checked.all_issues()
+            if not issues:
+                continue
+            counts_text = "、".join(f"{code}×{n}" for code, n in checked.code_counts().items())
+            examples = "、".join(
+                f"{issue.sample_id or '（无 id）'}（第 {issue.line} 行）" for issue in issues[:3]
+            )
+            problems.append(f"{split}: 契约校验不通过（{counts_text}；例如 {examples}）")
+        if problems:
             print("审计不通过：")
-            for item in missing:
+            for item in problems:
                 print(f"  - {item}")
             return 1
-        print("审计通过：要求的 case 都在产物里。")
+        print("审计通过：要求的 case 都在产物里，契约校验也过。")
         return 0
 
     config = pipeline.RunConfig(

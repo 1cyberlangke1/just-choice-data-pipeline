@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import random
 from pathlib import Path
@@ -117,7 +118,12 @@ def test_a_missing_backend_is_refused(tmp_path: Path) -> None:
         pipeline.run(make_config(tmp_path, "h4"))
     workflow = hy_workflow.HybridWorkflow()
     spec = sp.sample_spec(
-        random.Random(1), sp.HybridCase(2, "early", "none", "bullet", 1, "short"), "train", 0, 0
+        random.Random(1),
+        sp.HybridCase(2, "early", "none", "bullet", 1, "short"),
+        "train",
+        0,
+        0,
+        0,
     )
     with pytest.raises(RuntimeError, match="bind_backend"):
         workflow.render(spec, random.Random(1), "zh")
@@ -135,6 +141,45 @@ def test_config_for_rejects_an_unknown_split() -> None:
     """输入：不存在的切分名。输出：KeyError。预期行为：不猜、不回落。"""
     with pytest.raises(KeyError, match="未知切分"):
         hy_workflow.HybridWorkflow().config_for("test_whatever")
+
+
+def test_samples_draw_theme_directions_from_the_config() -> None:
+    """输入：只给两个主题方向的采样参数。输出：各样本的规格。
+
+    预期行为：`plan_sample` 从配置里抽方向、`sample` 原样放进 spec——两个方向都要抽得到，
+    且 spec 里存的就是抽中的那个。接线断了的话提示词会永远用同一个方向，
+    标题就会塌成几句套话（那正是加这个旋钮要治的病）。
+    """
+    workflow = hy_workflow.HybridWorkflow()
+    config = dataclasses.replace(tiny_config("train"), themes=(3, 7))
+    cases = workflow.build_cases(config)
+    seen: set[int] = set()
+    for seq in range(12):
+        plan = workflow.plan_sample(random.Random(seq), config, cases[seq % len(cases)], seq)
+        assert plan.params["theme"] in (3, 7)
+        spec = workflow.sample(random.Random(seq), plan)
+        assert spec.theme == plan.params["theme"]
+        seen.add(spec.theme)
+    assert seen == {3, 7}
+
+
+def test_a_config_with_no_cases_is_refused(tmp_path: Path, fake_backend: Any) -> None:
+    """输入：一个「所有组合都写不出来」的采样参数。输出：ValueError（人话）。
+
+    预期行为：`compatible` 剔完一个 case 都不剩时要**当场报错**，不能让管线拿着空表
+    往下跑——实测那样会抛 `ZeroDivisionError: integer modulo by zero`，看不出哪一步坏了。
+    """
+    config = pipeline.RunConfig(
+        workflow="hybrid",
+        split="train",
+        locales=("zh",),
+        out_root=tmp_path,
+        run_id="h5",
+        config_override=sp.HybridConfig(split="train", meeting_counts=(1,)),
+        backend=fake_backend(),
+    )
+    with pytest.raises(ValueError, match="一个 case 都没有"):
+        pipeline.run(config)
 
 
 def test_splits_are_disjoint_and_ood_holds_out_values() -> None:

@@ -69,18 +69,36 @@ class FakeBackend:
         return [self.generate(task) for task in tasks]
 
     def _render(self, tags: dict[str, str]) -> dict[str, Any]:
-        """输入：注入特征。输出：`MailDraft` 形态的字典。"""
+        """输入：注入特征。输出：`MailDraft` 形态的字典。
+
+        预期行为：链接行按渲染规则写——文字与目标一致时只写一个地址、不一致时**两个都写**
+        （零 token 的 `link_text` 判别器就是靠数地址得出这一族的答案）。
+        """
         has_link = tags["link"] != features.LINK_NONE or self.force_url
+        _, anchor = features.split_link(tags["link"])
+        if not has_link:
+            link_line = ""
+        elif anchor == "mismatch":
+            link_line = "https://other.test/verify（实际指向 https://example.test/verify）"
+        else:
+            link_line = "详情见 https://example.test/a"
         # 链接只写在落款里（正文不许出现网址），落款是独立字段——与渲染规则一致
+        # 冒充件：显示名声称的是别家，发件地址与「官方域名」**对不上**——零 token 的
+        # `SenderIdentityJudge` 就是读这两个域名得出这一族的答案（夹具得如实模拟）。
+        address = (
+            "noreply@example-secure.test"
+            if tags["sender"] == "forged_brand"
+            else "noreply@example.test"
+        )
         return {
             "from_name": "测试发件人",
-            "from_address": "noreply@example.test",
+            "from_address": address,
             "subject": "本月账单",
             "body": "请核对本月账单，如有疑问回复本邮件。",
             "signature": "测试发件人",
             # 陌生个人不声称机构身份，「官方域名」字段必须留空（结构上强制，见 render 的检查）
             "official_domain": "" if tags["sender"] == "unknown_personal" else "example.test",
-            "link_line": "详情见 https://example.test/a" if has_link else "",
+            "link_line": link_line,
         }
 
     def _trace(self, tags: dict[str, str]) -> dict[str, Any]:
@@ -93,8 +111,6 @@ class FakeBackend:
             "requested": labels.requested,
             "extra_requests": [],
             "pressure": labels.pressure,
-            "link_text": labels.link_text,
-            "sender_identity": labels.sender_identity,
         }
         if self.trace_lies:
             traced["requested"] = "none" if labels.requested != "none" else "credentials"

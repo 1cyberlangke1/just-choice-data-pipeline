@@ -6,8 +6,7 @@
 
 from __future__ import annotations
 
-import re
-from typing import Any, Final, get_args
+from typing import Any, get_args
 
 import pytest
 
@@ -59,13 +58,35 @@ def test_choice_criteria_keys_match_feature_values(lang: str) -> None:
     loc = locales.load(lang)
     assert set(loc["fam"]["requested"]["criteria"]) == set(features.ASK)
     assert set(loc["fam"]["pressure"]["criteria"]) == set(features.LURE)
-    # locale 里保留完整的答案空间（反解提示词要用），选项表另由 CHOICE_OPTIONS 收窄
-    assert set(loc["fam"]["link_text"]["criteria"]) == {"no_link", "matches", "mismatched"}
+    # link_text 不再需要「完整答案空间」：那一族由零 token 判别器数地址得出、不进反解提示词，
+    # 所以 locale 里只留数据集真正会出的那两个选项
+    assert set(loc["fam"]["link_text"]["criteria"]) == set(features.CHOICE_OPTIONS["link_text"])
     assert set(loc["fam"]["sender_identity"]["criteria"]) == {"matches", "no_claim", "forged"}
     assert set(loc["fam"]["action"]["criteria"]) == {"deliver", "review", "quarantine", "block"}
     for family, options in features.CHOICE_OPTIONS.items():
         assert options, family
         assert set(options) <= set(loc["fam"][family]["criteria"]), family
+
+
+@pytest.mark.parametrize("lang", LOCALES)
+def test_pressure_criteria_mirror_the_render_contract(lang: str) -> None:
+    """`urgency` 要明确时限、`curiosity` 不许被催促语抢走——判据必须与渲染契约对齐。
+
+    输入：语言。输出：无。预期行为：渲染侧要求 `urgency` 必须写时间窗
+    （见 `feature.lure.urgency.hint`），判别侧就得把「光有催促语、没有时限」排除掉；
+    `curiosity` 的渲染契约**不禁**催促语（「尽快回复」是任何邮件都会有的客套），
+    判别侧就得说明催促语抢不走这一档。两处口径对不上就会拒掉好数据：
+    2026-09-26 逐条读 13 条 `pressure` 拒绝 → 误拒 8、真阳性 5，其中 3 条误拒正是
+    被催促语抢走的 `curiosity`。
+    """
+    loc = locales.load(lang)
+    window = {"zh": "时限", "en": "deadline"}[lang]
+    hurry = {"zh": "催促", "en": "hurry"}[lang]
+    urgency = loc["fam"]["pressure"]["criteria"]["urgency"]
+    curiosity = loc["fam"]["pressure"]["criteria"]["curiosity"]
+    assert window in urgency, "urgency 判据没要求明确时限"
+    assert hurry in urgency, "urgency 判据没排除「光催促、无时限」"
+    assert hurry in curiosity, "curiosity 判据没说清催促语抢不走这一档"
 
 
 @pytest.mark.parametrize("lang", LOCALES)
@@ -78,23 +99,47 @@ def test_noul_and_score_shapes(lang: str) -> None:
 
 
 def test_trace_draft_literals_match_the_contract() -> None:
-    """`TraceDraft` 的取值域必须与特征层常量、以及 locale 的选项 key 三处一致。
+    """`TraceDraft`（反解问到的原子族）的取值域必须与特征层常量、locale 的选项 key 三处一致。
 
     输入：无。输出：无。预期行为：任何一处漂移都红灯——反解用的选项和数据集里的选项
-    必须是同一套，否则「反解通过」不代表「标签正确」。
+    必须是同一套，否则「反解通过」不代表「标签正确」。字段集合本身也钉死：
+    换一族进 / 出反解提示词必须连着改这条测试，不能悄悄漂。
     """
     expected: dict[str, set[str]] = {
         "requested": set(features.ASK),
         "pressure": set(features.LURE),
-        # 反解要覆盖「本来就没链接」的样本，所以这里是**完整答案空间**，不是选项表
-        "link_text": {"no_link", "matches", "mismatched"},
-        "sender_identity": {"matches", "no_claim", "forged"},
     }
     for lang in LOCALES:
         loc: dict[str, Any] = locales.load(lang)
+        assert set(judges.TraceDraft.model_fields) == {*expected, "extra_requests"}
         for field, values in expected.items():
             assert set(get_args(judges.TraceDraft.model_fields[field].annotation)) == values
             assert set(loc["fam"][field]["criteria"]) == values, f"{lang}.{field} 与 TraceDraft 不一致"
+
+
+@pytest.mark.parametrize("lang", LOCALES)
+def test_verify_prompt_does_not_ask_link_text(lang: str) -> None:
+    """`link_text` 不进反解提示词：它的真值由零 token 判别器数链接行里的地址得出。
+
+    输入：语言。输出：无。预期行为：提示词里不出现那道题——留着它只会多一处误拒
+    （2026-09-26 实测：这一族的失败占了全部失败的一半，而纯代码规则 129/130 判对）。
+    """
+    loc = locales.load(lang)
+    prompt = judges.build_verify_prompt("From: a <b@c>\nSubject: s\n\nbody", loc)
+    assert loc["fam"]["link_text"]["q"][0] not in prompt
+
+
+@pytest.mark.parametrize("lang", LOCALES)
+def test_verify_prompt_does_not_ask_sender_identity(lang: str) -> None:
+    """`sender_identity` 不进反解提示词：它的真值由零 token 判别器读「官方域名」行得出。
+
+    输入：语言。输出：无。预期行为：提示词里不出现那道题——装配时的
+    `check_official_domain` 已经强制「声称机构 ⟺ 官方域名行非空」，所以这一族也是
+    结构事实（2026-09-26 在 167/168 条真产物上与注入标签一致）。
+    """
+    loc = locales.load(lang)
+    prompt = judges.build_verify_prompt("From: a <b@c>\nSubject: s\n\nbody", loc)
+    assert loc["fam"]["sender_identity"]["q"][0] not in prompt
 
 
 @pytest.mark.parametrize("lang", LOCALES)
@@ -145,37 +190,3 @@ def test_verify_prompt_asks_about_smuggled_requests(lang: str) -> None:
     for name in features.ASK:
         if name != features.ASK_NONE:
             assert f"   - {name}" in extra_block
-
-
-#: 渲染侧那条「软性指引」规则的解析口径：语言 → (正则, 分隔符)。
-#: 规则里用引号把示例措辞列了一遍，判别侧必须把同一批措辞收进 `click_link` 判据——
-#: 两边各写一份清单，就是灰区的来源。
-SOFT_POINTER_RULE: Final[dict[str, tuple[str, str]]] = {
-    "zh": (r"「([^」]+)」这类\*\*软性指引\*\*", " / "),
-    "en": (r"\(([^)]*)\), it just states the matter", ", "),
-}
-
-
-@pytest.mark.parametrize("lang", LOCALES)
-def test_click_link_criteria_covers_every_soft_pointer_the_prompt_bans(lang: str) -> None:
-    """渲染侧点名禁止的软性指引，判别侧必须能判成 `click_link`。
-
-    输入：语言。输出：无。预期行为：从渲染提示词那条规则里**解析**出措辞清单，
-    逐条要求出现在 `fam.requested.criteria.click_link` 里。
-
-    实跑踩过这个灰区（`mail-kimi-ood-b` 34 条里 3 条：「可访问」「了解详情」「请查阅」）：
-    规则写「索取不是点击链接时，连软性指引都不许写」，判据却写「**明确**请对方点击」——
-    同一句正文渲染侧禁止、判别侧放行，成了两边都不认的灰区。措辞清单只写一处就会再漂回去，
-    所以这里从规则里解析、不许人记。
-    """
-    loc = locales.load(lang)
-    pattern, sep = SOFT_POINTER_RULE[lang]
-    rule = next((r for r in loc["prompt"]["rules"] if "软性指引" in r or "nudge" in r), "")
-    assert rule, f"{lang} 的渲染规则里找不到「软性指引」那条"
-    match = re.search(pattern, rule)
-    assert match, f"{lang} 的规则里解析不出软性指引措辞清单：{rule}"
-    phrases = [part.strip().strip('"') for part in match.group(1).split(sep)]
-    assert phrases, f"{lang} 解析出来的措辞清单是空的"
-    criteria = loc["fam"]["requested"]["criteria"]["click_link"]
-    missing = [phrase for phrase in phrases if phrase not in criteria]
-    assert not missing, f"{lang} 的 click_link 判据漏了渲染侧禁止的软性指引：{missing}"

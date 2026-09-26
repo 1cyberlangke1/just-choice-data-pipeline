@@ -147,3 +147,54 @@ def test_links_in_the_signature_reach_the_link_judge() -> None:
         _draft(link_line="Example Bank https://example-bank.com/verify"), _loc()
     )
     assert render.parse_state(state).urls == ("https://example-bank.com/verify",)
+
+
+def test_link_text_of_counts_addresses_on_the_last_line() -> None:
+    """链接行（最后一行）里的**不同**地址数就是链接文字那一族的答案：0 / 1 / 2+。
+
+    输入：四个 state（没有网址 / 一个地址 / 两个地址 / 正文也有网址且末行重复同一地址）。
+    输出：`link_text_of` 的结论。
+    预期行为：只看最后一行（正文里的网址不算这一族，那是渲染规则第 5 条的事），
+    同一个地址写两遍只算一个——模型爱在括号里把地址再抄一遍。
+    """
+    assert render.link_text_of("正文\n落款") == "no_link"
+    assert render.link_text_of("正文\nhttps://a.test/x") == "matches"
+    assert render.link_text_of("正文\nhttps://a.test/x https://b.test/y") == "mismatched"
+    # 裸域名只在 `bare_domains=True` 时才算地址——否则「官方域名」那一行会被数成地址
+    assert render.link_text_of("官方域名：example.test") == "no_link"
+    assert render.link_text_of("官方域名：example.test", bare_domains=True) == "matches"
+    assert (
+        render.link_text_of("正文 https://body.test/z\nhttps://a.test/x（实际指向 https://a.test/x）")
+        == "matches"
+    )
+    assert render.link_line_urls("") == ()
+
+
+def test_official_domain_of_reads_the_renderer_owned_line() -> None:
+    """输入：有 / 没有「官方域名」行的 state。输出：那一行里的域名 / 空串。
+
+    预期行为：只认行首标记那一行——`sender_identity` 那一族的真值全靠它
+    （`check_official_domain` 强制「声称机构 ⟺ 这一行非空」）。
+    """
+    assert render.official_domain_of("正文\n落款\n官方域名：example.test", _loc()) == "example.test"
+    assert render.official_domain_of("正文\n落款", _loc()) == ""
+    assert render.official_domain_of("", _loc()) == ""
+
+
+def test_sender_domain_of_reads_the_from_line() -> None:
+    """输入：带 / 不带 `From:` 行的 state。输出：发件地址（解析不出 → 空串）。
+
+    预期行为：只取尖括号里那一段——显示名里也可能带域名，不能被当成发件地址。
+    """
+    assert render.sender_domain_of("From: 某某银行 <service@bank.test>\nSubject: s") == (
+        "service@bank.test"
+    )
+    assert render.sender_domain_of("From: 某某银行\nSubject: s") == ""
+    assert render.sender_domain_of("没有 From 行") == ""
+
+
+def test_host_of_normalizes_case_and_www() -> None:
+    """输入：域名或邮箱地址。输出：小写、去掉 `www.` 的域名。"""
+    assert render.host_of("www.Example.Test") == "example.test"
+    assert render.host_of("Service@Bank.Test") == "bank.test"
+    assert render.host_of("") == ""

@@ -37,12 +37,18 @@ def make_config(
 def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: Any) -> None:
     """输入：假后端（从不撒谎）。输出：RunResult。
 
-    预期行为：每个 case 出一条样本、零拒绝、两个判别器都记到通过；产物能过审计。
+    预期行为：每个 case 出一条样本、零拒绝、五个判别器都记到通过；产物能过审计。
     """
     result = pipeline.run(make_config(tmp_path, "m1", fake_backend()))
     assert result.accepted == CASE_LIMIT
     assert result.rejected == []
-    assert set(result.stats["judges"]) == {"link", "hygiene", "trace"}
+    assert set(result.stats["judges"]) == {
+        "link",
+        "link_text",
+        "sender_identity",
+        "hygiene",
+        "trace",
+    }
     for bucket in result.stats["judges"].values():
         assert bucket["fail"] == 0
         assert bucket["ok"] > 0
@@ -90,6 +96,201 @@ def test_link_judge_passes_when_consistent() -> None:
     )
     assert judges_mod.LinkJudge().judge({"state": "见 https://example.test/a"}, spec).ok is True
     assert judges_mod.LinkJudge().judge({"state": "没有链接"}, spec).ok is False
+
+
+@pytest.mark.parametrize(
+    ("link", "state"),
+    [
+        (features.LINK_NONE, "落款\n官方域名：example.test"),
+        ("official_honest", "落款\n官方域名：example.test\nhttps://example.test/a"),
+        (
+            "official_mismatch",
+            "落款\n官方域名：example.test\nhttps://other.test/a（实际指向 https://example.test/a）",
+        ),
+    ],
+)
+def test_link_text_judge_derives_the_answer_from_the_link_line(link: str, state: str) -> None:
+    """零 token：链接行里 0 / 1 / 2 个不同网址 → `no_link` / `matches` / `mismatched`。
+
+    输入：三种链接行写法（与注入的写法一一对应）。输出：Verdict。
+    预期行为：数地址就够、不问模型——这一族的答案本来就是**结构事实**
+    （渲染规则要求「文字与目标不一致时两个地址都写」，见 `render.link_text_of`）。
+    """
+    spec = MailSpec(
+        tags=features.TagSet("known_vendor", "none", "attachment", link, "formal"),
+        phrasing=0,
+        split="train",
+        seq=0,
+    )
+    verdict = judges_mod.LinkTextJudge().judge({"state": state}, spec)
+    assert verdict.ok is True, verdict.reason
+
+
+def test_link_text_judge_rejects_the_wrong_number_of_addresses() -> None:
+    """注入「文字就是目标」，链接行却写了两个地址 → 不通过。
+
+    输入：一份 `official_honest` 规格 + 两地址链接行。输出：Verdict。
+    预期行为：不通过，并说清注入什么、反解成什么——地址个数就是这一族的真值。
+    """
+    spec = MailSpec(
+        tags=features.TagSet("known_vendor", "none", "attachment", "official_honest", "formal"),
+        phrasing=0,
+        split="train",
+        seq=0,
+    )
+    verdict = judges_mod.LinkTextJudge().judge(
+        {"state": "https://other.test/a（实际指向 https://example.test/a）"}, spec
+    )
+    assert verdict.ok is False
+    assert "matches" in verdict.reason and "mismatched" in verdict.reason
+
+
+def test_link_text_judge_counts_the_same_address_once() -> None:
+    """同一个地址在括号里再写一遍只算一个（实跑抓到过这种写法）。"""
+    spec = MailSpec(
+        tags=features.TagSet("known_vendor", "none", "attachment", "official_honest", "formal"),
+        phrasing=0,
+        split="train",
+        seq=0,
+    )
+    state = "订单查询入口：https://example.test/a（链接文字与目标一致，均指向 https://example.test/a）"
+    assert judges_mod.LinkTextJudge().judge({"state": state}, spec).ok is True
+
+
+def test_link_text_judge_skips_without_spec() -> None:
+    """没有 spec 就没有真值：记成跳过（`skipped=True`），不误判。"""
+    verdict = judges_mod.LinkTextJudge().judge({"state": "x"})
+    assert verdict.ok is True and verdict.skipped is True
+
+
+def test_link_text_judge_counts_a_bare_domain_when_the_mail_has_a_link() -> None:
+    """显示的文字写成裸域名（不带 scheme）也算一个地址——只要清单说这封邮件有链接。
+
+    输入：`official_mismatch` 规格 + 「裸域名（实际指向 https://…）」的链接行。输出：Verdict。
+    预期行为：通过（两个地址都写清楚了，不该拒）；同一份文本在**没有链接**的规格下则算
+    `no_link`——那种邮件的最后一行是落款或「官方域名」行，那里的裸域名不算地址。
+    """
+    linked = MailSpec(
+        tags=features.TagSet("known_vendor", "none", "attachment", "official_mismatch", "formal"),
+        phrasing=0,
+        split="train",
+        seq=0,
+    )
+    state = "查看详情: mall.example.com（实际指向 https://s.example/abc123）"
+    assert judges_mod.LinkTextJudge().judge({"state": state}, linked).ok is True
+    linkless = MailSpec(
+        tags=features.TagSet("known_vendor", "none", "attachment", features.LINK_NONE, "formal"),
+        phrasing=0,
+        split="train",
+        seq=0,
+    )
+    assert judges_mod.LinkTextJudge().judge({"state": "落款\n官方域名：example.test"}, linkless).ok
+
+
+@pytest.mark.parametrize(
+    ("sender", "state"),
+    [
+        # 陌生个人：不声称机构身份，渲染器把「官方域名」那一行留空
+        ("unknown_personal", "From: 小雅 <xiaoya@mail.test>\nSubject: 在吗\n\n正文\n小雅"),
+        # 正规商家：显示名声称的机构，其官方域名与发件地址的域名一致
+        (
+            "known_vendor",
+            "From: 汇信银行客服 <service@huixinbank.com>\nSubject: 账单\n\n正文\n"
+            "汇信银行\n官方域名：huixinbank.com",
+        ),
+        # 冒充：显示名声称的是别人，官方域名与发件地址的域名不一致
+        (
+            "forged_brand",
+            "From: 汇信银行客服 <service@huixin-bank-secure.com>\nSubject: 账单\n\n正文\n"
+            "汇信银行\n官方域名：huixinbank.com",
+        ),
+    ],
+)
+def test_sender_identity_judge_reads_the_official_domain_line(sender: str, state: str) -> None:
+    """零 token：有没有「官方域名」行 + 它与发件地址域名同不同 → 这一族的答案。
+
+    输入：三种写法（与注入的发件人档位一一对应）。输出：Verdict。
+    预期行为：只看这两个结构事实、不问模型——`check_official_domain` 已经在装配时
+    结构上强制「声称机构 ⟺ 这一行非空」，所以这一族的真值也是**结构事实**，
+    交给 LLM 反解只会多一处误拒（同 10.24 的 `link_text`）。
+    """
+    spec = MailSpec(
+        tags=features.TagSet(sender, "none", "none", features.LINK_NONE, "formal"),
+        phrasing=0,
+        split="train",
+        seq=0,
+    )
+    verdict = judges_mod.SenderIdentityJudge("zh").judge({"state": state}, spec)
+    assert verdict.ok is True, verdict.reason
+
+
+def test_sender_identity_judge_rejects_a_claim_without_the_domain_line() -> None:
+    """注入「正规商家」但落款没有「官方域名」行 → 不通过。
+
+    输入：一份 `known_vendor` 规格 + 没有那一行的文本。输出：Verdict。
+    预期行为：不通过，理由里说清注入什么、反解成什么——实跑抓到过这种产物
+    （`mail-kimi-ood-c` 的 0000026，装配时就该被拦下）。
+    """
+    spec = MailSpec(
+        tags=features.TagSet("known_vendor", "none", "none", features.LINK_NONE, "formal"),
+        phrasing=0,
+        split="train",
+        seq=0,
+    )
+    verdict = judges_mod.SenderIdentityJudge("zh").judge(
+        {"state": "From: 汇信银行 <service@huixinbank.com>\nSubject: 账单\n\n正文\n汇信银行"}, spec
+    )
+    assert verdict.ok is False
+    assert "matches" in verdict.reason and "no_claim" in verdict.reason
+
+
+def test_sender_identity_judge_rejects_a_forged_sender_that_looks_official() -> None:
+    """注入「冒充」但官方域名与发件地址一致 → 不通过（文本里没有冒充的证据）。
+
+    输入：一份 `forged_brand` 规格 + 两个域名一致的文本。输出：Verdict。
+    预期行为：不通过——判别器只认文本里读得出的东西，注入什么就得在文本里看得见。
+    """
+    spec = MailSpec(
+        tags=features.TagSet("forged_brand", "none", "none", features.LINK_NONE, "formal"),
+        phrasing=0,
+        split="train",
+        seq=0,
+    )
+    verdict = judges_mod.SenderIdentityJudge("zh").judge(
+        {
+            "state": "From: 汇信银行 <service@huixinbank.com>\nSubject: 账单\n\n正文\n"
+            "汇信银行\n官方域名：huixinbank.com"
+        },
+        spec,
+    )
+    assert verdict.ok is False
+
+
+def test_sender_identity_judge_treats_a_www_prefix_as_the_same_domain() -> None:
+    """官方域名写成 `www.` 开头也算同一个域名（模型偶尔这么写）。
+
+    输入：`known_vendor` 规格 + 带 `www.` 的官方域名行。输出：Verdict。预期行为：通过。
+    """
+    spec = MailSpec(
+        tags=features.TagSet("known_vendor", "none", "none", features.LINK_NONE, "formal"),
+        phrasing=0,
+        split="train",
+        seq=0,
+    )
+    verdict = judges_mod.SenderIdentityJudge("zh").judge(
+        {
+            "state": "From: 峰选商城 <service@peakretail.com>\nSubject: 账单\n\n正文\n"
+            "峰选商城\n官方域名：www.peakretail.com"
+        },
+        spec,
+    )
+    assert verdict.ok is True, verdict.reason
+
+
+def test_sender_identity_judge_skips_without_spec() -> None:
+    """没有 spec 就没有真值：记成跳过（`skipped=True`），不误判。"""
+    verdict = judges_mod.SenderIdentityJudge("zh").judge({"state": "x"})
+    assert verdict.ok is True and verdict.skipped is True
 
 
 def _attachment_spec() -> MailSpec:
@@ -256,7 +457,6 @@ def test_trace_judge_skips_when_extra_requests_is_not_a_list(fake_backend: Any) 
                 "requested": "attachment",
                 "extra_requests": "none",
                 "pressure": "none",
-                "link_text": "no_link",
                 "sender_identity": "matches",
             }
         ),

@@ -1,0 +1,257 @@
+# English strings for the citation workflow: labels, topic tables
+# (each sentence: document wording / its opposite / two claim paraphrases),
+# questions and options.
+#
+# 与中文文件同一批约定（见 zh.toml 顶部）：标签互不重叠、同一主题里句子原文与主张转述
+# 各自互不为子串、主张转述必须与文档原文不同、句子行不以数字开头。
+
+[meta]
+title = "Citation to check"
+doc_label = "Source document"
+doc_suffix = " ({n} sections)"
+claim_label = "Claim"
+quote_label = "Quote"
+source_label = "Cited section"
+section_word = "section"
+colon = ": "
+claim_frames = [
+  "The document says: {claim}",
+  "According to this document, {claim}",
+]
+
+[topic.auth]
+label = "Service authentication standard"
+headings = ["Token lifecycle", "Key management", "Logging and audit", "Account security", "Password policy", "Admin console"]
+
+[topic.auth.sentence.token_rotation]
+doc = "Access tokens must be rotated on a schedule"
+neg = "Access tokens need not be rotated on a schedule"
+claim = "Access tokens should be replaced periodically"
+claim_neg = "Access tokens need not be replaced periodically"
+
+[topic.auth.sentence.session_scope]
+doc = "Sessions must be limited to the least privilege scope"
+neg = "Sessions need not be limited to the least privilege scope"
+claim = "A session should carry the narrowest possible scope"
+claim_neg = "A session need not carry the narrowest possible scope"
+
+[topic.auth.sentence.key_storage]
+doc = "Signing keys must be kept in a key management service"
+neg = "Signing keys need not be kept in a key management service"
+claim = "Signing keys should be hosted by a key management service"
+claim_neg = "Signing keys need not be hosted by a key management service"
+
+[topic.auth.sentence.auth_log]
+doc = "Every failed authentication must be written to the audit log"
+neg = "No failed authentication needs to be written to the audit log"
+claim = "A failed sign-in should leave an audit record"
+claim_neg = "A failed sign-in need not leave an audit record"
+
+[topic.auth.sentence.mfa_admin]
+doc = "Administrator accounts must enable a second factor"
+neg = "Administrator accounts need not enable a second factor"
+claim = "An administrator account should turn on a second factor"
+claim_neg = "An administrator account need not turn on a second factor"
+
+[topic.auth.sentence.ip_allow]
+doc = "The admin console must restrict the source addresses it accepts"
+neg = "The admin console need not restrict the source addresses it accepts"
+claim = "The admin console should limit which origins may reach it"
+claim_neg = "The admin console need not limit which origins may reach it"
+
+[topic.billing]
+label = "Billing and settlement rules"
+headings = ["Billing cycle", "Refunds and reversals", "Tax handling", "Plan changes", "Retry policy", "Credit notes"]
+
+[topic.billing.sentence.invoice_monthly]
+doc = "An invoice must be generated on the first of each month"
+neg = "An invoice need not be generated on the first of each month"
+claim = "A bill should be issued on the first of the month"
+claim_neg = "A bill need not be issued on the first of the month"
+
+[topic.billing.sentence.refund_window]
+doc = "A refund request must be filed within seven days of payment"
+neg = "A refund request need not be filed within seven days of payment"
+claim = "A refund should be requested within seven days of payment"
+claim_neg = "A refund need not be requested within seven days of payment"
+
+[topic.billing.sentence.tax_included]
+doc = "The list price must include tax"
+neg = "The list price need not include tax"
+claim = "A list price should already cover tax"
+claim_neg = "A list price need not cover tax"
+
+[topic.billing.sentence.proration]
+doc = "A mid-cycle upgrade must prorate the charge by day"
+neg = "A mid-cycle upgrade need not prorate the charge by day"
+claim = "A mid-cycle upgrade should prorate the difference by day"
+claim_neg = "A mid-cycle upgrade need not prorate the difference by day"
+
+[topic.billing.sentence.dunning]
+doc = "A failed charge must be retried three times"
+neg = "A failed charge need not be retried three times"
+claim = "A failed charge should go through three retries"
+claim_neg = "A failed charge need not go through three retries"
+
+[topic.billing.sentence.credit_note]
+doc = "A reversal must issue a credit note"
+neg = "A reversal need not issue a credit note"
+claim = "A reversal should produce a credit note"
+claim_neg = "A reversal need not produce a credit note"
+
+[topic.retention]
+label = "Data retention policy"
+headings = ["Log retention", "Backup and restore", "Closure and deletion", "Storage location", "Report export", "Encryption"]
+
+[topic.retention.sentence.log_90d]
+doc = "Access logs must be kept for ninety days"
+neg = "Access logs need not be kept for ninety days"
+claim = "Access logs should stay available for a quarter"
+claim_neg = "Access logs need not stay available for a quarter"
+
+[topic.retention.sentence.backup_daily]
+doc = "The database must be backed up once a day"
+neg = "The database need not be backed up once a day"
+claim = "The database should be backed up daily"
+claim_neg = "The database need not be backed up daily"
+
+[topic.retention.sentence.deletion_30d]
+doc = "Data must be deleted within thirty days of account closure"
+neg = "Data need not be deleted within thirty days of account closure"
+claim = "After an account is closed the data should be gone within a month"
+claim_neg = "After an account is closed the data need not be gone within a month"
+
+[topic.retention.sentence.backup_encrypt]
+doc = "Backup files must be stored encrypted"
+neg = "Backup files need not be stored encrypted"
+claim = "Backup files should be kept in encrypted form"
+claim_neg = "Backup files need not be kept in encrypted form"
+
+[topic.retention.sentence.region_lock]
+doc = "Data must be stored inside the country"
+neg = "Data need not be stored inside the country"
+claim = "Data should live in a domestic data centre"
+claim_neg = "Data need not live in a domestic data centre"
+
+[topic.retention.sentence.pii_masking]
+doc = "Exported reports must mask personal data"
+neg = "Exported reports need not mask personal data"
+claim = "An exported report should hide personal data"
+claim_neg = "An exported report need not hide personal data"
+
+[topic.rollout]
+label = "Release process standard"
+headings = ["Canary and ramp", "Rollback plan", "Release window", "Database changes", "Feature flags", "Post-release checks"]
+
+[topic.rollout.sentence.canary]
+doc = "A new version must first canary five percent of the traffic"
+neg = "A new version need not first canary five percent of the traffic"
+claim = "A new version should first run on a small slice of traffic"
+claim_neg = "A new version need not first run on a small slice of traffic"
+
+[topic.rollout.sentence.rollback_plan]
+doc = "A release must ship with a rollback plan"
+neg = "A release need not ship with a rollback plan"
+claim = "A release should come with a rollback plan"
+claim_neg = "A release need not come with a rollback plan"
+
+[topic.rollout.sentence.freeze_friday]
+doc = "A production change must not ship on a Friday"
+neg = "A production change may ship on a Friday"
+claim = "A production change should not go out on a Friday"
+claim_neg = "A production change may go out on a Friday"
+
+[topic.rollout.sentence.migration_review]
+doc = "A database change must pass review"
+neg = "A database change need not pass review"
+claim = "A schema change should be reviewed first"
+claim_neg = "A schema change need not be reviewed first"
+
+[topic.rollout.sentence.feature_flag]
+doc = "A new feature must default to off"
+neg = "A new feature need not default to off"
+claim = "A new feature should ship disabled"
+claim_neg = "A new feature need not ship disabled"
+
+[topic.rollout.sentence.smoke_test]
+doc = "A release must be followed by a smoke test"
+neg = "A release need not be followed by a smoke test"
+claim = "After shipping, a smoke check should be run"
+claim_neg = "After shipping, a smoke check need not be run"
+
+[ask.found]
+q = [
+  "Does this quote appear verbatim in the source document? Rule: the quote counts only if it matches one whole sentence of the document exactly; a truncated, reworded, or half-matching quote does not count as being in the document.",
+  "Is there a whole sentence in the source document that matches this quote word for word?",
+  "Is this quote copied from the document? Only a whole-sentence match counts as copied.",
+]
+criteria = { "true" = "Yes, one whole sentence matches it word for word", "false" = "No, no whole sentence matches it word for word" }
+
+[ask.located]
+q = [
+  "Does this quote appear in the section it claims to come from?",
+  "Is this quote present in the section it cites?",
+  "Does the cited section really contain this quote?",
+]
+criteria = { "true" = "Yes, it sits in the section it cites", "false" = "No, the cited section does not contain it" }
+
+[ask.relation]
+q = [
+  "How does the cited section relate to this claim? Rule: the section has a sentence about this matter with the same meaning as the claim = supports; the section has a sentence stating the opposite = contradicts; no sentence in the section is about this matter at all = says nothing.",
+  "Looking only at the cited section: does it support the claim, contradict it, or not mention the matter?",
+  "What stance does the cited section take on this claim?",
+]
+
+[ask.quote_source]
+q = [
+  "Where does this quote actually come from? Rule: not present word for word in the document = not in the document; present word for word inside the section it cites = the cited section; present word for word but in another section = another section of the document.",
+  "Where does this quote really sit?",
+  "By its actual position, which case applies to this quote?",
+]
+
+[ask.verdict]
+q = [
+  "Which verdict does this quote deserve? Rule: quote not in the document = fabricated; quote in the document but not in the section it cites = unsupported; quote inside the cited section - the section supports the claim = verified, states the opposite = contradicted, says nothing about it = unsupported.",
+  "Combine whether the quote is in the document, whether it sits in the cited section, and that section's stance: which verdict applies?",
+  "Give this quote a checking verdict.",
+]
+
+[ask.action]
+q = [
+  "Should this quote be accepted automatically or sent to a human? Rule: verified or contradicted are accepted automatically; unsupported goes to a human; fabricated is settled by the string match, so it is accepted automatically too.",
+  "By the handling rule, does this quote go automatic or to a person?",
+  "What happens to this quote next?",
+]
+
+[ask.evidence_strength]
+q = [
+  "What level of evidence does this quote provide? Scale: 0 = the quote is not in the document; 1 = the quote is in the document but not in the section it cites; 2 = the quote is in the cited section but that section never mentions the claim; 3 = the quote is in the cited section and that section supports or contradicts the claim.",
+  "Grade this quote's evidence strength on the scale.",
+  "How strong is the evidence this quote provides?",
+]
+levels = [
+  "level 0: the quote is not in the document (fabricated)",
+  "level 1: the quote is in the document but not in the section it cites",
+  "level 2: the quote is in the cited section but that section never mentions the claim",
+  "level 3: the quote is in the cited section and that section supports or contradicts the claim",
+]
+
+[option.verdict]
+verified = "verified - the quote is word for word in the document, inside the section it cites, and that section supports the claim"
+contradicted = "contradicted - the quote is word for word in the document, inside the section it cites, and that section states the opposite of the claim"
+unsupported = "unsupported - the quote is in the document, but either it is not in the section it cites, or the cited section never mentions the claim"
+fabricated = "fabricated - the quote does not appear word for word in the document"
+
+[option.relation]
+supports = "supports - the section has a sentence about this matter with the same meaning as the claim"
+contradicts = "contradicts - the section has a sentence stating the opposite"
+says_nothing = "says nothing - no sentence in the section is about this matter"
+
+[option.quote_source]
+cited_section = "inside the section it cites"
+other_section = "in the document, but in another section"
+not_in_doc = "not in the document"
+
+[option.action]
+auto_accept = "accept automatically - verified, contradicted and fabricated all need no human"
+human_review = "send to a human - only unsupported needs a person to confirm"

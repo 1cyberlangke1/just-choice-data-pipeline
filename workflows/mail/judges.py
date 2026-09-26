@@ -2,8 +2,12 @@
 
 - `LinkJudge`（零 token）：文本里有没有链接，必须与注入的链接维一致。抓
   「提示词说了没有链接，模型还是塞了个网址」这类硬伤；
-- `TraceJudge`（一次后端调用）：把写好的邮件**交回后端**，把四个原子题原样再问一遍，
-  答案必须与注入特征一致。这是「渲染必须可反解」的落地（PLAN 3.4 第 ③ 档）。
+- `LinkTextJudge`（零 token）：链接文字那一族的真值，数链接行里的地址就得出来
+  （0 / 1 / ≥2 个 → `no_link` / `matches` / `mismatched`）——这一族问的是**结构事实**，
+  能数就不要问模型（见 `render.link_text_of`）；
+- `TraceJudge`（一次后端调用）：把写好的邮件**交回后端**，把 `TRACE_FAMILIES` 里的
+  原子题原样再问一遍，答案必须与注入特征一致。这是「渲染必须可反解」的落地
+  （PLAN 3.4 第 ③ 档）。能纯代码反解的族（链接文字、发件人身份）不在这里，见上。
 
 输入/输出：只出 `Verdict`，不改样本。反解失败一律判不通过——宁可少要几条，
 也不要一条标签和文本对不上的数据。但**端点故障不算数据不合格**：重试与降级都试过之后
@@ -23,11 +27,15 @@ from . import features, locales, render
 from .spec import MailSpec
 
 #: 反解时重问的原子题族（题族名与数据集里完全一致，选项也用同一份 locale）。
+#: `link_text` **不在这里**：它的真值是结构事实（链接行里有几个地址），交给零 token 的
+#: `LinkTextJudge` 数一遍就够了——问模型只会白搭一次调用、还多一处误拒（2026-09-26 实测，
+#: 那一族的失败占了全部失败的一半）。
+#: `sender_identity` 同理：交给零 token 的 `SenderIdentityJudge` 读「官方域名」行有没有、
+#: 与发件地址域名同不同（2026-09-26 在 167/168 条真端点产物上与注入标签一致，
+#: 唯一那条例外是真的缺那一行——它本来就该被装配时的 `check_official_domain` 拦下）。
 TRACE_FAMILIES: Final[tuple[str, ...]] = (
     "requested",
     "pressure",
-    "link_text",
-    "sender_identity",
 )
 
 #: 单独成行的 JSON 残留：模型偶尔把收尾括号 / 代码围栏写进落款，这是实打实的数据损坏
@@ -63,10 +71,12 @@ def duplicated_owned_lines(state: str, loc: dict[str, Any]) -> list[str]:
 
 
 class TraceDraft(BaseModel):
-    """反解草稿：四个原子特征的取值。
+    """反解草稿：反解要问的原子特征取值。
 
     取值域必须与 `features.ASK` / `features.LURE` 以及 locale 里 `criteria` 的 key 一致；
     这条由 `tests/workflows/mail/test_locales.py` 锁住，不靠人记。
+    链接文字与发件人身份两族不在这里——它们分别由零 token 的 `LinkTextJudge` /
+    `SenderIdentityJudge` 从 state 的结构事实里读出来（数链接行里的地址 / 读「官方域名」行）。
 
     `extra_requests` 是**清单之外的索取**：数据里那道题是单选，文本却夹带第二种索取时，
     它就有两个说得通的答案（实跑抓到过：清单只要求打开附件，正文却写「请按提示输入密码」）。
@@ -76,8 +86,6 @@ class TraceDraft(BaseModel):
     requested: Literal["none", "credentials", "payment", "click_link", "attachment"]
     extra_requests: list[Literal["credentials", "payment", "click_link", "attachment"]]
     pressure: Literal["none", "urgency", "reward", "fear", "curiosity"]
-    link_text: Literal["no_link", "matches", "mismatched"]
-    sender_identity: Literal["matches", "no_claim", "forged"]
 
 
 def build_verify_prompt(state: str, loc: dict[str, Any]) -> str:
@@ -85,7 +93,7 @@ def build_verify_prompt(state: str, loc: dict[str, Any]) -> str:
 
     输入：渲染好的邮件文本、语言字典。
     输出：提示词。
-    预期行为：把四个原子题连同选项原样再问一遍——反解用的选项与数据集里的一致，
+    预期行为：把 `TRACE_FAMILIES` 里的原子题连同选项原样再问一遍——反解用的选项与数据集里的一致，
     否则「答对了」与「标签对了」不是一回事。
     """
     lines = [
@@ -137,6 +145,99 @@ class LinkJudge:
 
 
 @dataclass(frozen=True)
+class LinkTextJudge:
+    """零 token 判别器：`link_text` 这一族的真值，纯代码就能反解。
+
+    字段：`name`。
+
+    预期行为：数 state **链接行**（最后一行）里的不同网址——0 个 → `no_link`、
+    1 个 → `matches`、2 个及以上 → `mismatched`，再与注入的标签比。
+    口径来自渲染规则「链接文字与真实目标不一致时两个地址都写」（见 `render.link_text_of`）。
+
+    为什么不让模型判（2026-09-26）：这一族问的是「链接文字与真实目标是否一致」，
+    答案其实是**结构事实**。在 141 条真端点产物上核对，纯代码规则与注入标签 **141/141**
+    一致（其中 2 条模型把显示地址写成了不带 scheme 的裸域名，所以有链接时裸域名也算地址），
+    而 LLM 反解在这一族上的失败占了全部失败的一半——同一个判断，能数地址就不要问模型。
+    """
+
+    name: str = "link_text"
+
+    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。预期行为：只数链接行里的地址，不看语义。"""
+        if not isinstance(spec, MailSpec):
+            return Verdict(True, reason="没有 spec，跳过链接文字判别", skipped=True)
+        state = sample["state"]
+        if not isinstance(state, str):
+            return Verdict(True, reason="state 不是文本，跳过链接文字判别", skipped=True)
+        expected = spec.labels.link_text
+        # 清单说有链接时，链接行里的裸域名也算地址（模型偶尔把显示的文字写成不带 scheme 的
+        # 裸域名）；没有链接的邮件则不能这么算，否则「官方域名」那一行会被数成一个地址。
+        bare = spec.tags.link != features.LINK_NONE
+        urls = render.link_line_urls(state, bare_domains=bare)
+        found = render.link_text_of(state, bare_domains=bare)
+        if found == expected:
+            return Verdict(True, reason=f"链接行里的地址写法与注入的 {expected!r} 一致")
+        return Verdict(
+            False,
+            reason=(
+                f"注入的是 {expected!r}，链接行里反解成 {found!r}"
+                f"（最后一行有 {len(urls)} 个不同网址）"
+            ),
+            raw={"urls": list(urls)},
+        )
+
+
+@dataclass(frozen=True)
+class SenderIdentityJudge:
+    """零 token 判别器：`sender_identity` 这一族的真值，纯代码就能反解。
+
+    字段：`locale` 语言（要按语言认「官方域名」那一行的行首标记）。
+
+    预期行为：读两个**结构事实**——落款有没有「官方域名」行、那一行的域名与 `From:` 里
+    发件地址的域名是不是同一个站点：
+
+    - 没有那一行 → `no_claim`（不声称机构身份）；
+    - 有、且域名一致 → `matches`；
+    - 有、但域名不同 → `forged`。
+
+    为什么不让模型判（2026-09-26）：装配时的 `render.check_official_domain` 已经把
+    「声称机构 ⟺ 那一行非空」结构上强制了，所以这一族的答案就是结构事实。在 168 条
+    真端点产物上核对：纯代码规则与注入标签 **167/168** 一致，唯一那条例外
+    （`mail-train-0000007`）是模型真的漏写了那一行——它本来就该被装配时拦下。
+    """
+
+    locale: str
+    name: str = "sender_identity"
+
+    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。预期行为：只读「官方域名」行与 `From:` 行。"""
+        if not isinstance(spec, MailSpec):
+            return Verdict(True, reason="没有 spec，跳过发件人身份判别", skipped=True)
+        state = sample["state"]
+        if not isinstance(state, str):
+            return Verdict(True, reason="state 不是文本，跳过发件人身份判别", skipped=True)
+        official = render.official_domain_of(state, locales.load(self.locale))
+        address = render.sender_domain_of(state)
+        if not official:
+            found = "no_claim"
+        elif render.host_of(official) == render.host_of(address):
+            found = "matches"
+        else:
+            found = "forged"
+        expected = spec.labels.sender_identity
+        if found == expected:
+            return Verdict(True, reason=f"「官方域名」行与发件地址读出来就是 {expected!r}")
+        return Verdict(
+            False,
+            reason=(
+                f"注入的是 {expected!r}，文本里读出来是 {found!r}"
+                f"（官方域名行 {official!r}，发件地址 {address!r}）"
+            ),
+            raw={"official_domain": official, "from_address": address},
+        )
+
+
+@dataclass(frozen=True)
 class HygieneJudge:
     """零 token 判别器：state 里不许出现格式残留。
 
@@ -179,7 +280,7 @@ class HygieneJudge:
 
 @dataclass(frozen=True)
 class TraceJudge:
-    """模型判别器：把邮件交回后端反解，四个原子特征必须与注入的一致。
+    """模型判别器：把邮件交回后端反解，`TRACE_FAMILIES` 的原子特征必须与注入的一致。
 
     字段：`backend` 生成后端（由 `bind_backend` 注入）；`locale` 语言。
     """

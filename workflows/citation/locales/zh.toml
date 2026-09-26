@@ -1,0 +1,262 @@
+# 引文核查 workflow 的中文文案：标签、主题词表（每句的「文档原文 / 反面 / 两种主张转述」）、
+# 问法与选项。
+#
+# 约定（由 tests/workflows/citation/test_locales.py 锁住）：
+# - 各语言的标签互不重叠（`reparse` 用合并表做语言无关的反解）；
+# - 同一主题里任意两句的**文档原文**互不为子串，任意两条**主张转述**也互不为子串——
+#   判别器靠「引文是不是文档里的一整句」判 `found`、靠「主张里出现了哪一条转述」认主张，
+#   包含关系会让这两条判据同时出错；
+# - 主张的转述与文档原文**必须不同**：主张是转述、不是照抄，否则「判引文是否支持主张」
+#   就退化成字符串匹配；
+# - 句子行不以数字开头（`dotted` 版式的小节行是 `1. 标题`，靠这条区分）。
+
+[meta]
+title = "待核查的引文"
+doc_label = "来源文档"
+doc_suffix = "（共 {n} 个小节）"
+claim_label = "主张"
+quote_label = "引文"
+source_label = "声称出处"
+section_word = "小节"
+colon = "："
+claim_frames = [
+  "文档里写着：{claim}",
+  "据这份文档，{claim}",
+]
+
+[topic.auth]
+label = "服务鉴权规范"
+headings = ["令牌生命周期", "密钥管理", "日志与审计", "账号安全", "口令策略", "后台入口"]
+
+[topic.auth.sentence.token_rotation]
+doc = "访问令牌必须定期轮换"
+neg = "访问令牌无需定期轮换"
+claim = "访问令牌应当定期更换"
+claim_neg = "访问令牌不必定期更换"
+
+[topic.auth.sentence.session_scope]
+doc = "会话必须限制在最小权限范围内"
+neg = "会话无需限制在最小权限范围内"
+claim = "会话的权限应当收窄到最小"
+claim_neg = "会话的权限不必收窄到最小"
+
+[topic.auth.sentence.key_storage]
+doc = "签名密钥必须存放在密钥管理服务里"
+neg = "签名密钥无需存放在密钥管理服务里"
+claim = "签名密钥应当托管给密钥管理服务"
+claim_neg = "签名密钥不必托管给密钥管理服务"
+
+[topic.auth.sentence.auth_log]
+doc = "每次鉴权失败必须记录审计日志"
+neg = "每次鉴权失败无需记录审计日志"
+claim = "鉴权失败应当留下审计记录"
+claim_neg = "鉴权失败不必留下审计记录"
+
+[topic.auth.sentence.mfa_admin]
+doc = "管理员账号必须启用二次验证"
+neg = "管理员账号无需启用二次验证"
+claim = "管理员账号应当打开第二重验证"
+claim_neg = "管理员账号不必打开第二重验证"
+
+[topic.auth.sentence.ip_allow]
+doc = "后台入口必须限制来源地址"
+neg = "后台入口无需限制来源地址"
+claim = "后台入口应当限定可访问的来源"
+claim_neg = "后台入口不必限定可访问的来源"
+
+[topic.billing]
+label = "计费结算规则"
+headings = ["出账周期", "退款与冲正", "税费处理", "套餐变更", "扣款重试", "凭证管理"]
+
+[topic.billing.sentence.invoice_monthly]
+doc = "账单必须在每月一号生成"
+neg = "账单无需在每月一号生成"
+claim = "账单应当每月一号出具"
+claim_neg = "账单不必每月一号出具"
+
+[topic.billing.sentence.refund_window]
+doc = "退款申请必须在付款后七天内提交"
+neg = "退款申请无需在付款后七天内提交"
+claim = "退款要在付款后七天内申请"
+claim_neg = "退款不必在付款后七天内申请"
+
+[topic.billing.sentence.tax_included]
+doc = "标价必须包含税费"
+neg = "标价无需包含税费"
+claim = "标价应当把税费算进去"
+claim_neg = "标价不必把税费算进去"
+
+[topic.billing.sentence.proration]
+doc = "中途升级必须按天折算费用"
+neg = "中途升级无需按天折算费用"
+claim = "中途升级应当按天折算差价"
+claim_neg = "中途升级不必按天折算差价"
+
+[topic.billing.sentence.dunning]
+doc = "扣款失败必须重试三次"
+neg = "扣款失败无需重试三次"
+claim = "扣款失败应当走三次重试"
+claim_neg = "扣款失败不必走三次重试"
+
+[topic.billing.sentence.credit_note]
+doc = "冲正必须开具红字凭证"
+neg = "冲正无需开具红字凭证"
+claim = "冲正应当开出一张红字凭证"
+claim_neg = "冲正不必开出一张红字凭证"
+
+[topic.retention]
+label = "数据留存策略"
+headings = ["日志留存", "备份与恢复", "注销与删除", "存储位置", "报表导出", "加密要求"]
+
+[topic.retention.sentence.log_90d]
+doc = "访问日志必须保留 90 天"
+neg = "访问日志无需保留 90 天"
+claim = "访问日志应当留存三个月"
+claim_neg = "访问日志不必留存三个月"
+
+[topic.retention.sentence.backup_daily]
+doc = "数据库必须每天备份一次"
+neg = "数据库无需每天备份一次"
+claim = "数据库应当每日备份"
+claim_neg = "数据库不必每日备份"
+
+[topic.retention.sentence.deletion_30d]
+doc = "用户注销后数据必须在 30 天内删除"
+neg = "用户注销后数据无需在 30 天内删除"
+claim = "用户注销后数据应当在一个月内清掉"
+claim_neg = "用户注销后数据不必在一个月内清掉"
+
+[topic.retention.sentence.backup_encrypt]
+doc = "备份文件必须加密存储"
+neg = "备份文件无需加密存储"
+claim = "备份文件应当加密存放"
+claim_neg = "备份文件不必加密存放"
+
+[topic.retention.sentence.region_lock]
+doc = "数据必须存储在境内"
+neg = "数据无需存储在境内"
+claim = "数据应当落在境内机房"
+claim_neg = "数据不必落在境内机房"
+
+[topic.retention.sentence.pii_masking]
+doc = "导出报表必须对个人信息脱敏"
+neg = "导出报表无需对个人信息脱敏"
+claim = "导出报表应当隐藏个人信息"
+claim_neg = "导出报表不必隐藏个人信息"
+
+[topic.rollout]
+label = "发布流程规范"
+headings = ["灰度与放量", "回滚预案", "发布窗口", "数据库变更", "功能开关", "上线验证"]
+
+[topic.rollout.sentence.canary]
+doc = "新版本必须先灰度百分之五的流量"
+neg = "新版本无需先灰度百分之五的流量"
+claim = "新版本应当先放一小部分流量试跑"
+claim_neg = "新版本不必先放一小部分流量试跑"
+
+[topic.rollout.sentence.rollback_plan]
+doc = "发布必须附带回滚方案"
+neg = "发布无需附带回滚方案"
+claim = "发布应当准备回滚方案"
+claim_neg = "发布不必准备回滚方案"
+
+[topic.rollout.sentence.freeze_friday]
+doc = "周五不得发布生产变更"
+neg = "周五可以发布生产变更"
+claim = "生产变更不应当在周五上线"
+claim_neg = "生产变更可以在周五上线"
+
+[topic.rollout.sentence.migration_review]
+doc = "数据库变更必须经过评审"
+neg = "数据库变更无需经过评审"
+claim = "库表变更应当先过评审"
+claim_neg = "库表变更不必先过评审"
+
+[topic.rollout.sentence.feature_flag]
+doc = "新功能必须默认关闭"
+neg = "新功能无需默认关闭"
+claim = "新功能应当默认关着"
+claim_neg = "新功能不必默认关着"
+
+[topic.rollout.sentence.smoke_test]
+doc = "发布后必须跑一轮冒烟测试"
+neg = "发布后无需跑一轮冒烟测试"
+claim = "上线后应当做一次冒烟验证"
+claim_neg = "上线后不必做一次冒烟验证"
+
+[ask.found]
+q = [
+  "这条引文是否逐字出现在来源文档里？判据：引文要与文档里的某一整句完全一致；被截断、改过词、只对上半个句子，都算不在文档里。",
+  "来源文档里有没有与这条引文一字不差的一整句？",
+  "这条引文是照抄文档的吗？整句一致才算照抄。",
+]
+criteria = { "true" = "在，文档里有一整句与它逐字相同", "false" = "不在，文档里没有与它逐字相同的整句" }
+
+[ask.located]
+q = [
+  "这条引文是否出现在它声称的那个小节里？",
+  "它声称的那个小节里，有没有这句引文？",
+  "引文的出处对得上吗——它真的在声称的那个小节里吗？",
+]
+criteria = { "true" = "在，就在它声称的那个小节里", "false" = "不在，声称的那个小节里没有这句引文" }
+
+[ask.relation]
+q = [
+  "它声称的那个小节与这条主张是什么关系？判据：该小节里有句子说这件事、意思与主张相同 = 支持；该小节里有句子说的是这件事的反面 = 反驳；该小节里没有任何一句在说这件事 = 没提。",
+  "只看它声称的那个小节：那里的话是支持这条主张、反驳这条主张，还是根本没提？",
+  "它声称的那个小节对这条主张表了什么态？",
+]
+
+[ask.quote_source]
+q = [
+  "这条引文实际上出自哪里？判据：引文没有逐字出现在文档里 = 不在文档里；逐字出现了、就在它声称的那个小节里 = 声称的那个小节；逐字出现了、但在别的小节里 = 文档里的另一个小节。",
+  "这条引文真正的位置是哪儿？",
+  "按实际位置，这条引文属于哪一种？",
+]
+
+[ask.verdict]
+q = [
+  "这条引文该判成哪一档？判据：引文不在文档里 = 编造；引文在文档里、但不在它声称的小节里 = 证据不足；引文在声称的小节里——该小节支持主张 = 通过，反驳主张 = 反驳，没提 = 证据不足。",
+  "综合「引文在不在文档里」「在不在声称的小节里」「该小节的态度」，这条引文属于哪一档？",
+  "给这条引文一个核查结论。",
+]
+
+[ask.action]
+q = [
+  "这条引文该自动采信，还是交人复核？判据：判成「通过」或「反驳」的自动采信；判成「证据不足」的交人复核；判成「编造」的由字符串匹配直接定案，也自动采信。",
+  "按处置规则，这条引文走自动还是走人工？",
+  "这条引文下一步怎么处理？",
+]
+
+[ask.evidence_strength]
+q = [
+  "这条引文的证据强度是几级？量表：0 = 引文不在文档里；1 = 引文在文档里，但不在它声称的小节里；2 = 引文在它声称的小节里，但该小节没提到这条主张；3 = 引文在它声称的小节里，且该小节支持或反驳了这条主张。",
+  "按量表给这条引文的证据强度定级。",
+  "这条引文提供的证据有多强？",
+]
+levels = [
+  "0 级：引文不在文档里（编造）",
+  "1 级：引文在文档里，但不在它声称的小节里",
+  "2 级：引文在它声称的小节里，但该小节没有提到这条主张",
+  "3 级：引文在它声称的小节里，且该小节支持或反驳了这条主张",
+]
+
+[option.verdict]
+verified = "通过——引文逐字在文档里，就在它声称的小节里，且该小节支持这条主张"
+contradicted = "反驳——引文逐字在文档里，就在它声称的小节里，且该小节说的是这条主张的反面"
+unsupported = "证据不足——引文在文档里，但要么不在它声称的小节里，要么声称的那个小节根本没提到这条主张"
+fabricated = "编造——引文没有逐字出现在文档里"
+
+[option.relation]
+supports = "支持——该小节里有句子说的是这件事，意思与主张相同"
+contradicts = "反驳——该小节里有句子说的是这件事的反面"
+says_nothing = "没提——该小节里没有任何一句在说这件事"
+
+[option.quote_source]
+cited_section = "就在它声称的那个小节里"
+other_section = "在文档里，但在别的小节里"
+not_in_doc = "不在文档里"
+
+[option.action]
+auto_accept = "自动采信——判成通过、反驳或编造的，都不需要人再看"
+human_review = "交人复核——只有判成证据不足的需要人工确认"

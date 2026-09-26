@@ -142,7 +142,7 @@ def _make_spec(seed: int = 5, *, locale: str = "zh", **overrides: Any) -> sp.Hyb
 
     预期行为：同种子必得同一份规格（构造器只用传进来的 RNG，不碰全局随机源）。
     """
-    spec = sp.sample_spec(random.Random(seed), _make_case(**overrides), "train", 0, 0)
+    spec = sp.sample_spec(random.Random(seed), _make_case(**overrides), "train", 0, 0, 0)
     return fill_text(spec, locale)
 
 

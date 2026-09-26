@@ -25,6 +25,7 @@ from typing import Any, Final
 
 from jc import jsonio
 from jc.judge import Judge
+from jc.knobs import require_pool
 from jc.workflow import LabeledQuestion, SplitSpec, register
 
 from . import features, judges as judges_mod, locales, questions, render
@@ -71,6 +72,16 @@ class MailConfig:
     cover_limit: int = 32
     case_limit: int = 0
     phrasing_pool: tuple[int, ...] = (0, 1, 2)
+
+    def __post_init__(self) -> None:
+        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。
+
+        `case_limit` 为负以前会被 `cases[:case_limit]` 悄悄解释成「去掉尾部几条」——
+        这是个陷阱，直接拒掉（校验规则见 `jc.knobs`）。
+        """
+        require_pool("phrasing_pool", self.phrasing_pool)
+        if self.case_limit < 0:
+            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
 
 
 def _restricted(**overrides: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
@@ -159,7 +170,7 @@ class MailWorkflow:
     version = WORKFLOW_VERSION
     kinds = frozenset({"choice", "noul", "score"})
     needs = frozenset({"text"})  # 文本外壳由后端写：本 workflow 不是纯构造式
-    judges: tuple[str, ...] = ("link", "hygiene", "trace")
+    judges: tuple[str, ...] = ("link", "link_text", "sender_identity", "hygiene", "trace")
 
     def __init__(self) -> None:
         """输入：无。输出：实例。预期行为：后端要等 `bind_backend` 才注入。"""
@@ -251,12 +262,19 @@ class MailWorkflow:
         for name in names:
             if name == "link":
                 out.append(judges_mod.LinkJudge())
+            elif name == "link_text":
+                out.append(judges_mod.LinkTextJudge())
+            elif name == "sender_identity":
+                out.append(judges_mod.SenderIdentityJudge(locale))
             elif name == "hygiene":
                 out.append(judges_mod.HygieneJudge(locale))
             elif name == "trace":
                 out.append(judges_mod.TraceJudge(self.backend, locale))
             else:
-                raise KeyError(f"未知判别器：{name!r}（可用：link / hygiene / trace）")
+                raise KeyError(
+                    f"未知判别器：{name!r}"
+                    f"（可用：link / link_text / sender_identity / hygiene / trace）"
+                )
         return tuple(out)
 
     def audit(

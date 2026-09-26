@@ -69,15 +69,31 @@ def test_templates_carry_their_placeholders(lang: str) -> None:
 def test_prompt_rules_carry_count_and_language(lang: str) -> None:
     """输入：语言文件。输出：无。
 
-    预期行为：每条规则都能被 `count` / `language` 格式化，且至少有一条用到场数——
+    预期行为：每条规则都能被 `count` / `language` / `theme` 格式化，且至少有一条用到场数——
     场数不说清楚，模型就不知道该回几条（少一条就整条样本被拒）。
     """
     loc = locales.load(lang)
     assert loc["language_name"]
     rules = loc["prompt"]["rules"]
     assert rules and any("{count}" in rule for rule in rules)
+    assert any("{theme}" in rule for rule in rules)
     for rule in rules:
-        rule.format(count=3, language=loc["language_name"])
+        rule.format(count=3, language=loc["language_name"], theme=loc["prompt"]["themes"][0])
+
+
+def test_theme_pools_align_across_languages() -> None:
+    """输入：两份语言文件。输出：无。
+
+    预期行为：主题方向存的是**下标**（与问法编号同一套约定），所以两份词表必须等长、
+    词条两两不同、且覆盖 `spec.THEME_IDS` 的每个下标——长短不一就会让同一份 spec
+    在两种语言里指向两个不同的方向。
+    """
+    pools = {lang: locales.load(lang)["prompt"]["themes"] for lang in LOCALES}
+    sizes = {len(pool) for pool in pools.values()}
+    assert len(sizes) == 1, pools
+    assert set(sp.THEME_IDS) == set(range(next(iter(sizes))))
+    for lang, pool in pools.items():
+        assert len(set(pool)) == len(pool), lang
 
 
 @pytest.mark.parametrize("lang", LOCALES)

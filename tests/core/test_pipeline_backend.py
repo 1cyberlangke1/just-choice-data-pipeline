@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from jc import cli, pipeline
+from jc import cli, jsonio, pipeline
 from jc.backend.types import AllProvidersDown, Draft, DraftInvalidError, TransportError
 from jc.workflow import LabeledQuestion, SplitSpec
 
@@ -227,7 +227,7 @@ def test_all_providers_down_aborts_the_run(tmp_path: Path, monkeypatch: Any) -> 
     run_dir = tmp_path / "boom"
     assert not (run_dir / "train.jsonl").exists()
     # 一条都没完成，所以进度日志也不存在（追加写不会凭空造空文件）
-    assert not (run_dir / "progress.jsonl").exists()
+    assert not (run_dir / "progress-train.jsonl").exists()
     manifest = json.loads((run_dir / "manifest-train.json").read_text(encoding="utf-8"))
     assert manifest["stats"]["aborted"]["seq"] == 0
 
@@ -609,7 +609,7 @@ def test_torn_last_line_is_dropped_but_a_broken_middle_line_raises(tmp_path: Pat
 
 
 def test_run_writes_one_journal_line_per_sample(tmp_path: Path, monkeypatch: Any) -> None:
-    """输入：两条样本的正常跑。输出：`progress.jsonl`。
+    """输入：两条样本的正常跑。输出：`progress-train.jsonl`。
 
     预期行为：每个序号一行，`row` 指向 `<split>.jsonl` 的第几行——续跑就靠它把样本取回来，
     所以行号必须与产物对得上，而不是另记一套。
@@ -622,7 +622,7 @@ def test_run_writes_one_journal_line_per_sample(tmp_path: Path, monkeypatch: Any
     )
     records = [
         json.loads(line)
-        for line in (result.run_dir / "progress.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (result.run_dir / "progress-train.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert [r["seq"] for r in records] == [0, 1]
     assert [r["status"] for r in records] == ["ok", "ok"]
@@ -685,3 +685,164 @@ def test_resume_after_abort_matches_a_single_clean_run(tmp_path: Path, monkeypat
     resumed_rows = (resumed.run_dir / "train.jsonl").read_text(encoding="utf-8")
     assert resumed_rows == (clean.run_dir / "train.jsonl").read_text(encoding="utf-8")
     assert resumed.stats == clean.stats
+
+
+def test_run_refuses_when_artifacts_exist_without_a_journal(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """输入：跑完一遍后**删掉进度日志**、再用同一个 run_id 跑。输出：无（报错）。
+
+    预期行为：产物与进度日志是一对，**只有产物**是不一致状态——现在的续跑逻辑会把
+    「已完成」当成空集，从 seq 0 重跑并**追加**到已有行后面，同一个 id 写两行
+    （本项目四个 `sweep-*` 产物就是这么被污染的：多余行数恰好等于该切分的 case 数）。
+    所以要报人话停下、**一行都不许动**，不静默重跑。
+    """
+    monkeypatch.setattr(pipeline, "load", lambda name: BackendWorkflow())
+    config = pipeline.RunConfig(
+        workflow="fake_llm", out_root=tmp_path, run_id="nolog", backend=StubBackend()
+    )
+    first = pipeline.run(config)
+    rows_before = (first.run_dir / "train.jsonl").read_text(encoding="utf-8")
+    (first.run_dir / "progress-train.jsonl").unlink()
+
+    with pytest.raises(ValueError, match="进度日志"):
+        pipeline.run(config)
+    assert (first.run_dir / "train.jsonl").read_text(encoding="utf-8") == rows_before
+
+
+def _write_journal(path: Path, records: list[dict[str, Any]]) -> None:
+    """输入：进度日志路径、要写的记录（只给要覆盖的字段）。输出：无。
+
+    预期行为：补全成合法形态后**整份重写**——这里要造的正是「进度与产物对不上」的状态，
+    所以不能追加。`seq` / `row` 由调用方给，其余取默认值。
+    """
+    rows = [
+        {
+            "status": "ok",
+            "judges": [],
+            "rejected": [0, 0],
+            "skipped": [0, 0],
+            "attempts": 1,
+            **record,
+        }
+        for record in records
+    ]
+    path.write_text(
+        "".join(jsonio.dumps_line(row) + "\n" for row in rows),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+class TwoSplitWorkflow(BackendWorkflow):
+    """假 workflow：两个切分、各自的 case 表。
+
+    输入/输出：遵循 `jc.workflow.Workflow` 协议，同 `BackendWorkflow`。
+    预期行为：用来验「一个 run 目录装多个切分」——两个切分的序号都从 0 起，
+    所以进度必须各记各的（产物本来就是各写各的：`train.jsonl` / `val.jsonl`）。
+    """
+
+    def split_names(self) -> tuple[str, ...]:
+        return ("train", "val")
+
+    def config_for(self, split: str) -> Any:
+        return {"split": split}
+
+    def build_cases(self, config: Any) -> list[Any]:
+        return [{"i": i} for i in range(2 if config["split"] == "train" else 1)]
+
+    def plan_sample(self, rng: Any, config: Any, case: Any, seq: int) -> SplitSpec:
+        return SplitSpec(name=config["split"], params={"i": case["i"], "tag": config["split"]})
+
+    def render(self, spec: Any, rng: Any, locale: str) -> Any:
+        self.backend.generate(FakeTask(f"fake-{spec['tag']}-{spec['i']}"))
+        return f"state-{spec['tag']}-{spec['i']}"
+
+
+def test_two_splits_in_one_run_dir_keep_separate_progress(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """输入：同一个 run_id 先跑 train 再跑 val。输出：两次 RunResult。
+
+    预期行为：val 真的生成自己的那一条，而不是把 train 的序号 0 当成「已完成」跳过。
+    共用一份进度日志时，val 的 `todo` 会是空表（seq 0 已在日志里）、产物一行不写，
+    随后回放又拿 `val.jsonl` 去对 train 的记录——直接裸 `IndexError`
+    （实测在 routing 的四切分上撞到，见 PLAN 10.51）。
+    """
+    monkeypatch.setattr(pipeline, "load", lambda name: TwoSplitWorkflow())
+    backend = StubBackend()
+    common = {"workflow": "fake_llm", "out_root": tmp_path, "run_id": "two", "backend": backend}
+    train = pipeline.run(pipeline.RunConfig(split="train", **common))
+    val = pipeline.run(pipeline.RunConfig(split="val", **common))
+    assert (train.accepted, val.accepted) == (2, 1)
+    assert backend.calls == ["fake-train-0", "fake-train-1", "fake-val-0"]
+    ids = [
+        json.loads(line)["id"]
+        for line in (val.run_dir / "val.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert ids == ["fake_llm-val-0000000"]
+    # 两份进度日志各记各的：train 两条、val 一条
+    assert len((val.run_dir / "progress-train.jsonl").read_text(encoding="utf-8").splitlines()) == 2
+    assert len((val.run_dir / "progress-val.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_products_shorter_than_the_journal_reports_a_human_error(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """输入：跑完之后把合格产物截空（进度日志还在）。输出：异常。
+
+    预期行为：报人话并点名是哪两个文件对不上，**不是**裸 `IndexError`；
+    而且一行都不许动——重放取不回当时的 outcome，续跑只会写出一份对不上的统计。
+    """
+    monkeypatch.setattr(pipeline, "load", lambda name: BackendWorkflow())
+    config = pipeline.RunConfig(
+        workflow="fake_llm", out_root=tmp_path, run_id="short", backend=StubBackend()
+    )
+    first = pipeline.run(config)
+    (first.run_dir / "train.jsonl").write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="train.jsonl"):
+        pipeline.run(config)
+    assert (first.run_dir / "train.jsonl").read_text(encoding="utf-8") == ""
+
+
+def test_journal_record_pointing_past_the_products_reports_a_human_error(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """输入：进度记录说「样本在第 3 行」，但产物只有 2 行。输出：异常。
+
+    预期行为：`row` 与两个区间都必须真的落在产物里，越界就报人话点名文件——
+    这是续跑回放的最后一道兜底，任何一条记录都可能踩到。
+    """
+    monkeypatch.setattr(pipeline, "load", lambda name: BackendWorkflow())
+    config = pipeline.RunConfig(
+        workflow="fake_llm", out_root=tmp_path, run_id="past", backend=StubBackend()
+    )
+    first = pipeline.run(config)
+    # 合格条数仍与产物对得上（2 条），只有第二条的行号是坏的——这样才走到行号那一条检查
+    _write_journal(
+        first.run_dir / "progress-train.jsonl",
+        [{"seq": 0, "row": 1}, {"seq": 1, "row": 3}],
+    )
+    with pytest.raises(ValueError, match="第 3 行"):
+        pipeline.run(config)
+
+
+def test_journal_slice_past_the_shared_products_reports_a_human_error(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """输入：进度记录说「被拒行是 [0, 5)」，但 rejected.jsonl 一行都没有。输出：异常。
+
+    预期行为：被拒 / 跳过两个文件是各档共用的，没法按切分对账，所以只做区间越界的兜底——
+    区间取不回来时同样要点名文件报人话，而不是等切片静默变短。
+    """
+    monkeypatch.setattr(pipeline, "load", lambda name: BackendWorkflow())
+    config = pipeline.RunConfig(
+        workflow="fake_llm", out_root=tmp_path, run_id="slice", backend=StubBackend()
+    )
+    first = pipeline.run(config)
+    _write_journal(
+        first.run_dir / "progress-train.jsonl",
+        [{"seq": 0, "row": 1, "rejected": [0, 5]}, {"seq": 1, "row": 2}],
+    )
+    with pytest.raises(ValueError, match="rejected.jsonl"):
+        pipeline.run(config)

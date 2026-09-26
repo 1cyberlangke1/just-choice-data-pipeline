@@ -196,7 +196,7 @@ def test_progress_records_attempts_and_resume_replays_them(tmp_path: Path, monke
     workflow = FlakyWorkflow(reject_until=1)
     first = _run(monkeypatch, tmp_path, workflow, attempts=2)
     record = json.loads(
-        (first.run_dir / "progress.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        (first.run_dir / "progress-train.jsonl").read_text(encoding="utf-8").splitlines()[0]
     )
     assert record["attempts"] == 2
     assert record["status"] == "ok"

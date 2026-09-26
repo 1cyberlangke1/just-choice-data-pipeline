@@ -32,12 +32,29 @@ agenda = "Agenda"
 intro = "Below is a \"meeting schedule\" style material. Write two pieces of text for each meeting so the material reads like a real schedule."
 rules = [
   "There are {count} meetings; write one entry per meeting, in order.",
+  "This time the theme is \"{theme}\": keep the titles and agendas on that theme instead of generic filler that would fit any meeting.",
   "The title is 2~5 words, like a real meeting name; the agenda is one sentence, 6~18 words.",
   "Do **not** write any clock time, time span, date or weekday (e.g. \"9am\", \"afternoon\", \"Wednesday\", \"this week\").",
   "Do **not** write any room name.",
   "Titles must be pairwise distinct, and agendas must be pairwise distinct.",
   "Do not write numbers, host names, room names, vertical bars or line breaks.",
   "Write everything in {language}.",
+]
+# Theme directions: the spec stores an **index**, so this list must be as long as the other
+# languages' lists (locked by test_locales.py).
+themes = [
+  "product & requirements",
+  "engineering & tech",
+  "data & analytics",
+  "marketing & growth",
+  "sales & customers",
+  "finance & budget",
+  "people & hiring",
+  "supply chain & procurement",
+  "compliance & security",
+  "support & experience",
+  "operations & process",
+  "training & knowledge",
 ]
 
 [ask.earliest_start]

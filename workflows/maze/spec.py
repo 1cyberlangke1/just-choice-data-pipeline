@@ -16,6 +16,8 @@ import random
 from dataclasses import dataclass
 from typing import Any, Final
 
+from jc.knobs import require_bounds, require_pool
+
 from . import grid
 
 # 渲染格式
@@ -135,6 +137,27 @@ class MazeConfig:
     braid: float = 0.0
     cut_prob: float = 0.15
     phrasing_pool: tuple[int, ...] = (0, 1, 2)  # 每种问法的可选编号（test_ood 用全集）
+
+    def __post_init__(self) -> None:
+        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。
+
+        以前空表会活到 `rng.choice`、少元素的区间会活到 `rng.randint(*...)`，
+        抛的都是裸 Python 异常（校验规则见 `jc.knobs`）。
+        """
+        require_bounds("size", self.size)
+        require_bounds("marks_range", self.marks_range)
+        require_bounds("questions_range", self.questions_range)
+        for field, values in (
+            ("algos", self.algos),
+            ("formats", self.formats),
+            ("symbols", self.symbols),
+            ("history_lens", self.history_lens),
+            ("mark_trails", self.mark_trails),
+            ("option_details", self.option_details),
+            ("deviations", self.deviations),
+            ("phrasing_pool", self.phrasing_pool),
+        ):
+            require_pool(field, values)
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -276,6 +277,84 @@ def test_extract_never_sends_max_tokens(patched: dict[str, Any]) -> None:
     kwargs = patched["clients"][0].kwargs
     assert "max_tokens" not in kwargs
     assert "max_completion_tokens" not in kwargs
+
+
+def tool_calls_body() -> dict[str, Any]:
+    """输入：无。输出：一份与真实端点同形的完成体（既有 tool_calls 也有 JSON 文本）。
+
+    预期行为：给 MockTransport 用；tools / json_schema / md_json 三档都能从它解析出
+    `{"answer": "hi"}`。
+    """
+    return {
+        "id": "chatcmpl-1",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "openai/gpt-oss-20b",
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": '{"answer": "hi"}',
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "Answer", "arguments": '{"answer": "hi"}'},
+                        }
+                    ],
+                },
+            }
+        ],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+
+
+def test_real_instructor_request_body_has_no_max_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PLAN 3.1.2 的端到端守卫：真 instructor 走一遍 HTTP 序列化，请求体里不许有 max_tokens。
+
+    输入：无。输出：无。预期行为：上面那条测试把 instructor 整个换成了假客户端，只能证明
+    **我们**没传；这条补另一半——真库自己也不会偷偷塞。必须用真库验，因为「默认塞上限」
+    正是上游会干的事（instructor 的 v2 anthropic 分支就写死 `max_tokens=4096`）。
+    抓取器的灵敏度已自检：主动注入 `max_tokens` 时它看得见。
+    """
+    seen: list[dict[str, Any]] = []
+    # 先把真类捞出来：`engine_module.openai` 就是全局 openai 模块，patch 之后
+    # 再写 `openai.OpenAI` 会指回自己，直接无限递归。
+    real_openai = openai.OpenAI
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(json.loads(request.content))
+        return httpx2.Response(200, json=tool_calls_body())
+
+    def fake_openai(**kwargs: Any) -> Any:
+        """输入：引擎给的构造参数。输出：真 openai 客户端，但 HTTP 层换成 MockTransport。"""
+        return real_openai(
+            api_key=kwargs["api_key"],
+            base_url=kwargs["base_url"],
+            http_client=httpx2.Client(transport=httpx2.MockTransport(handler)),
+        )
+
+    class OpenAIModuleProxy:
+        """`jc.backend.engine` 眼里的 `openai` 模块替身：只换 `OpenAI`，其余属性透传。
+
+        预期行为：**不能**直接 patch 真模块上的 `OpenAI` —— instructor 自己也要
+        `isinstance(client, openai.OpenAI)`，把它换成函数就不再是类型了（实测直接 TypeError）。
+        """
+
+        OpenAI = staticmethod(fake_openai)
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(openai, name)
+
+    monkeypatch.setattr(engine_module, "openai", OpenAIModuleProxy())
+    result = InstructorEngine().extract(request_for(MODE_TOOLS))
+    assert result.data == {"answer": "hi"}
+    body = seen[-1]
+    assert "tools" in body  # 证明确实走的是真 tools 档，不是被 mock 掉的空转
+    assert "max_tokens" not in body
+    assert "max_completion_tokens" not in body
 
 
 def test_no_max_tokens_knob_anywhere() -> None:

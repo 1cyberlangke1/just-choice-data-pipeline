@@ -347,3 +347,78 @@ def test_gen_says_nothing_when_there_are_no_conflicts(
     monkeypatch.setattr(pipeline, "run", fake_run)
     assert cli.main(["gen", "--workflow", "maze", "--out", str(tmp_path)]) == 0
     assert "同素材同题不同答" not in capsys.readouterr().out
+
+
+def test_audit_fails_on_duplicate_ids(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """产物里有重复 id 时，`jc audit` 必须失败（退出码 1）。
+
+    输入：一个自己报告「通过」的假 workflow + 一份 id 重复的产物。输出：无。
+    预期行为：workflow 自己的审计说通过**不算数**——「id 全局唯一」是文件级不变量，
+    逐样本校验器看不到，得由通用层拿 `validate.validate_file` 跨行查；问题文本要点名切分与错误码。
+    """
+
+    class FakeWorkflow:
+        """假 workflow：自己永远报告通过。"""
+
+        name = "fake"
+        version = "0.0.1"
+
+        def split_names(self) -> tuple[str, ...]:
+            """输入：无。输出：一个切分名。"""
+            return ("train",)
+
+        def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[Any, list[str]]:
+            """输入：目录 / 切分 / 语言。输出：(计数, 缺失项)。预期行为：永远通过。"""
+            return {"train": {"samples": 2}}, []
+
+    # 逐字合法的样本写两遍：这样产物里**唯一**的问题就是 id 重复（别的错误码会污染这条测试）。
+    row = (
+        '{"id":"fake-train-0000000","state":"素材",'
+        '"questions":{"ask":{"type":"noul","instructions":"对吗？"}},'
+        '"answers":{"ask":{"type":"noul","noul":true}}}'
+    )
+    (tmp_path / "train.jsonl").write_text(f"{row}\n{row}\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "load", lambda name: FakeWorkflow())
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 1
+    out = capsys.readouterr().out
+    assert "审计不通过" in out
+    assert "train" in out
+    assert "E_ID_DUP" in out
+    assert "fake-train-0000000" in out
+
+
+def test_audit_passes_when_the_product_also_holds_the_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """产物合法时，通用层的契约复核不能误报（退出码 0）。
+
+    输入：一个假 workflow + 一份**逐字合法**的产物。输出：无。
+    预期行为：`validate_file` 是复核而不是加严——真产物全过（本项目全语料实测只挑出 4 个
+    有重复 id 的 `sweep-*`），所以合法产物照样「审计通过」。
+    """
+
+    class FakeWorkflow:
+        """假 workflow：自己永远报告通过。"""
+
+        name = "fake"
+        version = "0.0.1"
+
+        def split_names(self) -> tuple[str, ...]:
+            """输入：无。输出：一个切分名。"""
+            return ("train",)
+
+        def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[Any, list[str]]:
+            """输入：目录 / 切分 / 语言。输出：(计数, 缺失项)。预期行为：永远通过。"""
+            return {"train": {"samples": 1}}, []
+
+    (tmp_path / "train.jsonl").write_text(
+        '{"id":"fake-train-0000000","state":"素材",'
+        '"questions":{"ask":{"type":"noul","instructions":"对吗？"}},'
+        '"answers":{"ask":{"type":"noul","noul":true}}}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "load", lambda name: FakeWorkflow())
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 0
+    assert "审计通过" in capsys.readouterr().out

@@ -26,6 +26,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from jc.knobs import require_pool
+
 # ---------- 维度取值 ----------
 
 MEETING_COUNTS: Final[tuple[int, ...]] = (2, 3, 4)
@@ -69,6 +71,14 @@ BUSY_CAP: Final[int] = 4
 #: 词表容量：spec 只存下标，所以每种语言的会议室 / 主持人词表都不小于这个数（测试锁住）。
 ROOM_POOL: Final[int] = 6
 LEAD_POOL: Final[int] = 8
+
+#: 写文本时的「主题方向」池：spec 只存**下标**（与问法编号同一套约定），每种语言各有一份
+#: 等长的词表（由 `test_locales.py` 锁住）。
+#: **来由**（实测）：写文本的提示词里只有「共 N 场会」一个变量，于是同场数的样本提示词
+#: **逐字相同**，模型把标题迅速塌成几句套话——真端点 37 条样本的 114 个标题里只有 75 个
+#: 不同（`产品需求评审会` 一条就占了 15 个），而议题是 114/114 全不重复。
+#: 给每条样本抽一个方向，提示词就不再一样了。
+THEME_IDS: Final[tuple[int, ...]] = tuple(range(12))
 
 #: 日期从这一天起往后找：保证「同一天是星期几」由 case 决定，而月份与日子仍然随机。
 BASE_DATE: Final[dt.date] = dt.date(2026, 9, 1)
@@ -146,8 +156,13 @@ class HybridCase:
 def compatible(case: HybridCase) -> bool:
     """输入：一个 case。输出：这个组合写得出来吗。
 
-    预期行为：两条硬约束，都是**组合本身写不出来**（不是随机抽不到）：
+    预期行为：三条硬约束，都是**组合本身写不出来**（不是随机抽不到）：
 
+    - 1 场会：`title_of` / `room_of` / `duration_of` / `lead_of` / `agenda_of` /
+      `earliest_start` 这些题族的选项就是「各场会的取值」，只剩一场时选项退化成一个
+      （契约要求 2~255 个，选项描述还要两两不同），`duration_of` 那一族更会直接抛
+      `randrange` 空区间。实测 `meeting_counts=(1,)` 的 12 条样本**全被拒**（10 条
+      `E_CHOICE_OPTION_COUNT` + 2 条 `E_ASSEMBLE`），所以这个取值直接不生成；
     - `same_room` 要求「两场会抢同一间房」，而 2 场会时整份日程只剩一间会议室，
       `room_of` 的选项会退化成一个（选项描述必须两两不同，否则那道题有两个说得通的答案）；
     - 当天放不下：起点取本档最晚、推进量取最小、最后一场取最短，仍然超过 `DAY_END`
@@ -155,6 +170,8 @@ def compatible(case: HybridCase) -> bool:
 
     无解的组合既不生成、也不算没覆盖。
     """
+    if case.meetings < 2:
+        return False
     if case.clash == "same_room" and case.meetings < 3:
         return False
     lo_dur, _ = DUR_RANGES[case.duration_mix]
@@ -166,7 +183,8 @@ def compatible(case: HybridCase) -> bool:
 class HybridConfig:
     """一个切分的采样参数。
 
-    字段：各维度的取值表（留出时收窄）、问法编号池、`ood_only` 是否只留「含没见过的取值」的 case。
+    字段：各维度的取值表（留出时收窄）、问法编号池、主题方向编号池、
+    `ood_only` 是否只留「含没见过的取值」的 case。
     """
 
     split: str = "train"
@@ -177,7 +195,26 @@ class HybridConfig:
     weekdays: tuple[int, ...] = WEEKDAYS
     duration_mixes: tuple[str, ...] = DURATION_MIXES
     phrasings: tuple[int, ...] = (0, 1, 2)
+    themes: tuple[int, ...] = THEME_IDS
     ood_only: bool = False
+
+    def __post_init__(self) -> None:
+        """输入：无。输出：无。预期行为：空取值表在构造期就报人话，不拖到采样阶段。
+
+        以前空表会活到 `rng.choice`，抛 `Cannot choose from an empty sequence`
+        （校验规则见 `jc.knobs`）。
+        """
+        for field, values in (
+            ("meeting_counts", self.meeting_counts),
+            ("openings", self.openings),
+            ("clashes", self.clashes),
+            ("layouts", self.layouts),
+            ("weekdays", self.weekdays),
+            ("duration_mixes", self.duration_mixes),
+            ("phrasings", self.phrasings),
+            ("themes", self.themes),
+        ):
+            require_pool(field, values)
 
 
 def build_cases(config: HybridConfig) -> list[HybridCase]:
@@ -250,6 +287,7 @@ class HybridSpec:
     date: tuple[int, int, int]
     meetings: tuple[Meeting, ...]
     phrasing: int
+    theme: int
     written: dict[str, MeetingText] = field(default_factory=dict)
 
     def slot_names(self) -> tuple[str, ...]:
@@ -406,14 +444,17 @@ def _place(rng: random.Random, case: HybridCase) -> tuple[list[tuple[int, int]],
 
 
 def sample_spec(
-    rng: random.Random, case: HybridCase, split: str, seq: int, phrasing: int
+    rng: random.Random, case: HybridCase, split: str, seq: int, phrasing: int, theme: int
 ) -> HybridSpec:
-    """输入：RNG、case、切分名、样本序号、问法编号。输出：这一条的真值规格。
+    """输入：RNG、case、切分名、样本序号、问法编号、主题方向编号。输出：这一条的真值规格。
 
     预期行为：日期按 `case.weekday` 抽；骨架按 `case` 排布，且**同类取值两两不同**——
     开始时刻两两不同（`earliest_start`）、主持人两两不同、会议室两两不同；
     只有 `same_room` 那一对共用一间房（这正是 `room_free` 要问的）。
     标题与议题留空，等 `render` 阶段由后端补。
+
+    问法编号与主题方向编号都只是**下标**，由各自的词表翻译（问法查 `ask`，
+    方向查 `prompt.themes`）——这样 spec 与语言无关，同一份 spec 可以换语言渲染。
 
     **展示顺序刻意与时间顺序无关**（`rng.sample` 洗过一遍）：真实日程表常常按会议室或
     预约人排，而且不洗的话「哪一场开始得最早」的答案永远是列表第一行——
@@ -444,6 +485,7 @@ def sample_spec(
         date=_date_with_weekday(rng, case.weekday),
         meetings=meetings,
         phrasing=phrasing,
+        theme=theme,
     )
 
 

@@ -142,7 +142,7 @@ q = [
 none = "Nothing - it only informs or states something (a reference URL in the signature does not count)"
 credentials = "Hand over a secret credential (password, one-time code, ID number) - a bank card number does not count"
 payment = "Transfer money, pay, settle an amount, or give / change a bank card number or payout details"
-click_link = "The body asks the reader to click a link, or nudges them toward one (\"you can check this at\", \"see the details\", \"for more information\") - either counts; \"see the attachment\" does not (that is the attachment option)"
+click_link = "The body explicitly asks the reader to click a link to confirm, claim or review"
 attachment = "Download and open the attachment"
 
 [fam.pressure]
@@ -154,10 +154,10 @@ q = [
 
 [fam.pressure.criteria]
 none = "No pressure and no incentive at all: no deadline, no consequence, no reward, and not even the teaser of something unknown"
-urgency = "Time pressure only (a deadline, it lapses today) and no consequence described"
+urgency = "Time pressure only: an explicit deadline (by the end of today, within 24 hours, expiring soon) - a mere hurry-up line (\"please reply as soon as possible\") does not count as this bucket"
 reward = "An unexpected benefit (prize, cashback, free credit)"
 fear = "The reader is threatened with a consequence (frozen account, violation, arrears, legal action) - pick this one whenever such a consequence appears, even if a deadline is also given; merely mentioning \"we spotted something unusual\" does not count"
-curiosity = "Only says there is something about the reader without ever telling what it is; no deadline, no consequence and no benefit"
+curiosity = "Only says there is something about the reader without ever telling what it is; no deadline, no consequence and no benefit. Even if the text also carries a hurry-up line (\"reply as soon as possible\"), pick this one as long as there is no explicit deadline, no consequence and no benefit"
 
 [fam.link_text]
 q = [
@@ -167,9 +167,8 @@ q = [
 ]
 
 [fam.link_text.criteria]
-no_link = "The email has no link (such mail is never asked this question; it appears in the verify prompt only)"
-matches = "The link text is the real target itself, or just an organisation / page name (no other address is written)"
-mismatched = "The link text is an address different from the real target (pretending to be another domain / a shortener / an IP)"
+matches = "The link line carries only the real target (a bare URL with no extra display text also counts), or the link text is just an organisation / page name"
+mismatched = "The link line writes two different addresses - the displayed one and the real target (the displayed one pretending to be another domain / a shortener / an IP)"
 
 [fam.sender_identity]
 q = [
@@ -187,12 +186,12 @@ forged = "The display name claims an organisation, but the signature has no offi
 q = [
   "Is this email a phishing attempt?",
   "Does this message belong to a phishing attack?",
-  "Is it out to steal credentials or money, or to push a suspicious link?",
+  "Does it ask for something while also showing red flags?",
 ]
 
 [fam.is_phishing.criteria]
-"true" = "Yes: it seeks credentials or money, or pushes a suspicious link"
-"false" = "No, it is not phishing"
+"true" = "Yes: it **both** asks for something (credentials, money, or a link click) **and** shows a red flag (impersonated identity, deceptive link target, or deadline/consequence pressure)"
+"false" = "No: it asks for nothing, or shows no red flag"
 
 [fam.is_spam]
 q = [

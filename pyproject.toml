@@ -33,6 +33,12 @@ packages = [
     "workflows.mail",
     "workflows.invoice",
     "workflows.hybrid",
+    "workflows.shell",
+    "workflows.search",
+    "workflows.citation",
+    "workflows.routing",
+    "workflows.guardrail",
+    "workflows.rerank",
 ]
 
 [tool.setuptools.package-dir]
@@ -45,6 +51,12 @@ jc = ["locales/judge/*.toml"]
 "workflows.mail" = ["locales/*.toml"]
 "workflows.invoice" = ["locales/*.toml"]
 "workflows.hybrid" = ["locales/*.toml"]
+"workflows.shell" = ["locales/*.toml"]
+"workflows.search" = ["locales/*.toml"]
+"workflows.citation" = ["locales/*.toml"]
+"workflows.routing" = ["locales/*.toml"]
+"workflows.guardrail" = ["locales/*.toml"]
+"workflows.rerank" = ["locales/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

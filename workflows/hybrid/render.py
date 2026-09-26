@@ -324,12 +324,17 @@ def build_prompt(spec: HybridSpec, loc: dict[str, Any]) -> str:
     """组装写文本的提示词。
 
     输入：规格、语言字典。输出：提示词字符串。
-    预期行为：**只给场数与规则**，不给任何骨架事实（时刻 / 会议室 / 主持人都不出现）——
+    预期行为：**只给场数、主题方向与规则**，不给任何骨架事实（时刻 / 会议室 / 主持人都不出现）——
     给了就是邀请模型把骨架写进文本，而文本里夹带骨架事实一律会被 `check_draft` 拒掉。
+    主题方向是**每条样本抽出来的**，所以同场数的样本提示词也不一样。
     """
+    theme = locales.pick(loc["prompt"]["themes"], spec.theme)
     lines = [loc["prompt"]["intro"], ""]
     lines += [
-        "- " + rule.format(count=len(spec.meetings), language=loc["language_name"])
+        "- "
+        + rule.format(
+            count=len(spec.meetings), language=loc["language_name"], theme=theme
+        )
         for rule in loc["prompt"]["rules"]
     ]
     return "\n".join(lines)

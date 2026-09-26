@@ -67,7 +67,7 @@ def test_every_case_holds_every_invariant() -> None:
     for case in sp.build_cases(sp.HybridConfig()):
         for seq in range(8):
             rng = random.Random(f"{case.describe()}|{seq}")
-            spec = sp.sample_spec(rng, case, "train", seq, 0)
+            spec = sp.sample_spec(rng, case, "train", seq, 0, 0)
             total += 1
             bad += [f"{case.describe()}#{seq}: {item}" for item in _problems(spec)]
     assert total > 0
@@ -78,12 +78,26 @@ def test_compatible_rejects_combinations_that_cannot_be_written() -> None:
     """输入：几个写不出来的组合。输出：False。
 
     预期行为：两场会 + `same_room` 写不出「两场抢同一间房」（整份日程只剩一间房，
-    `room_of` 会退化成一个选项）；傍晚才开始 + 4 场长会怎么排都开到第二天。
+    `room_of` 会退化成一个选项）；1 场会时所有「第 n 场」题族都只剩一个选项；
+    傍晚才开始 + 4 场长会怎么排都开到第二天。
     """
+    assert not sp.compatible(sp.HybridCase(1, "early", "none", "bullet", 1, "short"))
     assert not sp.compatible(sp.HybridCase(2, "early", "same_room", "bullet", 1, "short"))
     assert not sp.compatible(sp.HybridCase(4, "evening", "none", "bullet", 1, "long"))
     assert sp.compatible(sp.HybridCase(3, "early", "same_room", "bullet", 1, "short"))
     assert sp.compatible(sp.HybridCase(2, "evening", "none", "bullet", 1, "short"))
+
+
+def test_single_meeting_config_yields_no_cases() -> None:
+    """输入：只要 1 场会的采样参数。输出：空 case 表。
+
+    预期行为：不是「生成了再拒」，而是**根本不生成**——`meeting_counts` 是公开旋钮，
+    填了写不出来的取值时应当得到空表，而不是一整批 `E_CHOICE_OPTION_COUNT` 垃圾。
+    """
+    assert sp.build_cases(sp.HybridConfig(meeting_counts=(1,))) == []
+    mixed = sp.build_cases(sp.HybridConfig(meeting_counts=(1, 2)))
+    assert mixed  # 混着填时，写得出来的那一档照常生成
+    assert {case.meetings for case in mixed} == {2}
 
 
 def test_build_cases_is_stable_and_filtered() -> None:
@@ -151,6 +165,7 @@ def _handmade(
         date=(2026, 9, 23),
         meetings=tuple(sp.Meeting(*item) for item in meetings),
         phrasing=0,
+        theme=0,
     )
 
 
@@ -207,10 +222,10 @@ def test_sample_spec_is_deterministic_and_records_the_plan() -> None:
     标题与议题留空等渲染阶段补。
     """
     case = sp.HybridCase(3, "noon", "overlap", "table", 5, "long")
-    first = sp.sample_spec(random.Random(7), case, "val", 42, 2)
-    second = sp.sample_spec(random.Random(7), case, "val", 42, 2)
+    first = sp.sample_spec(random.Random(7), case, "val", 42, 2, 5)
+    second = sp.sample_spec(random.Random(7), case, "val", 42, 2, 5)
     assert first == second
-    assert first.split == "val" and first.seq == 42 and first.phrasing == 2
+    assert first.split == "val" and first.seq == 42 and first.phrasing == 2 and first.theme == 5
     assert first.written == {} and first.slot_names() == ("m1", "m2", "m3")
     assert first.text_task_id == "hybrid-val-0000042-text"
 
@@ -220,7 +235,9 @@ def test_text_of_raises_before_render() -> None:
 
     预期行为：文本由后端产生，`ask` 之前必须先走 `render`；拿不到就报错而不是给空串。
     """
-    spec = sp.sample_spec(random.Random(1), sp.HybridCase(2, "early", "none", "bullet", 1, "short"), "train", 0, 0)
+    spec = sp.sample_spec(
+        random.Random(1), sp.HybridCase(2, "early", "none", "bullet", 1, "short"), "train", 0, 0, 0
+    )
     with pytest.raises(KeyError, match="还没写"):
         spec.text_of("m1")
 
@@ -261,7 +278,7 @@ def test_sample_spec_refuses_an_unsolvable_case() -> None:
     """
     case = sp.HybridCase(2, "early", "same_room", "bullet", 1, "short")
     with pytest.raises(ValueError, match="写不出日程"):
-        sp.sample_spec(random.Random(1), case, "train", 0, 0)
+        sp.sample_spec(random.Random(1), case, "train", 0, 0, 0)
 
 
 def test_presentation_order_is_not_always_chronological() -> None:
@@ -276,41 +293,7 @@ def test_presentation_order_is_not_always_chronological() -> None:
     for case in sp.build_cases(sp.HybridConfig()):
         for seq in range(4):
             spec = sp.sample_spec(
-                random.Random(f"{case.describe()}|{seq}"), case, "train", seq, 0
-            )
-            starts = [meeting.start for meeting in spec.meetings]
-            total += 1
-            chronological += starts == sorted(starts)
-    assert 0 < chronological < total
-
-
-def test_intervals_overlap_is_symmetric() -> None:
-    """输入：两场会（顺序互换）。输出：是否重叠。
-
-    预期行为：判据与入参顺序无关——展示顺序是洗过的，非对称判据会把不相邻的两场误判成重叠。
-    """
-    early = sp.Meeting(9, 2, 0, 0)  # 9:00–11:00
-    late = sp.Meeting(11, 1, 1, 1)  # 11:00–12:00
-    assert sp.intervals_overlap(early, late) is False
-    assert sp.intervals_overlap(late, early) is False
-    touching = sp.Meeting(10, 1, 2, 2)  # 10:00–11:00，与上面两场都重叠
-    assert sp.intervals_overlap(early, touching) is True
-    assert sp.intervals_overlap(touching, early) is True
-
-
-def test_presentation_order_is_not_always_chronological() -> None:
-    """输入：全枚举 case × 每个 4 条样本。输出：无。
-
-    预期行为：展示顺序**不能**总是时间顺序——否则「哪一场开始得最早」的答案永远是 m1，
-    模型会学成「答案 = 列表第一行」的位置捷径，而不是真的去比时刻。
-    （也不能永远不是：偶尔顺序刚好一致是正常的。）
-    """
-    chronological = 0
-    total = 0
-    for case in sp.build_cases(sp.HybridConfig()):
-        for seq in range(4):
-            spec = sp.sample_spec(
-                random.Random(f"{case.describe()}|{seq}"), case, "train", seq, 0
+                random.Random(f"{case.describe()}|{seq}"), case, "train", seq, 0, 0
             )
             starts = [meeting.start for meeting in spec.meetings]
             total += 1

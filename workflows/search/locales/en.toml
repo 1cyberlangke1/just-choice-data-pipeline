@@ -1,0 +1,253 @@
+# English strings for the search workflow: labels, doc kinds, authorities, topics,
+# title / snippet templates, questions and options.
+#
+# 与中文文件同一批约定（见 zh.toml 顶部）：标签互不重叠、主题名与要点词互不包含、
+# 只有 conflict_a / conflict_b 提到指标名、问「结果 {n}」的题面里数字只允许是编号本身。
+
+[meta]
+title = "Search request"
+query_label = "User question"
+kind_label = "Required document type"
+since_label = "Updated no earlier than"
+points_label = "Question points"
+results_label = "Search results"
+snippet_label = "Snippet"
+updated_label = "updated"
+colon = ": "
+list_sep = ", "
+field_sep = " | "
+
+[doc_kind]
+guide = "handbook"
+policy = "policy"
+api = "api reference"
+incident = "postmortem"
+release = "release notes"
+faq = "faq"
+
+[authority]
+official = "official docs"
+team = "internal wiki"
+community = "community Q&A"
+blog = "personal blog"
+
+[query]
+tpl = [
+  "About {label}: how are {p1} and {p2} specified?",
+  "I want to know how {label} handles {p1} and {p2}.",
+  "For {label}, what are the rules on {p1} and {p2}?",
+]
+
+[topic.refund]
+label = "refunds"
+points = ["approval", "deadline"]
+metric = "amount cap"
+values = ["5000 CNY", "20000 CNY"]
+
+[topic.login]
+label = "two-factor login"
+points = ["recovery code", "reset"]
+metric = "validity"
+values = ["7 days", "30 days"]
+
+[topic.ratelimit]
+label = "api rate limiting"
+points = ["quota", "backoff"]
+metric = "per-minute cap"
+values = ["600 calls", "1200 calls"]
+
+[topic.retention]
+label = "data retention"
+points = ["period", "archive"]
+metric = "months kept"
+values = ["18 months", "36 months"]
+
+[topic.outage]
+label = "production outage"
+points = ["root cause", "follow-up"]
+metric = "impact duration"
+values = ["42 minutes", "95 minutes"]
+
+[topic.rollout]
+label = "release rollout"
+points = ["changes", "compatibility"]
+metric = "canary share"
+values = ["5%", "20%"]
+
+[topic.billing]
+label = "billing reconciliation"
+points = ["discrepancy", "appeal"]
+metric = "cycle"
+values = ["T+1", "T+7"]
+
+[topic.webhook]
+label = "webhook delivery"
+points = ["signature", "payload"]
+metric = "retry count"
+values = ["3 tries", "8 tries"]
+
+[title.full]
+text = "{label} process guide"
+
+[title.partial]
+text = "{label} process guide"
+
+[title.empty]
+text = "{label} specification"
+
+[title.twin]
+text = "{label} handbook"
+
+[title.old_hit]
+text = "{label} FAQ"
+
+[title.stale]
+text = "{label} process guide (old revision)"
+
+[title.weak_hit]
+text = "{label} archived notes"
+
+[title.wrong_kind]
+text = "{label} rules"
+
+[title.other_topic]
+text = "{other} notes"
+
+[title.conflict]
+text = "{label}: {p1} and {p2} requirements"
+
+[title.plain_a]
+text = "{label}: {p1} notes"
+
+[title.plain_b]
+text = "{label}: {p2} notes"
+
+[title.other_a]
+text = "{other}: {op1} notes"
+
+[title.other_b]
+text = "{other}: {op2} notes"
+
+[snippet.full]
+text = "{label}: {p1} needs a second approval; {p2} is recorded on the ticket."
+
+[snippet.partial]
+text = "{label}: {p1} needs a second approval."
+
+[snippet.empty]
+text = "(no snippet provided)"
+
+[snippet.twin]
+text = "{label} handbook: the full {p1} and {p2} flow."
+
+[snippet.old_hit]
+text = "{label}: FAQ covering {p1} and {p2}."
+
+[snippet.stale]
+text = "{label} (old revision): the rules on {p1} and {p2}."
+
+[snippet.weak_hit]
+text = "{label} (archived): the old wording for {p1} and {p2}."
+
+[snippet.wrong_kind]
+text = "{label}: the rules about {p1}."
+
+[snippet.other_topic]
+text = "{other}: notes on {op1} and {op2}."
+
+[snippet.conflict_a]
+text = "{label}: for {p1} and {p2}, the {metric} is {v1}."
+
+[snippet.conflict_b]
+text = "{label}: for {p1} and {p2}, the {metric} is {v2}."
+
+[snippet.plain_a]
+text = "{label}: notes on {p1}."
+
+[snippet.plain_b]
+text = "{label}: notes on {p2}."
+
+[snippet.other_a]
+text = "{other}: notes on {op1}."
+
+[snippet.other_b]
+text = "{other}: key points on {op2}."
+
+[fam.best_result]
+q = [
+  "According to the ranking rule, which result should the engine place first? Ranking rule: (1) higher relevance first; (2) on equal relevance, higher source authority first (official docs > internal wiki > community Q&A > personal blog); (3) on equal authority, more recent update first; (4) otherwise the smaller result number first. Relevance is defined by the scale in the relevance question.",
+  "Which of these results should be read first? Ranking rule: (1) higher relevance first; (2) on equal relevance, higher source authority first (official docs > internal wiki > community Q&A > personal blog); (3) on equal authority, more recent update first; (4) otherwise the smaller result number first.",
+  "Which result belongs at the top? Ranking rule: (1) higher relevance first; (2) on equal relevance, higher source authority first (official docs > internal wiki > community Q&A > personal blog); (3) on equal authority, more recent update first; (4) otherwise the smaller result number first.",
+]
+
+[fam.next_action]
+q = [
+  "What should the next step be?",
+  "Now that this result page is in hand, which action comes next?",
+  "Which path should be taken next?",
+]
+
+[fam.answerable]
+q = [
+  "Does the snippet of the most relevant result cover every point of the question (a point counts only if the exact word appears in the snippet)?",
+  "Does the snippet of the top-ranked result mention all of the question points (exact word in the snippet)?",
+  "Does the snippet of the result to read first cover each question point (exact word in the snippet)?",
+]
+criteria = { "true" = "Yes, every question point appears in the snippet", "false" = "No, at least one point does not appear in the snippet" }
+
+[fam.conflict]
+q = [
+  "Do the snippets of result {i} and result {j} contradict each other?",
+  "Do result {i} and result {j} give different values for the same metric?",
+  "Are result {i} and result {j} in conflict?",
+]
+criteria = { "true" = "Yes, the two give different values for the same metric", "false" = "No, the two do not contradict each other" }
+
+[fam.same_source]
+q = [
+  "Do result {i} and result {j} come from the same document?",
+  "Are result {i} and result {j} two hits on the same document?",
+  "Do result {i} and result {j} share the same document id?",
+]
+criteria = { "true" = "Yes, both carry the same document id", "false" = "No, the document ids differ" }
+
+[fam.probe_fresh]
+q = [
+  "Is result {n} updated no earlier than the date the question requires?",
+  "Is result {n} fresh enough (updated no earlier than the required date)?",
+  "Does result {n} meet the recency requirement?",
+]
+criteria = { "true" = "Yes, it is updated no earlier than the required date", "false" = "No, it is updated earlier than the required date" }
+
+[fam.relevance]
+q = [
+  "What relevance level does result {n} get?",
+  "Grade result {n} on the relevance scale below.",
+  "Which relevance level does result {n} fall into?",
+]
+levels = [
+  "Level 0: the title is not about the topic the question asks about",
+  "Level 1: the topic matches, but the document type is not the one the question requires",
+  "Level 2: topic and type match, but the document is updated earlier than the date the question requires",
+  "Level 3: topic, type and update date all satisfy the question",
+]
+
+[fam.covered_points]
+q = [
+  "How many of the question points does the snippet of result {n} cover (a point counts only if the exact word appears)?",
+  "Count how many question points appear verbatim in the snippet of result {n}.",
+  "How many of the question points does the snippet of result {n} mention?",
+]
+levels = [
+  "none of the points is mentioned",
+  "1 point is mentioned",
+  "2 points are mentioned",
+]
+
+[option.result]
+text = "{doc_id} | {title} | updated {updated}"
+
+[option.next_action]
+answer = "Answer directly - the most relevant result is relevance 3 and its snippet covers every question point, so it can be used as is"
+search_more = "Search again - the most relevant result is relevance 3 but its snippet does not cover every point, so re-run the query with different keywords"
+switch_source = "Switch source - the most relevant result fails on type or recency (relevance at most 2), so this result page is not usable"

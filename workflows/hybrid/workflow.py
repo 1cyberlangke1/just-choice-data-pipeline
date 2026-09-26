@@ -157,11 +157,18 @@ class HybridWorkflow:
         """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。
 
         预期行为：问法在这里抽（同一 case 的多条样本会用不同问法）；
+        主题方向也在这里抽（提示词里只有场数一个变量的话，同场数的样本提示词会逐字相同，
+        标题就会塌成套话，见 `spec.THEME_IDS` 的来由）；
         case 与序号一起放进 params，`sample` 阶段不再做任何随机决策。
         """
         return SplitSpec(
             name=config.split,
-            params={"case": case, "phrasing": rng.choice(config.phrasings), "seq": seq},
+            params={
+                "case": case,
+                "phrasing": rng.choice(config.phrasings),
+                "theme": rng.choice(config.themes),
+                "seq": seq,
+            },
         )
 
     def sample(self, rng: random.Random, split: SplitSpec) -> HybridSpec:
@@ -172,6 +179,7 @@ class HybridWorkflow:
             split.name,
             split.params["seq"],
             split.params["phrasing"],
+            split.params["theme"],
         )
 
     def render(self, spec: HybridSpec, rng: random.Random, locale: str) -> str:
