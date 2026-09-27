@@ -1,0 +1,85 @@
+# English strings for the rubric workflow.
+# Invariants locked by tests/workflows/rubric/test_locales.py: the same key set as zh,
+# field names and vocabularies that never overlap across languages, a **shared** cell
+# separator, and a policy text that prints every criterion, weight, need, count, band
+# and disposition.
+
+[meta]
+title = "Rubric Sheet"
+request_label = "Sheet ID"
+colon = ": "
+cell_sep = " · "
+
+[criterion]
+example = "example"
+source = "source"
+original = "original"
+sections = "sections"
+typos = "typos"
+length = "length"
+
+[weight]
+w1 = "weight 1"
+w2 = "weight 2"
+w3 = "weight 3"
+
+[need]
+need1 = "need 1"
+need2 = "need 2"
+need3 = "need 3"
+
+[count]
+n0 = "observed 0"
+n1 = "observed 1"
+n2 = "observed 2"
+n3 = "observed 3"
+n4 = "observed 4"
+
+[policy]
+text = "Rules: (1) A sheet has one row per criterion with four cells in this order: criterion, weight, need, observed. The six criteria are example, source, original, sections, typos and length; weights come in three bands (weight 1, weight 2, weight 3) and the six criteria weigh 3, 3, 2, 2, 1, 1; needs come in three bands (need 1, need 2, need 3); the observed cell is an integer from 0 to 4 (observed 0, observed 1, observed 2, observed 3, observed 4). (2) A criterion is met only when its observed count is not below its need. (3) The total is the sum of the weights of the met criteria. (4) Bands split on the total: 7 or more is high, exactly 6 is mid, anything less is low. (5) There is a single red line: the original criterion counts as crossing the red line when it is not met. (6) The disposition comes from a lookup on band and red line: high without the red line passes, mid without the red line passes, high with the red line needs a fix, low without the red line needs a fix, mid with the red line is rejected, low with the red line is rejected. (7) The worst criterion is the unmet one with the largest weight; a tie leaves no single answer."
+
+[fam.met]
+q = [
+  "Is criterion {n} met?",
+  "By the rules, does criterion {n} count as met?",
+  "Is criterion {n}'s observed count enough for its need?",
+]
+
+[fam.met.criteria]
+true = "met: this criterion's observed count is not below its need"
+false = "not met: this criterion's observed count is below its need"
+
+[fam.band]
+q = [
+  "Which band does this sheet's total fall in?",
+  "By the total, which band is this sheet in?",
+  "What band is this sheet?",
+]
+levels = [
+  "low: the total is 5 or less",
+  "mid: the total is exactly 6",
+  "high: the total is 7 or more",
+]
+
+[fam.gate]
+q = [
+  "What disposition should this sheet get?",
+  "By the band and the red line, what disposition should this sheet get?",
+  "What is this sheet's disposition?",
+]
+
+[fam.top]
+q = [
+  "Which criterion is the worst one?",
+  "Which unmet criterion is the worst?",
+  "Which criterion should be fixed first?",
+]
+
+[option.gate]
+pass = "pass: take it as it is"
+fix = "fix: rework it and come back"
+reject = "reject: do not take it"
+
+[option.slot]
+element = "row {n}: {criterion} · {weight} · {need} · {count}"
+

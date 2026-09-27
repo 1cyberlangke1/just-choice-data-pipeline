@@ -26,6 +26,17 @@ from workflows.guardrail.workflow import GuardrailWorkflow
 from workflows.search.workflow import SearchWorkflow
 from workflows.shell.workflow import ShellWorkflow
 from workflows.rerank.workflow import RerankWorkflow
+from workflows.match.workflow import MatchWorkflow
+from workflows.autoformat.workflow import AutoformatWorkflow
+from workflows.functions.workflow import FunctionsWorkflow
+from workflows.lint.workflow import LintWorkflow
+from workflows.modelroute.workflow import ModelRouteWorkflow
+from workflows.context.workflow import ContextWorkflow
+from workflows.browser.workflow import BrowserWorkflow
+from workflows.review.workflow import ReviewWorkflow
+from workflows.skillpick.workflow import SkillPickWorkflow
+from workflows.rubric.workflow import RubricWorkflow
+from workflows.sim.workflow import SimWorkflow
 
 
 def spans_of(workflow: Any, splits: tuple[str, ...]) -> dict[str, set[str]]:
@@ -94,10 +105,21 @@ def value_spans(workflow: Any, splits: tuple[str, ...]) -> dict[str, set[str]]:
         (RoutingWorkflow, ("area", "issue", "compliance")),
         (GuardrailWorkflow, ("mentions", "history", "wording")),
         (RerankWorkflow, ("topic", "traps", "wording")),
+        (MatchWorkflow, ("product", "spelling")),
+        (AutoformatWorkflow, ("topic", "wrap", "variant", "code_family")),
+        (FunctionsWorkflow, ("tool", "window", "alias", "phrasing")),
+        (LintWorkflow, ("rule", "genre", "phrasing")),
+        (ModelRouteWorkflow, ("task", "phrasing")),
+        (ContextWorkflow, ("keep_form", "phrasing")),
+        (BrowserWorkflow, ("task", "phrasing")),
+        (ReviewWorkflow, ("noise", "phrasing")),
+        (SkillPickWorkflow, ("layout", "phrasing")),
+        (RubricWorkflow, ("layout", "phrasing")),
+        (SimWorkflow, ("layout", "phrasing")),
     ],
 )
 def test_value_holdout_is_realized(factory: Any, dims: tuple[str, ...]) -> None:
-    """输入：两个纯构造式 workflow 与它们被留出的维度。输出：无。
+    """输入：纯构造式 workflow 与它们被留出的维度。输出：无。
 
     预期行为：被点名的每个维度在 `test_ood` 侧都**真有**同分布侧没见过的取值——
     留出清单是设计意图，这条把它钉在数据上；只写注释不写断言的话，

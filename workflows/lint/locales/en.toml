@@ -1,0 +1,193 @@
+# 行级规则检查（lint）workflow 的英文文案。
+#
+# 输入：`workflows.lint.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为与 zh.toml 完全一致（同样由测试钉住）。与中文的差异只在**文案**：
+# 源码体裁的行内容两边相同（代码就是代码），日志与文档体裁的措辞各自本地化。
+
+q = [
+  "Go through the snippet below line by line against this rule: flag every line that matches \"{rule}\".",
+  "The snippet below is to be checked against the rule \"{rule}\"; walk it line by line.",
+]
+
+ts = [
+  "2026-09-27 10:12:03",
+  "2026-09-27 10:12:04",
+  "2026-09-27 10:12:05",
+  "2026-09-27 10:12:06",
+  "2026-09-27 10:12:07",
+  "2026-09-27 10:12:08",
+  "2026-09-27 10:12:09",
+  "2026-09-27 10:12:10",
+]
+
+[rule]
+secret = "hardcoded credentials"
+todo = "leftover TODO markers"
+debug = "leftover debug output"
+path = "hardcoded absolute paths"
+long = "overlong lines"
+
+[lead]
+code = "Snippet (a chunk of source code, {n} lines):"
+log = "Snippet (a chunk of service log, {n} lines):"
+doc = "Snippet (a chunk of documentation, {n} lines):"
+
+# ---------- 命中行 ----------
+
+[hit.secret.code]
+tpl = "{name} = \"{val}\""
+[hit.secret.log]
+tpl = "{ts} INFO config loaded: {name}=\"{val}\""
+[hit.secret.doc]
+tpl = "for example put {name} = \"{val}\" into the environment"
+[hit.secret.slots]
+s0 = { name = "API_KEY", val = "sk-live-9f2b2c" }
+s1 = { name = "DB_PASSWORD", val = "hunter2-x" }
+s2 = { name = "AUTH_TOKEN", val = "tok-7f3a91bc" }
+s3 = { name = "SECRET_KEY", val = "s3cr3t-42ab" }
+s4 = { name = "ACCESS_KEY", val = "AKIA91F2CD" }
+s5 = { name = "PRIVATE_KEY", val = "pk-8c1d4e2f" }
+s6 = { name = "redis_pwd", val = "r3dis-9a1b" }
+s7 = { name = "SMTP_CREDENTIAL", val = "smtp-7c2f" }
+
+[hit.todo.code]
+tpl = "{prefix}{tag}: {note}"
+[hit.todo.log]
+tpl = "{ts} WARN {tag}: {note}"
+[hit.todo.doc]
+tpl = "- {tag}: {note}"
+[hit.todo.slots]
+s0 = { prefix = "# ", tag = "TODO", note = "add retry support" }
+s1 = { prefix = "// ", tag = "FIXME", note = "lock order is reversed" }
+s2 = { prefix = "# ", tag = "XXX", note = "temporary workaround" }
+s3 = { prefix = "// ", tag = "HACK", note = "bypass the cache" }
+s4 = { prefix = "# ", tag = "TODO", note = "cover with unit tests" }
+s5 = { prefix = "// ", tag = "FIXME", note = "edge case unhandled" }
+s6 = { prefix = "# ", tag = "TODO", note = "move to the new API" }
+s7 = { prefix = "// ", tag = "XXX", note = "wait for upstream fix" }
+
+[hit.debug.code]
+tpl = "{call}"
+[hit.debug.log]
+tpl = "{ts} DEBUG stdout: {call}"
+[hit.debug.doc]
+tpl = "run {call} to see the intermediate result"
+[hit.debug.slots]
+s0 = { call = "print(\"loading config\")" }
+s1 = { call = "console.log(\"step 2\")" }
+s2 = { call = "logger.debug(\"cache miss\")" }
+s3 = { call = "var_dump($row)" }
+s4 = { call = "fmt.Print(\"done\")" }
+s5 = { call = "print(\"rows\", n)" }
+s6 = { call = "console.log(payload)" }
+s7 = { call = "logger.debug(\"retry\", attempt)" }
+
+[hit.path.code]
+tpl = "{name} = \"{where}\""
+[hit.path.log]
+tpl = "{ts} ERROR failed to open config \"{where}\""
+[hit.path.doc]
+tpl = "put the config under \"{where}\""
+[hit.path.slots]
+s0 = { name = "CONFIG", where = "/etc/app/config.yml" }
+s1 = { name = "DATA_DIR", where = "/var/lib/app/data" }
+s2 = { name = "HOME_DIR", where = "/home/deploy/app" }
+s3 = { name = "CACHE", where = "/tmp/build-cache" }
+s4 = { name = "ROOT", where = "C:\\projects\\app" }
+s5 = { name = "LOG_DIR", where = "/opt/app/logs" }
+s6 = { name = "USER_CACHE", where = "/Users/dev/cache" }
+s7 = { name = "BACKUP", where = "D:\\backup\\app" }
+
+[hit.long.code]
+tpl = "# {payload}"
+[hit.long.log]
+tpl = "{ts} INFO {payload}"
+[hit.long.doc]
+tpl = "{payload}"
+[hit.long.slots]
+s0 = { payload = "After the cache entry expires the request falls back to the database, and when concurrency is high the fallback pressure multiplies fast." }
+s1 = { payload = "This log line records the whole request chain, from the edge gateway to the business service and down to storage, each hop carrying its own latency." }
+s2 = { payload = "Config names must stay in sync with the constants in the code, so renaming means touching both sides, otherwise production reads nothing at startup." }
+s3 = { payload = "The comment explains why the lock is needed here: two background threads refresh the same index, and without the lock the file is half written." }
+s4 = { payload = "Prepare the rollback plan in advance and actually rehearse it in staging instead of only writing it down, because nobody learns it during an outage." }
+s5 = { payload = "The response body carries a pagination cursor and the client has to send it back verbatim to get the next page, never rebuild the page number itself." }
+s6 = { payload = "Watch two numbers during the load test, the average latency and the tail latency, because looking only at the average hides the slow tail entirely." }
+s7 = { payload = "Run the migration script on a read replica first and compare row counts and checksums before touching the primary, ten minutes saved hours later." }
+
+# ---------- 背景行：每个体裁 8 行，一行都不许命中任何规则 ----------
+
+[bg]
+code = [
+  "def load_config():",
+  "import os",
+  "return dict(retries=3)",
+  "# read the local config",
+  "raise ValueError(\"bad input\")",
+  "class Client:",
+  "# client timeout setup",
+  "for item in items:",
+]
+
+
+log = [
+  "2026-09-27 10:12:03 INFO service started",
+  "2026-09-27 10:12:04 DEBUG cache warm-up done",
+  "2026-09-27 10:12:05 INFO got request /v1/items",
+  "2026-09-27 10:12:06 WARN upstream took 320 ms",
+  "2026-09-27 10:12:07 INFO request done status=200",
+  "2026-09-27 10:12:08 DEBUG connection pool size 8",
+  "2026-09-27 10:12:09 INFO heartbeat ok",
+  "2026-09-27 10:12:10 WARN retry attempt 1",
+]
+
+
+doc = [
+  "## Installation",
+  "1. install the dependencies first",
+  "2. then run the database migration",
+  "### Configuration",
+  "Paste the snippet above into your config file.",
+  "See the appendix for common questions.",
+  "Note: it takes effect only after a restart.",
+  "| option | meaning |",
+]
+
+# ---------- 题面 ----------
+
+[fam.line]
+q = ["Does line {n} match this rule?", "Is the content of line {n} a match for this rule?"]
+[fam.line.criteria]
+true = "line {n} does match this rule"
+false = "line {n} does not match this rule"
+
+[fam.count]
+q = ["How many lines in this snippet match the rule?", "Walking the rule across the snippet, how many lines match?"]
+[fam.count.opt]
+c0 = "no line matches"
+c1 = "exactly 1 line matches"
+c2 = "exactly 2 lines match"
+c3 = "exactly 3 lines match"
+c4 = "exactly 4 lines match"
+c5 = "exactly 5 lines match"
+c6 = "exactly 6 lines match"
+c7 = "exactly 7 lines match"
+c8 = "all 8 lines match"
+
+[fam.gate]
+q = [
+  "By the disposition policy stated here (0~2 matching lines pass, 3~5 go to human review, 6 or more are blocked), how should this snippet be handled?",
+  "The policy is 0~2 matching lines pass, 3~5 go to human review, 6 or more are blocked - which band does this snippet fall into?",
+]
+[fam.gate.opt]
+pass = "pass"
+review = "human review"
+block = "block"
+
+[fam.spot]
+q = [
+  "Exactly one line in this snippet matches the rule; which line is it?",
+  "Only a single line in this snippet matches the rule, point it out.",
+]
+[fam.spot.opt]
+row = "line {n}: {line}"

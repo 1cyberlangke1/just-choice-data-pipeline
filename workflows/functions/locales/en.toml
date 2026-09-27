@@ -1,0 +1,167 @@
+# English copy for the function-calling (functions) workflow.
+#
+# Read by `workflows.functions.locales.load("en")`.
+# Expected behaviour:
+# - intent phrases never contain one another, so a request matches exactly one tool;
+# - every value phrase in `[val]` is globally unique across the whole locale;
+# - the `ticker` / `name` spellings of one argument point at the same value;
+# - a `[flag]` phrase appears in no `[val]` phrase and in no template;
+# - `[req.<tool>].lead` carries the subject in its `{subject}` slot, and every other
+#   mentioned argument has its own segment template;
+# - an optional argument that is not mentioned never shows up in the text.
+
+[mark]
+close = "."
+list_sep = ", "
+list_last = " and "
+
+[intent]
+plot_price = "plot the price action"
+compare_returns = "compare the returns"
+rolling_correlation = "work out the rolling correlation"
+top_movers = "show the biggest movers"
+
+[req.plot_price]
+lead = ["Please plot the price action for {subject}", "{subject}, plot the price action"]
+window = ", over {window}"
+style = ", drawn as {style}"
+resolution = ", at {resolution}"
+include_volume = ", {include_volume}"
+
+[req.compare_returns]
+lead = ["Please compare the returns of {subject}", "{subject}, compare the returns"]
+window = ", over {window}"
+normalize = ", {normalize}"
+resolution = ", at {resolution}"
+
+[req.rolling_correlation]
+lead = ["Please work out the rolling correlation for {subject}", "{subject}, work out the rolling correlation"]
+window = ", over {window}"
+resolution = ", at {resolution}"
+smoothing = ", {smoothing}"
+
+[req.top_movers]
+lead = ["Please show the biggest movers", "Alright, show the biggest movers"]
+window = ", over {window}"
+direction = ", {direction}"
+include_etfs = ", {include_etfs}"
+
+[val.window]
+"1d" = "the last session"
+"1w" = "the last week"
+"1mo" = "the last month"
+"3mo" = "the last quarter"
+
+[val.resolution]
+"1m" = "one-minute bars"
+"5m" = "five-minute bars"
+"15m" = "fifteen-minute bars"
+"1h" = "hourly bars"
+"1d" = "daily bars"
+
+[val.style]
+line = "a line chart"
+candles = "a candlestick chart"
+
+[val.direction]
+up = "only the gainers"
+down = "only the losers"
+both = "both gainers and losers"
+
+[val.symbol.ticker]
+NVDA = "NVDA"
+AMD = "AMD"
+AAPL = "AAPL"
+MSFT = "MSFT"
+TSLA = "TSLA"
+
+[val.symbol.name]
+NVDA = "Nvidia"
+AMD = "Advanced Micro Devices"
+AAPL = "Apple"
+MSFT = "Microsoft"
+TSLA = "Tesla"
+
+[val.benchmark.ticker]
+SPY = "SPY"
+QQQ = "QQQ"
+
+[val.benchmark.name]
+SPY = "the S&P 500 fund"
+QQQ = "the Nasdaq 100 fund"
+
+[flag]
+include_volume = "include the volume"
+normalize = "normalise the values"
+smoothing = "smooth the curve"
+include_etfs = "include ETFs"
+
+[opt.symbol]
+NVDA = "Nvidia (NVDA)"
+AMD = "Advanced Micro Devices (AMD)"
+AAPL = "Apple (AAPL)"
+MSFT = "Microsoft (MSFT)"
+TSLA = "Tesla (TSLA)"
+
+[opt.benchmark]
+SPY = "the S&P 500 index fund (SPY)"
+QQQ = "the Nasdaq 100 index fund (QQQ)"
+
+[opt.window]
+"1d" = "the last session"
+"1w" = "the last week"
+"1mo" = "the last month"
+"3mo" = "the last quarter"
+
+[opt.resolution]
+"1m" = "one data point per minute"
+"5m" = "one data point every five minutes"
+"15m" = "one data point every fifteen minutes"
+"1h" = "one data point per hour"
+"1d" = "one data point per day"
+
+[opt.style]
+line = "a line chart"
+candles = "a candlestick chart"
+
+[opt.direction]
+up = "gainers only"
+down = "losers only"
+both = "both directions"
+
+[tool_desc]
+plot_price = "draw a price chart for one symbol"
+compare_returns = "compare the returns of several symbols"
+rolling_correlation = "measure the rolling correlation between a symbol and a benchmark"
+top_movers = "list the symbols that moved the most over a period"
+
+[arg_desc]
+symbol = "the symbol"
+symbols = "the set of symbols"
+benchmark = "the benchmark"
+window = "the time window"
+resolution = "the data resolution"
+style = "the chart style"
+direction = "the ranking direction"
+include_volume = "the volume switch"
+normalize = "the normalisation switch"
+smoothing = "the smoothing switch"
+include_etfs = "the ETF switch"
+
+[fam.tool]
+q = ["Which function should this request call?", "Which tool call does this request correspond to?"]
+
+[fam.arg]
+q = ["Which value does the request give for {arg}?", "Which of these values does the request pick for {arg}?"]
+
+[fam.stated]
+q = ["Does this request mention {arg}?", "Does the request explicitly specify {arg}?"]
+[fam.stated.criteria]
+true = "the request gives an explicit value for {arg}"
+false = "the request says nothing about {arg}, so the function falls back to its default"
+
+[fam.member]
+q = ["Does the request ask for {value}?", "Is {value} included in this request?"]
+[fam.member.criteria]
+true = "the request names it explicitly"
+false = "the request never mentions it"

@@ -1,0 +1,117 @@
+# 会话上下文压缩 workflow 的中文文案：标签、词表、正文模板、判据原文与选项描述。
+#
+# 约定（由 tests/workflows/context/test_locales.py 锁住）：
+# - 抬头行四格各有自己的词表，反解按分隔符切格后查表；
+# - 各语言的标签互不重叠，分隔符则**必须一致**（`reparse` 用合并表做语言无关的反解）；
+# - 判据（处置表 / 尺寸 / 开销 / 预算比较）整段写进每道题的题面，只读 state 与题面的
+#   读者必须能自己把答案算出来。
+
+[meta]
+title = "会话压缩台"
+colon = "："
+session_label = "会话号"
+budget_label = "预算"
+task_label = "当前任务"
+token_unit = "token"
+block_sep = " · "
+content_indent = "    "
+task_text = "给支付模块补上失败重试"
+
+[kind]
+ask = "用户提问"
+read = "读文件结果"
+run = "命令输出"
+err = "报错"
+
+[size]
+small = "小"
+big = "大"
+
+[age]
+recent = "最近一轮"
+old = "七轮之前"
+
+[topic]
+same = "同一主题"
+other = "另一个主题"
+
+# 正文模板：键是「类型_大小_年龄_主题」。四元组在一段会话里两两不同，所以同一屏里
+# 不会出现两行一模一样的正文。同一主题的块讲重试，另一个主题的块讲导出脚本或报表。
+[content]
+ask_small_recent_same = "用户问：重试该加在调用方还是被调方？"
+ask_small_recent_other = "用户问：导出脚本的编码问题还在吗？"
+ask_small_old_same = "用户问：重试次数要不要做成配置项？"
+ask_small_old_other = "用户问：上次那个报表的口径改了没有？"
+ask_big_recent_same = "用户贴了一段支付回调的超时日志，问重试该怎么设计。"
+ask_big_recent_other = "用户贴了一大段导出脚本的报错说明，问编码怎么统一。"
+ask_big_old_same = "用户贴了一大段重试策略的背景说明，问该选哪种退避。"
+ask_big_old_other = "用户贴了一大段报表需求，问口径该怎么定。"
+read_small_recent_same = "读取 src/pay.py 的开头，只返回了重试相关的那一个函数。"
+read_small_recent_other = "读取 tools/export.py 的开头，只返回了编码相关的几行。"
+read_small_old_same = "读取 config/retry.yaml，只有 12 行配置。"
+read_small_old_other = "读取 docs/report.md 的开头几行。"
+read_big_recent_same = "读取 src/pay.py 全文，412 行，重试逻辑都在里面。"
+read_big_recent_other = "读取 tools/export.py 全文，380 行。"
+read_big_old_same = "读取 src/retry.py 全文，260 行，退避策略都在里面。"
+read_big_old_other = "读取 docs/report_spec.md 全文，300 行。"
+run_small_recent_same = "跑了一次重试相关的单测，输出 12 行。"
+run_small_recent_other = "跑了一次导出脚本的冒烟测试，输出 9 行。"
+run_small_old_same = "跑了一次退避策略的对比脚本，输出 15 行。"
+run_small_old_other = "跑了一次报表抽样，输出 7 行。"
+run_big_recent_same = "跑了一次全量测试，输出 900 多行，重试相关的那几条在最前面。"
+run_big_recent_other = "跑了一次导出全流程，输出 800 多行。"
+run_big_old_same = "跑了一次压测，输出 1200 行，重试次数都记在里面。"
+run_big_old_other = "跑了一次报表全量生成，输出 1100 行。"
+err_small_recent_same = "命令报错，栈里只有 3 行。"
+err_small_recent_other = "导出脚本报错，栈里只有 4 行。"
+err_small_old_same = "重试脚本报错，栈里只有 2 行。"
+err_small_old_other = "报表脚本报错，栈里只有 5 行。"
+err_big_recent_same = "命令报错，栈里带了 80 行上下文。"
+err_big_recent_other = "导出脚本报错，栈里带了 90 行上下文。"
+err_big_old_same = "重试脚本报错，栈里带了 70 行上下文。"
+err_big_old_other = "报表脚本报错，栈里带了 60 行上下文。"
+
+[policy]
+# 判据原文：整段拼在每道题的问句后面（范式 §9.8）。
+text = "处置表（三条规则按顺序判）：一、报错块一律原样保留，不管它的年龄、大小、主题；二、与当前任务不同主题（另一个主题）的块一律丢弃；三、与当前任务同一主题的其余块按年龄与大小——最近一轮的小块原样保留、最近一轮的大块截断、七轮之前的小块压成摘要、七轮之前的大块丢弃。尺寸：小 = 180 token，大 = 1600 token。处置开销：原样保留按原大小计（小 180 / 大 1600），截断记 800 token，压成摘要记 60 token，丢弃记 0。把五个块的开销加起来就是处置后的总账；总账严格超过预算就要再压缩，刚好等于预算则不必。"
+
+[fam.action]
+q = [
+  "第 {n} 块该怎么处置？",
+  "按处置表，第 {n} 块该走哪一档？",
+  "第 {n} 块应当被怎么处理？",
+]
+
+[fam.compact]
+q = [
+  "按处置表算完，这次会话还需要再压缩吗？",
+  "处置之后的总账超过预算了吗？",
+  "这次会话要不要继续压缩？",
+]
+
+[fam.compact.criteria]
+true = "需要：处置后的总账严格超过预算"
+false = "不需要：处置后的总账没有超过预算"
+
+[fam.spot]
+q = [
+  "被丢弃的那一块是第几块？",
+  "处置表里会被丢掉的是第几块？",
+  "哪一块会被丢弃？",
+]
+
+[fam.top]
+q = [
+  "处置之后占用 token 最多的是第几块？",
+  "处置后最占地方的是哪一块？",
+  "哪一块处置后占的 token 最多？",
+]
+
+[option.action]
+keep = "原样保留（按原大小计，小 180 / 大 1600）"
+trim = "截断到 800 token"
+digest = "压成摘要（记 60 token）"
+drop = "丢弃（记 0）"
+
+[option.position]
+block = "第 {n} 块：{kind} · {size} · {age} · {topic}"

@@ -1,0 +1,174 @@
+# English copy for the structure-recovery (autoformat) workflow.
+#
+# Read by `workflows.autoformat.locales.load("en")`.
+# Expected behaviour:
+# - `{slot}` placeholders are filled from `[slot]` by spec;
+# - prose sentences end with a sentence-final mark, headings and list items do not;
+# - callout keywords are grouped by kind and never overlap;
+# - no text outside a callout may contain a callout keyword.
+
+[doc]
+context = "Below is a plain-text memo that lost its Markdown markup: no #, no list markers, no quote markers, and the prose was hard-wrapped. Every line starts with a line number beginning with L. A 'content block' means: a run of consecutive lines forms one block, blocks are separated by blank lines, and each item of a list counts as its own block."
+
+[mark]
+attribution = "——"
+sentence_join = " "
+
+[type]
+heading = "heading"
+paragraph = "paragraph"
+list_item = "list item"
+quote = "quote"
+code = "command line"
+callout = "callout"
+
+[type_desc]
+heading = "a short one-line title that sums up what follows"
+paragraph = "an ordinary passage of prose, possibly folded over several lines"
+list_item = "one entry of a list, usually a short phrase or a single sentence"
+quote = "someone else's words, closed by an attribution"
+code = "a command line you can type as-is"
+callout = "a passage that warns the reader, gives advice, or adds a note"
+
+[callout_kind]
+note = "note"
+tip = "tip"
+warning = "warning"
+
+[callout_word]
+note = ["Note", "For reference"]
+tip = ["Tip", "Suggestion", "A good trick"]
+warning = ["Warning", "Caution", "Make sure"]
+
+[seq_word]
+step = ["First", "Then", "Next", "Finally", "Step one", "Step two", "Step three"]
+
+[slot]
+service = ["build pipeline", "release script", "monitoring dashboard", "data import job", "notification service"]
+team = ["Platform", "Web Client", "Data", "Ops", "Quality"]
+env = ["staging", "pre-production", "production"]
+count = ["two", "three", "four", "five"]
+version = ["1.4.0", "2.0.1", "3.1.2"]
+branch = ["main", "release/1.4", "hotfix/login"]
+repo = ["platform/core", "web/client", "data/etl"]
+hours = ["ten minutes", "half an hour", "an hour"]
+name = ["Dana", "Priya", "Marco", "Yuki"]
+
+[head]
+build = ["Build system migration", "The new entry point", "Clearing the build cache"]
+release = ["This week's release", "Rollback plan", "Release window"]
+onboarding = ["Getting started", "Your first day", "Requesting access"]
+incident = ["Incident review", "Impact", "Follow-ups"]
+migration = ["Data migration plan", "Migration steps", "How we verify"]
+
+[sent]
+build = [
+  "The {service} has been running on the new pipeline for three weeks and the results look stable.",
+  "The old make targets keep working until the end of the month, so both paths stay open.",
+  "The new entry point is a single command that wraps everything, including the docs build.",
+  "Generated artifacts no longer need to be committed, because the pipeline uploads them for you.",
+  "The cutover touches {count} services, so check the list before you plan anything.",
+]
+release = [
+  "The release goes out on Thursday at ten, and the window is only {hours}.",
+  "Rolling back means redeploying the previous version, and the database stays as it is.",
+  "If the smoke test on {env} fails, we stop on {branch} and wait for a decision.",
+  "The release owner is whoever is on call from {team} that week.",
+  "We send five percent of the traffic first, watch it for half an hour, then go wide.",
+]
+onboarding = [
+  "Welcome to {team}; here is what to do in your first week.",
+  "Install the toolchain with the script in the repo instead of doing it by hand.",
+  "Every change needs one approving review, and the bot runs its own checks.",
+  "If you are missing a permission, ask your mentor and they will grant it.",
+  "Spend the first week reading {repo} before you touch any code.",
+]
+incident = [
+  "The {service} on {env} was down for about {hours} last night, and it is back now.",
+  "The root cause was a retry with no upper bound, which saturated the downstream.",
+  "The impact covered {count} services, and users saw slower requests.",
+  "The on-call engineer found the cause within half an hour but took longer to recover.",
+  "We will put the retry cap in the shared library so this cannot happen twice.",
+]
+migration = [
+  "The migration runs in three batches, with a day of observation between them.",
+  "While the migration runs the old table is read-only, and writes land in the new table first.",
+  "We verify by comparing row counts and checksums, and we stop on any mismatch.",
+  "The rollback window is only {hours}, and after that we can only move forward.",
+  "The migration scripts live in {repo}, so rehearse them on {env} before you run them.",
+]
+
+[intro]
+code = ["Just run these:", "The usual commands are:"]
+list = ["Here is what changes:", "The list is short:", "The steps look like this:"]
+close = ["That is all; ask in the channel if anything is unclear.", "Start with this and we will fill in the details later."]
+
+[item]
+step = [
+  "First, check {env} is green",
+  "Then bump the version to {version}",
+  "Next, merge {branch} to trunk",
+  "Finally, run the smoke test",
+  "Step one: back up the config",
+  "Step two: dry-run on {env}",
+]
+plain = [
+  "{team}",
+  "{service}",
+  "The release owner",
+  "{repo}",
+  "The dashboard",
+  "The rollback plan",
+]
+
+[code]
+build = ["bun run build", "make -j4 release", "pnpm run build --filter web"]
+vcs = ["git status --short", "git log --oneline -5", "git push origin main"]
+container = ["docker compose up -d", "docker ps --format table", "docker compose logs api"]
+package = ["npm ci --omit=dev", "pip install -r requirements.txt", "cargo build --release"]
+
+[quote]
+"0" = '"The real risk is not the new pipeline, it is that nobody remembers how to roll back." —— {name}'
+"1" = '"I would rather ship a day late than ship an artifact nobody verified." —— {name} from {team}'
+"2" = '"Get the observability in place before you talk about automation." —— {name}'
+"3" = '"An outage is not the scary part; the same outage twice is." —— {name}'
+
+[callout]
+note = [
+  "Note: the commands in this section work on {env} as well.",
+  "For reference, the older release had no such switch.",
+]
+tip = [
+  "Tip: turn the commands you type most into shell aliases.",
+  "A good trick is to clone {repo} before you edit any config.",
+]
+warning = [
+  "Warning: clearing the build cache also drops the incremental output, so the first build gets slow.",
+  "Caution: never run the migration script on {env} directly, take a snapshot first.",
+  "Make sure your branch is pushed before you start, or the rollback gets painful.",
+]
+
+[fam.join]
+q = [
+  "Lines {a} and {b} are adjacent: does line {b} carry on the sentence from line {a}?",
+  "{a} and {b}: is {b} a continuation of the sentence in {a}?",
+]
+[fam.join.criteria]
+true = "{b} carries on the sentence from {a}, so both lines belong to the same block"
+false = "{b} starts a new sentence or a new block instead of continuing {a}"
+
+[fam.block_type]
+q = [
+  "Counting from the top, which kind of content is block number {k}?",
+  "What kind of content is block {k}, counting from the top?",
+]
+
+[fam.callout_kind]
+q = ["Which kind of callout is the one in this document?", "Is the callout here a note, a tip, or a warning?"]
+
+[fam.list_ordered]
+q = ["Is the list in this document an ordered list of steps?", "Do the items of that list have a fixed order?"]
+[fam.list_ordered.criteria]
+true = "the list is a sequence of steps, so the items have an order"
+false = "the list is a set of parallel items with no order"
+

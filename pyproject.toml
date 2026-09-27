@@ -39,6 +39,7 @@ packages = [
     "workflows.routing",
     "workflows.guardrail",
     "workflows.rerank",
+    "workflows.match",
 ]
 
 [tool.setuptools.package-dir]
@@ -57,6 +58,7 @@ jc = ["locales/judge/*.toml"]
 "workflows.routing" = ["locales/*.toml"]
 "workflows.guardrail" = ["locales/*.toml"]
 "workflows.rerank" = ["locales/*.toml"]
+"workflows.match" = ["locales/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

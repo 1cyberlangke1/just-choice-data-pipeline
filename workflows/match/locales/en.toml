@@ -1,0 +1,140 @@
+# 记录匹配（match）的英文文案。
+# 结构必须与 zh.toml 逐键对齐（由 tests/workflows/match/test_locales.py 锁住）：
+# 少一个键、多一个键、或者两种语言的标签撞车都会当场报错。
+
+[meta]
+request = "Match request"
+left = "Record A"
+right = "Record B"
+sep = ": "
+
+[field]
+name = "Name"
+brand = "Brand"
+size = "Size"
+abv = "ABV"
+pack = "Pack"
+
+[extra]
+origin_label = "Origin"
+origin_left = "River Valley"
+origin_right = "Mountain Spring"
+
+[name]
+lager = ["River Lager", "river lager", "River  Lager"]
+ipa = ["Amber IPA", "amber ipa", "Amber  IPA"]
+stout = ["Night Stout", "night stout", "Night  Stout"]
+cider = ["Orchard Cider", "orchard cider", "Orchard  Cider"]
+cola = ["Cola Classic", "cola classic", "Cola  Classic"]
+water = ["Pure Water", "pure water", "Pure  Water"]
+tea = ["Jade Tea", "jade tea", "Jade  Tea"]
+juice = ["Sun Juice", "sun juice", "Sun  Juice"]
+
+[brand]
+lager = ["Riverside Brewery", "riverside brewery", "Riverside  Brewery"]
+ipa = ["Hillcrest Brewing", "hillcrest brewing", "Hillcrest  Brewing"]
+stout = ["Midnight Works", "midnight works", "Midnight  Works"]
+cider = ["Orchard Mill", "orchard mill", "Orchard  Mill"]
+cola = ["Fizz Company", "fizz company", "Fizz  Company"]
+water = ["Clear Spring", "clear spring", "Clear  Spring"]
+tea = ["Jade Garden", "jade garden", "Jade  Garden"]
+juice = ["Sun Orchard", "sun orchard", "Sun  Orchard"]
+
+[size]
+"330" = ["330 ml", "0.33 L", "330ml"]
+"500" = ["500 ml", "0.5 L", "500ml"]
+"750" = ["750 ml", "0.75 L", "750ml"]
+"1000" = ["1000 ml", "1 L", "1000ml"]
+"1500" = ["1500 ml", "1.5 L", "1500ml"]
+
+[abv]
+"0.0" = ["0.0% vol", "0.0 % vol", "0%vol"]
+"4.5" = ["4.5% vol", "4.5 % vol", "4.5%vol"]
+"5.0" = ["5.0% vol", "5.0 % vol", "5%vol"]
+"6.5" = ["6.5% vol", "6.5 % vol", "6.5%vol"]
+"7.0" = ["7.0% vol", "7.0 % vol", "7%vol"]
+
+[pack]
+glass = ["glass bottle", "glass", "GLASS"]
+can = ["can", "tin", "CAN"]
+plastic = ["plastic bottle", "plastic", "PLASTIC"]
+carton = ["carton", "cardboard box", "CARTON"]
+
+[rules]
+lines = [
+  "Rules (compare only the five fields, in order: Name, Brand, Size, ABV, Pack; the Origin field is out of scope):",
+  "1. Normalize both sides first, then compare field by field:",
+  "  a. name and brand: ignore letter case and repeated spaces;",
+  "  b. size: 1 L = 1000 ml, ignore spaces, compare the value in ml;",
+  "  c. abv: `% vol` and `%vol` are the same unit, ignore spaces, compare the number;",
+  "  d. pack: glass bottle = glass = GLASS; can = tin = CAN; plastic bottle = plastic = PLASTIC; carton = cardboard box = CARTON.",
+  "2. Each field has exactly three relations: same text (same) / different text but equal after normalization (variant) / genuinely different (diff).",
+  "3. Verdict, in order, first hit wins: (1) name and brand are both diff -> different; (2) otherwise at least 4 fields agree -> same; (3) otherwise -> review.",
+  "4. Agreement count = how many of the five fields are not diff; band: <= 1 -> band 0, 2~3 -> band 1, >= 4 -> band 2.",
+  "5. Variant count = how many of the five fields are variant.",
+]
+
+[fam.verdict]
+q = [
+  "What should happen to these two records?",
+  "Give a verdict for these two records according to the rules.",
+  "Are these two records the same product?",
+]
+[fam.verdict.criteria]
+same = "Same product - name and brand are not both diff, and at least 4 fields agree"
+different = "Different product - name and brand are both diff"
+review = "Needs human review - everything else"
+
+[fam.variant_count]
+q = [
+  "How many fields differ only in spelling (equal after normalization)?",
+  "How many fields are variant only?",
+  "Count the fields that are variant but not diff.",
+]
+[fam.variant_count.criteria]
+v0 = "0 fields - no field differs only in spelling"
+v1 = "1 field"
+v2 = "2 fields"
+v3 = "3 fields"
+
+[fam.same_name]
+q = ["Do the names agree?", "Are the two names the same?", "Is the name field consistent?"]
+[fam.same_name.criteria]
+true = "Agree - the {field} field is not diff"
+false = "Disagree - the {field} field is diff"
+
+[fam.same_brand]
+q = ["Do the brands agree?", "Are the two brands the same?", "Is the brand field consistent?"]
+[fam.same_brand.criteria]
+true = "Agree - the {field} field is not diff"
+false = "Disagree - the {field} field is diff"
+
+[fam.same_size]
+q = ["Do the sizes agree?", "Are the two sizes the same?", "Is the size field consistent?"]
+[fam.same_size.criteria]
+true = "Agree - the {field} field is not diff"
+false = "Disagree - the {field} field is diff"
+
+[fam.same_abv]
+q = ["Do the abv values agree?", "Are the two abv values the same?", "Is the abv field consistent?"]
+[fam.same_abv.criteria]
+true = "Agree - the {field} field is not diff"
+false = "Disagree - the {field} field is diff"
+
+[fam.same_pack]
+q = ["Do the packs agree?", "Are the two packs the same?", "Is the pack field consistent?"]
+[fam.same_pack.criteria]
+true = "Agree - the {field} field is not diff"
+false = "Disagree - the {field} field is diff"
+
+[fam.band]
+q = [
+  "Give the band for the agreement count.",
+  "Which band does the agreement between these two records fall into?",
+  "Which band matches the agreement count?",
+]
+levels = [
+  "band 0: agreement count <= 1",
+  "band 1: agreement count 2~3",
+  "band 2: agreement count >= 4",
+]

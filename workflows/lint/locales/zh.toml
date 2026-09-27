@@ -1,0 +1,198 @@
+# 行级规则检查（lint）workflow 的中文文案。
+#
+# 输入：`workflows.lint.locales.load("zh")` 读取本文件。
+# 输出：字典。
+# 预期行为（每一条都有测试钉住）：
+# - 规则短语**两两不互为子串**，所以一段文本恰好命中一条规则（判别器靠它认规则）；
+# - `[hit.<规则>.<体裁>]` 的模板渲染出来的行**必然**命中该规则；
+# - `[bg.<体裁>]` 的每一行**必然**不命中任何规则（背景行串味会让 `hits` 计数当场错）；
+# - 片段里的行**不含 `{` / `}`**（题面里的行原文要经过严格填槽，带花括号会误报）；
+# - 片段里的行**不含任何规则短语**（否则 `rule_of` 会命中两条规则）；
+# - 同一份片段里的 8 行两两不同（`spot` 题的选项描述靠行原文区分）。
+
+q = [
+  "按下面这条检查规则逐行过一遍：命中「{rule}」的行要标出来。",
+  "这段片段要按「{rule}」这条规则检查，逐行看有没有命中的。",
+]
+
+ts = [
+  "2026-09-27 10:12:03",
+  "2026-09-27 10:12:04",
+  "2026-09-27 10:12:05",
+  "2026-09-27 10:12:06",
+  "2026-09-27 10:12:07",
+  "2026-09-27 10:12:08",
+  "2026-09-27 10:12:09",
+  "2026-09-27 10:12:10",
+]
+
+[rule]
+secret = "硬编码的凭据"
+todo = "遗留的待办标记"
+debug = "调试残留的输出"
+path = "硬编码的绝对路径"
+long = "超长的行"
+
+[lead]
+code = "片段（一段源码，共 {n} 行）："
+log = "片段（一段服务日志，共 {n} 行）："
+doc = "片段（一段文档，共 {n} 行）："
+
+# ---------- 命中行：每条规则一组模板 + 8 个槽 ----------
+
+[hit.secret.code]
+tpl = "{name} = \"{val}\""
+[hit.secret.log]
+tpl = "{ts} INFO 配置加载：{name}=\"{val}\""
+[hit.secret.doc]
+tpl = "例如把 {name} = \"{val}\" 填进环境变量"
+[hit.secret.slots]
+s0 = { name = "API_KEY", val = "sk-live-9f2b2c" }
+s1 = { name = "DB_PASSWORD", val = "hunter2-x" }
+s2 = { name = "AUTH_TOKEN", val = "tok-7f3a91bc" }
+s3 = { name = "SECRET_KEY", val = "s3cr3t-42ab" }
+s4 = { name = "ACCESS_KEY", val = "AKIA91F2CD" }
+s5 = { name = "PRIVATE_KEY", val = "pk-8c1d4e2f" }
+s6 = { name = "redis_pwd", val = "r3dis-9a1b" }
+s7 = { name = "SMTP_CREDENTIAL", val = "smtp-7c2f" }
+
+[hit.todo.code]
+tpl = "{prefix}{tag}: {note}"
+[hit.todo.log]
+tpl = "{ts} WARN {tag}: {note}"
+[hit.todo.doc]
+tpl = "- {tag}: {note}"
+[hit.todo.slots]
+s0 = { prefix = "# ", tag = "TODO", note = "支持重试" }
+s1 = { prefix = "// ", tag = "FIXME", note = "锁顺序反了" }
+s2 = { prefix = "# ", tag = "XXX", note = "临时方案" }
+s3 = { prefix = "// ", tag = "HACK", note = "绕开缓存" }
+s4 = { prefix = "# ", tag = "TODO", note = "补上单元测试" }
+s5 = { prefix = "// ", tag = "FIXME", note = "边界条件没处理" }
+s6 = { prefix = "# ", tag = "TODO", note = "迁到新接口" }
+s7 = { prefix = "// ", tag = "XXX", note = "等上游修好" }
+
+[hit.debug.code]
+tpl = "{call}"
+[hit.debug.log]
+tpl = "{ts} DEBUG stdout: {call}"
+[hit.debug.doc]
+tpl = "运行 {call} 就能看到中间结果"
+[hit.debug.slots]
+s0 = { call = "print(\"loading config\")" }
+s1 = { call = "console.log(\"step 2\")" }
+s2 = { call = "logger.debug(\"cache miss\")" }
+s3 = { call = "var_dump($row)" }
+s4 = { call = "fmt.Print(\"done\")" }
+s5 = { call = "print(\"rows\", n)" }
+s6 = { call = "console.log(payload)" }
+s7 = { call = "logger.debug(\"retry\", attempt)" }
+
+[hit.path.code]
+tpl = "{name} = \"{where}\""
+[hit.path.log]
+tpl = "{ts} ERROR 打开配置 \"{where}\" 失败"
+[hit.path.doc]
+tpl = "把配置放在 \"{where}\" 下面"
+[hit.path.slots]
+s0 = { name = "CONFIG", where = "/etc/app/config.yml" }
+s1 = { name = "DATA_DIR", where = "/var/lib/app/data" }
+s2 = { name = "HOME_DIR", where = "/home/deploy/app" }
+s3 = { name = "CACHE", where = "/tmp/build-cache" }
+s4 = { name = "ROOT", where = "C:\\projects\\app" }
+s5 = { name = "LOG_DIR", where = "/opt/app/logs" }
+s6 = { name = "USER_CACHE", where = "/Users/dev/cache" }
+s7 = { name = "BACKUP", where = "D:\\backup\\app" }
+
+[hit.long.code]
+tpl = "# {payload}"
+[hit.long.log]
+tpl = "{ts} INFO {payload}"
+[hit.long.doc]
+tpl = "{payload}"
+[hit.long.slots]
+s0 = { payload = "缓存失效之后请求会回源到数据库，如果这时候并发量正好很高，回源压力就会成倍放大，所以这里必须再加一层本地缓存放住热点键，否则整条链路都会被拖慢。" }
+s1 = { payload = "这段日志记录了完整的请求链路，从入口网关到业务服务再到下游存储，每一跳都带上了耗时与状态码，排查问题时可以顺着时间戳对齐。" }
+s2 = { payload = "配置项的名字要和代码里的常量保持一致，改名的时候两边都得动，否则线上会出现读不到配置的情况，而且这种错误往往在启动阶段才暴露出来。" }
+s3 = { payload = "注释里解释了为什么这里要加锁：两个后台线程会同时刷新同一份索引，如果不加锁，索引文件会写到一半就被另一个线程覆盖，导致搜索结果错乱。" }
+s4 = { payload = "回滚方案要提前准备好，并且要在演练环境里真的跑过一遍，不能只写在文档里；真出问题的时候没人有时间现学怎么回滚，只能干看着。" }
+s5 = { payload = "这个接口的返回体里带了分页游标，客户端要原样带回来才能拿到下一页，千万不要自己拼接页码，否则遇到数据变动就会漏掉记录，这种缺陷在联调阶段很难复现。" }
+s6 = { payload = "压测的时候要盯着两个指标看：一个是平均延迟，另一个是尾部延迟；只盯平均值的话，长尾请求造成的体验下降会被完全掩盖掉，所以两个都得盯。" }
+s7 = { payload = "迁移脚本先跑在只读副本上验证一遍，确认行数与校验和都对得上，再切到主库执行，这一步多花十分钟能省下几个小时的回滚时间，别嫌麻烦。" }
+
+# ---------- 背景行：每个体裁 8 行，一行都不许命中任何规则 ----------
+
+[bg]
+code = [
+  "def load_config():",
+  "import os",
+  "return dict(retries=3)",
+  "# 读取本地配置",
+  "raise ValueError(\"bad input\")",
+  "class Client:",
+  "# 初始化客户端超时",
+  "for item in items:",
+]
+
+
+log = [
+  "2026-09-27 10:12:03 INFO 服务已启动",
+  "2026-09-27 10:12:04 DEBUG 缓存预热完成",
+  "2026-09-27 10:12:05 INFO 收到请求 /v1/items",
+  "2026-09-27 10:12:06 WARN 上游响应 320 毫秒",
+  "2026-09-27 10:12:07 INFO 请求完成 status=200",
+  "2026-09-27 10:12:08 DEBUG 连接池大小 8",
+  "2026-09-27 10:12:09 INFO 心跳正常",
+  "2026-09-27 10:12:10 WARN 重试第 1 次",
+]
+
+
+doc = [
+  "## 安装",
+  "1. 先安装依赖",
+  "2. 再执行数据库迁移",
+  "### 配置说明",
+  "把上面的片段贴进你的配置文件。",
+  "常见问题见附录一节。",
+  "注意：重启服务之后才会生效。",
+  "| 参数 | 说明 |",
+]
+
+# ---------- 题面 ----------
+
+[fam.line]
+q = ["第 {n} 行命中这条规则吗？", "第 {n} 行的内容符合这条检查规则吗？"]
+[fam.line.criteria]
+true = "第 {n} 行确实命中了这条规则"
+false = "第 {n} 行没有命中这条规则"
+
+[fam.count]
+q = ["这段片段里有几行命中这条规则？", "按这条规则过一遍，命中的行一共有几行？"]
+[fam.count.opt]
+c0 = "一行都没有命中"
+c1 = "正好 1 行命中"
+c2 = "正好 2 行命中"
+c3 = "正好 3 行命中"
+c4 = "正好 4 行命中"
+c5 = "正好 5 行命中"
+c6 = "正好 6 行命中"
+c7 = "正好 7 行命中"
+c8 = "8 行全部命中"
+
+[fam.gate]
+q = [
+  "按题面写明的处置办法（命中 0~2 行放行、3~5 行交人工复核、6 行及以上拦下），这段片段该怎么处置？",
+  "处置办法是命中 0~2 行放行、3~5 行交人工复核、6 行及以上拦下——按这个办法，这段片段该走哪一档？",
+]
+[fam.gate.opt]
+pass = "放行"
+review = "人工复核"
+block = "拦下"
+
+[fam.spot]
+q = [
+  "这段片段里恰好只有一行命中这条规则，是哪一行？",
+  "这段片段里只有一行命中这条规则，把那一行找出来。",
+]
+[fam.spot.opt]
+row = "第 {n} 行：{line}"

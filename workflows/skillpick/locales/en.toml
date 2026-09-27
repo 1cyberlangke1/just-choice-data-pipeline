@@ -1,0 +1,100 @@
+# English strings for the skill-picker workflow.
+# Invariants locked by tests/workflows/skillpick/test_locales.py: the same key set as zh,
+# field names and vocabularies that never overlap across languages, a **shared** cell
+# separator, and a policy text that prints every tag, scope, grant and resource.
+
+[meta]
+title = "Skill Picker Sheet"
+request_label = "Request"
+tag_label = "Tag"
+grant_label = "Grant"
+inuse_label = "In use"
+colon = ": "
+cell_sep = " · "
+
+[tag]
+# The first six are the catalog use cases; the last six are near-miss decoys.
+read_code = "read code"
+edit_code = "edit code"
+fetch_web = "fetch web"
+ship_release = "ship release"
+tidy_sheet = "tidy sheet"
+check_data = "check data"
+read_code_notes = "read code notes"
+edit_code_style = "edit code style"
+fetch_web_shot = "fetch web shot"
+ship_release_note = "ship release note"
+tidy_sheet_tpl = "tidy sheet tpl"
+check_data_src = "check data src"
+
+[scope]
+read = "read-only"
+write = "writable"
+admin = "admin"
+
+[resource]
+code = "code"
+net = "network"
+data = "data"
+
+[grant]
+read = "read grant"
+write = "write grant"
+
+[policy]
+text = "Rules: (1) The catalog lists six rows whose use case is read code, edit code, fetch web, ship release, tidy sheet or check data. A request label matches a row only when the use case is an exact match - being one letter off does not count; request labels also come as near misses such as read code notes, edit code style, fetch web shot, ship release note, tidy sheet tpl or check data src, and those match no skill at all. (2) There are three permission scopes: read-only, writable, admin. There are two grants: read grant and write grant. A scope may be used only when it is not above the grant - a read-only skill works under both grants, a writable skill needs the write grant, and an admin skill needs a separate approval, so neither grant is enough. (3) There are three resources: code, network, data. Two skills conflict when they touch the same kind of resource."
+
+[fam.fits]
+q = [
+  "Does the catalog hold a skill that can handle this request?",
+  "By the rules, is there a skill that matches this request?",
+  "Is there one skill in the list that covers exactly this job?",
+]
+
+[fam.fits.criteria]
+true = "yes: some row's use case is an exact match for the request label"
+false = "no: no row's use case is an exact match for the request label (one letter off does not count)"
+
+[fam.pick]
+q = [
+  "Which skill should be used?",
+  "Which row of the list should this request go to?",
+  "By the rules, which one should be picked?",
+]
+
+[fam.scope]
+q = [
+  "Which scope band does skill {n} fall in?",
+  "By the scope table, which band is skill {n} in?",
+  "What permission does skill {n} need?",
+]
+
+[fam.allow]
+q = [
+  "Under this grant, may skill {n} be used?",
+  "Is this grant enough to use skill {n}?",
+  "Is skill {n} allowed under the current grant?",
+]
+
+[fam.allow.criteria]
+true = "allowed: that skill's scope is not above this grant"
+false = "not allowed: that skill's scope is above this grant (an admin skill is beyond both grants)"
+
+[fam.conflict]
+q = [
+  "Will skill {n} clash with the skill already in use?",
+  "Do skill {n} and the skill in use touch the same kind of resource?",
+  "Will skill {n} fight the skill in use over resources?",
+]
+
+[fam.conflict.criteria]
+true = "clash: the two skills touch the same kind of resource"
+false = "no clash: the two skills touch different resources"
+
+[option.scope]
+read = "read-only: this skill only looks, it never changes anything"
+write = "writable: this skill changes content"
+admin = "admin: this skill can ship or delete"
+
+[option.slot]
+element = "#{n}: {tag} · {scope} · {resource}"

@@ -1,0 +1,87 @@
+# English strings for the change-review workflow.
+# Invariants locked by tests/workflows/review/test_locales.py: the same key set as zh,
+# per-language labels and vocabularies that never overlap across languages, a **shared**
+# cell separator, and body templates that hit exactly the rule they are labelled with.
+
+[meta]
+title = "Change Review Sheet"
+change_label = "Change"
+colon = ": "
+cell_sep = " · "
+body_indent = "    "
+
+[file]
+src = "source"
+test = "test"
+doc = "docs"
+config = "config"
+
+[change]
+add = "added"
+edit = "modified"
+remove = "removed"
+
+[size]
+small = "small"
+big = "large"
+
+[body]
+# Body templates keyed `{rule}_{slot}` (`clean_{slot}` for the clean one). The literals in
+# the template are exactly what the rule pattern looks for; the bulk slot only reads the
+# size cell, so its text must not trip the other two rules.
+secret_heavy = "hard-coded a password = \"hunter2\" right here"
+secret_noise0 = "the sample copies a password = \"example\" line"
+debug_medium = "added a print(intermediate state) line for debugging"
+debug_noise0 = "the docs paste a print(debug output) snippet"
+debug_noise1 = "the test adds a console.log(result) line"
+bulk_light = "this hunk rewrites dozens of lines at once"
+bulk_noise1 = "this hunk reflows a whole block"
+clean_clean = "completed the comment here"
+
+[policy]
+text = "Rules: (1) Three review rules. Credential rule: the body hard-codes a credential as a name = a quoted literal, where the name contains password, passwd, pwd, secret, token, api_key, access_key, private_key or credential; severity is heavy. Debug rule: the body contains a debug output call such as print( , console.log( , debugger , var_dump , logger.debug( or fmt.Print( ; severity is medium. Bulk rule: the size cell reads 'large'; severity is light. (2) Whether to raise - hitting a rule is not enough: the credential rule is raised only in source, test and config files, never in docs; the debug rule is raised only in source and config files, never in test or docs; the bulk rule is raised only in source. (3) Severity - credential is heavy, debug is medium, bulk is light. (4) Gate - heavy is always blocked; medium gets requested changes on added and modified hunks, and is blocked on removed ones; light gets requested changes on modified hunks, and passes on added and removed ones. (5) The worst hunk - the raised hunk with the highest severity; when two hunks tie for the highest, this question is not asked."
+
+[fam.flag]
+q = [
+  "Should hunk {n} be raised as a review comment?",
+  "By the rules, does hunk {n} deserve a comment?",
+  "Is hunk {n} a problem?",
+]
+
+[fam.flag.criteria]
+true = "raise it: the hunk hits a rule and its file type is in that rule's scope"
+false = "do not raise it: the hunk hits no rule, or hits one whose scope excludes its file type"
+
+[fam.severity]
+q = [
+  "Which severity band is hunk {n} in?",
+  "By the severity table, which band does hunk {n} fall in?",
+  "How severe is hunk {n}?",
+]
+levels = [
+  "band 1 (light): a note only, does not block the merge",
+  "band 2 (medium): the author must respond before it merges",
+  "band 3 (heavy): it must be blocked",
+]
+
+[fam.gate]
+q = [
+  "How should hunk {n} be handled?",
+  "By the gate table, which way does hunk {n} go?",
+  "Should hunk {n} be passed, sent back, or blocked?",
+]
+
+[fam.top]
+q = [
+  "Which hunk is the worst one?",
+  "Of these hunks, which is the most severe?",
+  "By severity, which hunk should be blocked first?",
+]
+
+[option.gate]
+pass = "pass: this hunk can go into the trunk as is"
+request = "requested changes: this hunk goes back to the author first"
+block = "block: this hunk must not go into the trunk"
+
+[option.position]
+element = "#{n}: {file} · {change} · {size}"

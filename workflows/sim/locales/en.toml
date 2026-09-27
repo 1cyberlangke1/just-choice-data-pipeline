@@ -1,0 +1,107 @@
+# English copy for the game & simulation control workflow.
+# The invariants locked by test_locales.py: same key set as zh, field names and the four
+# vocab tables must not overlap across languages (reparse uses the merged table), the cell
+# separator must match zh, and the policy text must print all 6 actions, 6 gain bands,
+# 4 cost bands, 3 cooldown bands, the haul threshold 6 and the round cap 5.
+
+[meta]
+title = "Board"
+colon = ": "
+cell_sep = " · "
+
+[label]
+request = "Request"
+turn = "Round"
+resources = "Resources"
+haul = "Haul"
+
+[action]
+advance = "Advance"
+probe = "Probe"
+harvest = "Harvest"
+guard = "Guard"
+strike = "Strike"
+idle = "Idle"
+
+[cost]
+c0 = "Cost 0"
+c1 = "Cost 1"
+c2 = "Cost 2"
+c3 = "Cost 3"
+
+[gain]
+g0 = "Gain 0"
+g1 = "Gain 1"
+g2 = "Gain 2"
+g3 = "Gain 3"
+g4 = "Gain 4"
+g5 = "Gain 5"
+
+[cooldown]
+k0 = "Cooldown 0"
+k1 = "Cooldown 1"
+k2 = "Cooldown 2"
+
+[policy]
+# The criteria text: appended verbatim to every question stem (paradigm §9.8).
+text = "Rules: (1) The board is one screen: the header carries round, resources and haul; below it each action takes one line with four cells, in order: action name, cost, gain, cooldown. (2) An action is **usable now** if and only if the resources are at least its cost AND its cooldown is 0; both conditions are required. (3) The run is **over** if and only if the haul is at least 6 OR the round is at least 5. (4) **Which action to use**: among the usable actions, take the one with the largest gain; if two actions have the same gain, take the one listed earlier. (5) There are six gain bands (Gain 0, Gain 1, Gain 2, Gain 3, Gain 4, Gain 5), four cost bands (Cost 0, Cost 1, Cost 2, Cost 3) and three cooldown bands (Cooldown 0, Cooldown 1, Cooldown 2); a band is simply the number shown in the cell."
+
+[fam.can_move]
+q = [
+  "Is the action in position {n} usable right now?",
+  "Given the board, can the action in position {n} be used?",
+  "Is the action in position {n} available at this moment?",
+]
+
+[fam.can_move.criteria]
+true = "Usable: the resources are at least its cost and its cooldown is 0"
+false = "Not usable: the resources are below its cost, or its cooldown is not 0"
+
+[fam.finished]
+q = [
+  "Is this run over?",
+  "Given the board, has this run already ended?",
+  "Does this run continue?",
+]
+
+[fam.finished.criteria]
+true = "Over: the haul is at least 6, or the round is at least 5"
+false = "Not over: the haul is below 6, and the round is below 5"
+
+[fam.gain]
+q = [
+  "Which gain band does the action in position {n} have?",
+  "Given the board, which gain band does the action in position {n} fall in?",
+  "What is the gain band of the action in position {n}?",
+]
+levels = [
+  "Gain 0",
+  "Gain 1",
+  "Gain 2",
+  "Gain 3",
+  "Gain 4",
+  "Gain 5",
+]
+
+[fam.best]
+q = [
+  "Which position holds the action to use?",
+  "Given the board, which action should this move use?",
+  "Which action is the best one to use now?",
+]
+
+[fam.cost]
+q = [
+  "How much does the action to use cost?",
+  "Given the board, which cost band does the action to use fall in?",
+  "What is the cost band of the action to use?",
+]
+levels = [
+  "Cost 0",
+  "Cost 1",
+  "Cost 2",
+  "Cost 3",
+]
+
+[option.slot]
+element = "Position {n}: {action} · {cost} · {gain} · {cooldown}"

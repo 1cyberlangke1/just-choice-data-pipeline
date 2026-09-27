@@ -1,0 +1,141 @@
+# 记录匹配（match）的中文文案。
+# 三种写法的下标与 spec.SPELLINGS 里的对子一一对应：0 是规范写法，1 与 2 是两种变体写法。
+# 每栏的写法表必须让「同一栏的不同写法」在判据里归一化后相等、且**不同取值之间不撞车**
+# （由 tests/workflows/match/test_locales.py 锁住）。
+
+[meta]
+request = "匹配请求"
+left = "记录 A"
+right = "记录 B"
+sep = "："
+
+[field]
+name = "名称"
+brand = "品牌"
+size = "规格"
+abv = "度数"
+pack = "包装"
+
+[extra]
+origin_label = "产地"
+origin_left = "河畔谷地"
+origin_right = "山泉谷地"
+
+[name]
+lager = ["River Lager", "river lager", "River  Lager"]
+ipa = ["Amber IPA", "amber ipa", "Amber  IPA"]
+stout = ["Night Stout", "night stout", "Night  Stout"]
+cider = ["Orchard Cider", "orchard cider", "Orchard  Cider"]
+cola = ["Cola Classic", "cola classic", "Cola  Classic"]
+water = ["Pure Water", "pure water", "Pure  Water"]
+tea = ["Jade Tea", "jade tea", "Jade  Tea"]
+juice = ["Sun Juice", "sun juice", "Sun  Juice"]
+
+[brand]
+lager = ["Riverside Brewery", "riverside brewery", "Riverside  Brewery"]
+ipa = ["Hillcrest Brewing", "hillcrest brewing", "Hillcrest  Brewing"]
+stout = ["Midnight Works", "midnight works", "Midnight  Works"]
+cider = ["Orchard Mill", "orchard mill", "Orchard  Mill"]
+cola = ["Fizz Company", "fizz company", "Fizz  Company"]
+water = ["Clear Spring", "clear spring", "Clear  Spring"]
+tea = ["Jade Garden", "jade garden", "Jade  Garden"]
+juice = ["Sun Orchard", "sun orchard", "Sun  Orchard"]
+
+[size]
+"330" = ["330 ml", "0.33 L", "330ml"]
+"500" = ["500 ml", "0.5 L", "500ml"]
+"750" = ["750 ml", "0.75 L", "750ml"]
+"1000" = ["1000 ml", "1 L", "1000ml"]
+"1500" = ["1500 ml", "1.5 L", "1500ml"]
+
+[abv]
+"0.0" = ["0.0% vol", "0.0 度", "0%vol"]
+"4.5" = ["4.5% vol", "4.5 度", "4.5%vol"]
+"5.0" = ["5.0% vol", "5.0 度", "5%vol"]
+"6.5" = ["6.5% vol", "6.5 度", "6.5%vol"]
+"7.0" = ["7.0% vol", "7.0 度", "7%vol"]
+
+[pack]
+glass = ["玻璃瓶", "玻璃", "Glass"]
+can = ["易拉罐", "罐", "Can"]
+plastic = ["塑料瓶", "塑料", "Plastic"]
+carton = ["纸盒", "纸板盒", "Carton"]
+
+[rules]
+lines = [
+  "判据（只比五栏，顺序：名称 → 品牌 → 规格 → 度数 → 包装；产地那一栏不算）：",
+  "一、先把两边的写法归一化，再逐栏比：",
+  "  1. 名称与品牌：忽略大小写、忽略连续空格；",
+  "  2. 规格：1 L = 1000 ml，忽略空格，按 ml 的数值比；",
+  "  3. 度数：`度` 与 `% vol` 同义，忽略空格，按数值比；",
+  "  4. 包装：玻璃瓶 = 玻璃 = Glass；易拉罐 = 罐 = Can；塑料瓶 = 塑料 = Plastic；纸盒 = 纸板盒 = Carton。",
+  "二、每一栏只有三种关系：写法相同（same）/ 写法不同但归一化后相同（variant）/ 真的不一致（diff）。",
+  "三、处置按顺序判，先命中先算：① 名称与品牌都不一致 → different；② 否则一致字段数 ≥ 4 → same；③ 其余 → review。",
+  "四、一致字段数 = 五栏里不是 diff 的栏数；档位：≤1 → 0 档，2~3 → 1 档，≥4 → 2 档。",
+  "五、只是写法不同的栏数 = 五栏里关系是 variant 的栏数。",
+]
+
+[fam.verdict]
+q = [
+  "这两条记录该怎么处置？给一个结论。",
+  "按判据给这两条记录一个处置结论。",
+  "这两条记录是同一个商品吗？",
+]
+[fam.verdict.criteria]
+same = "同一个商品——名称与品牌没有同时不一致，而且一致字段数 ≥ 4"
+different = "不同商品——名称与品牌都不一致"
+review = "需要人工复核——其余情况"
+
+[fam.variant_count]
+q = [
+  "有几栏只是写法不同（归一化后其实相同）？",
+  "只是写法不同的栏有几栏？",
+  "统计一下「写法不同但归一化后相同」的栏数。",
+]
+[fam.variant_count.criteria]
+v0 = "0 栏——没有任何一栏只是写法不同"
+v1 = "1 栏"
+v2 = "2 栏"
+v3 = "3 栏"
+
+[fam.same_name]
+q = ["名称这一栏一致吗？", "两边的名称对得上吗？", "名称是不是一致？"]
+[fam.same_name.criteria]
+true = "一致——{field}这一栏不是 diff"
+false = "不一致——{field}这一栏是 diff"
+
+[fam.same_brand]
+q = ["品牌这一栏一致吗？", "两边的品牌对得上吗？", "品牌是不是一致？"]
+[fam.same_brand.criteria]
+true = "一致——{field}这一栏不是 diff"
+false = "不一致——{field}这一栏是 diff"
+
+[fam.same_size]
+q = ["规格这一栏一致吗？", "两边的规格对得上吗？", "规格是不是一致？"]
+[fam.same_size.criteria]
+true = "一致——{field}这一栏不是 diff"
+false = "不一致——{field}这一栏是 diff"
+
+[fam.same_abv]
+q = ["度数这一栏一致吗？", "两边的度数对得上吗？", "度数是不是一致？"]
+[fam.same_abv.criteria]
+true = "一致——{field}这一栏不是 diff"
+false = "不一致——{field}这一栏是 diff"
+
+[fam.same_pack]
+q = ["包装这一栏一致吗？", "两边的包装对得上吗？", "包装是不是一致？"]
+[fam.same_pack.criteria]
+true = "一致——{field}这一栏不是 diff"
+false = "不一致——{field}这一栏是 diff"
+
+[fam.band]
+q = [
+  "按一致字段数给个档位。",
+  "这两条记录的一致程度落在哪一档？",
+  "一致字段数对应哪一档？",
+]
+levels = [
+  "0 档：一致字段数 ≤ 1",
+  "1 档：一致字段数 2~3",
+  "2 档：一致字段数 ≥ 4",
+]

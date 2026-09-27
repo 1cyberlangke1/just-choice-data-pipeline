@@ -1,0 +1,167 @@
+# 函数调用（functions）workflow 的中文文案。
+#
+# 输入：`workflows.functions.locales.load("zh")` 读取本文件。
+# 输出：字典。
+# 预期行为：
+# - 意图短语**两两不互为子串**，所以一段请求恰好命中一个工具（判别器靠它认工具）；
+# - `[val]` 里全部取值短语**全局唯一**（判别器靠「短语在不在文本里」认参数取值，重了就有歧义）；
+# - 同一参数的 `ticker` / `name` 两套写法必须指向同一个取值（读法两套都认）；
+# - `[flag]` 的出现短语不许出现在任何 `[val]` 短语或模板里（否则 flag 会被误判为在场）；
+# - `[req.<工具>].lead` 的 `{subject}` 槽放主体参数，其余被提到的参数各走一条分段模板；
+# - **没被提到的可选参数在文本里一个词都不出现**——这正是 `stated_*` 题的 False 形态。
+
+[mark]
+close = "。"
+list_sep = "、"
+list_last = "和"
+
+[intent]
+plot_price = "画个价格走势"
+compare_returns = "比一下收益率"
+rolling_correlation = "算滚动相关性"
+top_movers = "看看涨跌幅排行"
+
+[req.plot_price]
+lead = ["帮我画个价格走势，标的是{subject}", "{subject}这边，画个价格走势吧"]
+window = "，时间范围取{window}"
+style = "，用{style}画"
+resolution = "，按{resolution}"
+include_volume = "，{include_volume}"
+
+[req.compare_returns]
+lead = ["帮我比一下收益率，标的就{subject}", "这几只{subject}，比一下收益率"]
+window = "，时间范围取{window}"
+normalize = "，{normalize}"
+resolution = "，按{resolution}"
+
+[req.rolling_correlation]
+lead = ["帮我算滚动相关性，{subject}", "拿{subject}算滚动相关性"]
+window = "，时间范围取{window}"
+resolution = "，按{resolution}"
+smoothing = "，{smoothing}"
+
+[req.top_movers]
+lead = ["帮我看看涨跌幅排行", "来，看看涨跌幅排行"]
+window = "，时间范围取{window}"
+direction = "，{direction}"
+include_etfs = "，{include_etfs}"
+
+[val.window]
+"1d" = "最近一个交易日"
+"1w" = "最近一周"
+"1mo" = "最近一个月"
+"3mo" = "最近三个月"
+
+[val.resolution]
+"1m" = "一分钟一根K线"
+"5m" = "五分钟一根K线"
+"15m" = "一刻钟一根K线"
+"1h" = "一小时一根K线"
+"1d" = "一天一根K线"
+
+[val.style]
+line = "折线图"
+candles = "K线图"
+
+[val.direction]
+up = "只看上涨"
+down = "只看下跌"
+both = "涨跌都要"
+
+[val.symbol.ticker]
+NVDA = "NVDA"
+AMD = "AMD"
+AAPL = "AAPL"
+MSFT = "MSFT"
+TSLA = "TSLA"
+
+[val.symbol.name]
+NVDA = "英伟达"
+AMD = "超微半导体"
+AAPL = "苹果"
+MSFT = "微软"
+TSLA = "特斯拉"
+
+[val.benchmark.ticker]
+SPY = "SPY"
+QQQ = "QQQ"
+
+[val.benchmark.name]
+SPY = "标普500基金"
+QQQ = "纳斯达克100基金"
+
+[flag]
+include_volume = "带上成交量"
+normalize = "做归一化"
+smoothing = "做平滑"
+include_etfs = "把ETF也算上"
+
+[opt.symbol]
+NVDA = "英伟达（NVDA）"
+AMD = "超微半导体（AMD）"
+AAPL = "苹果（AAPL）"
+MSFT = "微软（MSFT）"
+TSLA = "特斯拉（TSLA）"
+
+[opt.benchmark]
+SPY = "标普 500 指数基金（SPY）"
+QQQ = "纳斯达克 100 指数基金（QQQ）"
+
+[opt.window]
+"1d" = "最近一个交易日"
+"1w" = "最近一周"
+"1mo" = "最近一个月"
+"3mo" = "最近三个月"
+
+[opt.resolution]
+"1m" = "每分钟一根 K 线"
+"5m" = "每五分钟一根 K 线"
+"15m" = "每一刻钟一根 K 线"
+"1h" = "每小时一根 K 线"
+"1d" = "每天一根 K 线"
+
+[opt.style]
+line = "折线图"
+candles = "K 线图"
+
+[opt.direction]
+up = "只看上涨的标的"
+down = "只看下跌的标的"
+both = "涨跌都要"
+
+[tool_desc]
+plot_price = "画某只标的的价格走势图"
+compare_returns = "比较多只标的的收益率"
+rolling_correlation = "算某只标的与基准之间的滚动相关性"
+top_movers = "列出这段时间涨跌幅最大的标的"
+
+[arg_desc]
+symbol = "标的"
+symbols = "一组标的"
+benchmark = "对比基准"
+window = "时间范围"
+resolution = "数据粒度"
+style = "图表样式"
+direction = "排行方向"
+include_volume = "成交量开关"
+normalize = "归一化开关"
+smoothing = "平滑开关"
+include_etfs = "ETF 开关"
+
+[fam.tool]
+q = ["这句请求要调用下面哪个函数？", "这段请求对应的是哪个工具调用？"]
+
+[fam.arg]
+q = ["请求里把{arg}设成了哪个取值？", "这句请求给{arg}指定的取值是下面哪一个？"]
+
+[fam.stated]
+q = ["这句请求里提到{arg}了吗？", "请求中有没有明确指定{arg}？"]
+[fam.stated.criteria]
+true = "请求里明确给出了{arg}的取值"
+false = "请求里一个词都没提{arg}，函数会用它的默认值"
+
+[fam.member]
+q = ["请求点名要了{value}吗？", "这句请求里包含{value}吗？"]
+[fam.member.criteria]
+true = "请求里点名提到了它"
+false = "请求里没有提到它"

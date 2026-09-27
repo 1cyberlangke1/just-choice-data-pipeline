@@ -17,8 +17,19 @@ from workflows.maze.spec import MazeConfig
 from workflows.routing.spec import RoutingConfig
 from workflows.guardrail.spec import GuardConfig
 from workflows.rerank.spec import RerankConfig
+from workflows.match.spec import MatchConfig
 from workflows.shell.spec import ShellConfig
 from workflows.search.spec import SearchConfig
+from workflows.autoformat.spec import DocConfig
+from workflows.functions.spec import CallConfig
+from workflows.lint.spec import LintConfig
+from workflows.modelroute.spec import RouteConfig
+from workflows.context.spec import SessionConfig
+from workflows.browser.spec import ScreenConfig
+from workflows.review.spec import ReviewConfig
+from workflows.skillpick.spec import SkillConfig
+from workflows.rubric.spec import RubricConfig
+from workflows.sim.spec import SimConfig
 
 #: (config 类, 旋钮名)：每个取值表清空后都必须当场报错。
 EMPTY_POOLS: tuple[tuple[type, str], ...] = (
@@ -93,6 +104,63 @@ EMPTY_POOLS: tuple[tuple[type, str], ...] = (
     (RerankConfig, "traps"),
     (RerankConfig, "wordings"),
     (RerankConfig, "phrasings"),
+    (MatchConfig, "products"),
+    (MatchConfig, "patterns"),
+    (MatchConfig, "spellings"),
+    (MatchConfig, "layouts"),
+    (MatchConfig, "extras"),
+    (MatchConfig, "phrasings"),
+    (DocConfig, "topics"),
+    (DocConfig, "wraps"),
+    (DocConfig, "shapes"),
+    (DocConfig, "variants"),
+    (DocConfig, "code_families"),
+    (DocConfig, "phrasings"),
+    (CallConfig, "tools"),
+    (CallConfig, "voices"),
+    (CallConfig, "windows"),
+    (CallConfig, "aliases"),
+    (CallConfig, "phrasings"),
+    (LintConfig, "rules"),
+    (LintConfig, "genres"),
+    (LintConfig, "hits"),
+    (LintConfig, "phrasings"),
+    (RouteConfig, "tasks"),
+    (RouteConfig, "complexities"),
+    (RouteConfig, "latencies"),
+    (RouteConfig, "costs"),
+    (RouteConfig, "retries"),
+    (RouteConfig, "datas"),
+    (RouteConfig, "phrasings"),
+    (SessionConfig, "keep_forms"),
+    (SessionConfig, "drop_forms"),
+    (SessionConfig, "kind_sets"),
+    (SessionConfig, "extras"),
+    (SessionConfig, "orders"),
+    (SessionConfig, "phrasings"),
+    (ScreenConfig, "tasks"),
+    (ScreenConfig, "forms"),
+    (ScreenConfig, "dones"),
+    (ScreenConfig, "decoy_states"),
+    (ScreenConfig, "orders"),
+    (ScreenConfig, "phrasings"),
+    (ReviewConfig, "triples"),
+    (ReviewConfig, "noises"),
+    (ReviewConfig, "changes"),
+    (ReviewConfig, "orders"),
+    (ReviewConfig, "phrasings"),
+    (SkillConfig, "tags"),
+    (SkillConfig, "layouts"),
+    (SkillConfig, "grants"),
+    (SkillConfig, "inuse_modes"),
+    (SkillConfig, "phrasings"),
+    (RubricConfig, "sheets"),
+    (RubricConfig, "layouts"),
+    (RubricConfig, "slacks"),
+    (RubricConfig, "phrasings"),
+    (SimConfig, "boards"),
+    (SimConfig, "layouts"),
+    (SimConfig, "phrasings"),
 )
 
 #: (config 类, 旋钮名)：区间类旋钮，元素个数不对时必须当场报错。
@@ -130,6 +198,17 @@ def test_bad_bounds_report_field(config_cls: type, field: str) -> None:
         RoutingConfig,
         GuardConfig,
         RerankConfig,
+        MatchConfig,
+        DocConfig,
+        CallConfig,
+        LintConfig,
+        RouteConfig,
+        SessionConfig,
+        ScreenConfig,
+        ReviewConfig,
+        SkillConfig,
+        RubricConfig,
+        SimConfig,
     ],
 )
 def test_defaults_still_construct(config_cls: type) -> None:

@@ -5,11 +5,16 @@
 
 1. bash 侧：每条命令跑 `bash -n`——只做语法分析，**不会**让命令跑起来；
 2. PowerShell 侧：每条命令交给 `[System.Management.Automation.Language.Parser]::ParseInput`
-   建 AST——同样不执行。这道实测抓到过真错：`-replace foo,bar` 少写引号是**语法错误**
-   （`You must provide a value expression following the '-replace' operator`）；
+   建 AST——同样不执行；少一个右括号这类语法错误会被报出来
+   （由 `test_the_parse_harness_reports_a_real_error` 锁住：坏命令**必须**被报出来）；
 3. 生成的命令本身**一条都不执行**：模板里就躺着 `rm -rf`、`chmod 777`、`git push --force`
    这类破坏性写法，靠「在临时目录里跑一遍」来验合法性，等于把风险押在「模板与 cwd 恰好
    都对」上，换来的却只是「这台机器上恰好能跑」——而静态解析已经能抓到真错，够了。
+4. **解析脚本用 `-File` 传参，不用 `-Command` + 尾随参数**（2026-09-27 的教训）：
+   `pwsh -Command <脚本> <路径>` 里那个路径**不会**进 `$args`，而是被拼到脚本文本末尾；
+   脚本以换行结尾时它就成了**独立语句**，被 PowerShell 交给默认程序去「执行」——本机
+   `.json` 关联 Notepad4，于是每跑一次弹一个记事本，而脚本因为 `$args[0]` 是 null 什么都没
+   解析、测试**空转通过**。现在改成 `-File`，并加了「解析条数必须等于载荷条数」的空转闸。
 
 本机没有 bash / pwsh 时对应测试**跳过**，不假装通过。
 """
@@ -20,6 +25,7 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -106,8 +112,31 @@ foreach ($it in $items) {
   [void][System.Management.Automation.Language.Parser]::ParseInput($it.cmd, [ref]$null, [ref]$errs)
   if ($errs -and $errs.Count -gt 0) { $bad += [pscustomobject]@{ label = $it.label; msg = $errs[0].Message } }
 }
-@($bad) | ConvertTo-Json -Depth 3 -Compress
+[pscustomobject]@{ parsed = @($items).Count; bad = @($bad) } | ConvertTo-Json -Depth 3 -Compress
 """
+
+
+def run_ps_parse(pwsh: str, tmp_path: Path, items: list[dict[str, str]]) -> dict[str, Any]:
+    """输入：pwsh 路径、临时目录、载荷条目。输出：`{"parsed": 解析条数, "bad": 报错列表}`。
+
+    预期行为：载荷与解析脚本都写进 pytest 的临时目录（写仓库树会留下**未跟踪**的垃圾文件，
+    `git add -A` 一不小心就提交进去了），并用 **`-File`** 把载荷路径交给脚本的 `$args[0]`。
+    `-File` 是唯一能把尾随参数真正送进 `$args` 的写法（见模块 docstring 第 4 条）。
+    """
+    payload = tmp_path / "_ps_payload.json"
+    script = tmp_path / "_ps_parse.ps1"
+    payload.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+    script.write_text(PS_PARSE, encoding="utf-8")
+    done = subprocess.run(
+        [pwsh, "-NoProfile", "-File", str(script), str(payload)],
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    text = done.stdout.strip()
+    assert text, f"解析脚本什么都没输出（stderr：{done.stderr.strip()}）"
+    report: dict[str, Any] = json.loads(text)
+    return report
 
 
 def test_every_powershell_command_parses(tmp_path: Path) -> None:
@@ -120,19 +149,22 @@ def test_every_powershell_command_parses(tmp_path: Path) -> None:
         for dialect, label, cmd in all_commands()
         if dialect == "powershell"
     ]
-    # 载荷写到 pytest 的临时目录：写在仓库树里，被中断时就会留下一个**未跟踪**的垃圾文件，
-    # `git add -A` 一不小心就把它提交进去了（实测在 `git status` 里撞到过）。
-    payload = tmp_path / "_ps_payload.json"
-    payload.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
-    try:
-        done = subprocess.run(
-            [pwsh, "-NoProfile", "-Command", PS_PARSE, str(payload)],
-            capture_output=True,
-            text=True,
-        )
-        assert done.returncode == 0, done.stderr
-        text = done.stdout.strip()
-        bad = [] if not text or text == "null" else json.loads(text)
-        assert not bad, bad
-    finally:
-        payload.unlink(missing_ok=True)
+    report = run_ps_parse(pwsh, tmp_path, items)
+    # 空转闸：解析条数必须等于载荷条数。少了就说明脚本根本没读到载荷，「零错误」不算数
+    # （2026-09-27 实测踩过：`-Command` + 尾随参数让 `$args[0]` 为 null，测试空转通过）。
+    assert report["parsed"] == len(items), report
+    assert not report["bad"], report["bad"][:5]
+
+
+def test_the_parse_harness_reports_a_real_error(tmp_path: Path) -> None:
+    """输入：一条**故意写坏**的 PowerShell 命令。输出：无。
+
+    预期行为：解析器必须把它报出来。这条锁的是「空转闸」本身——脚本一旦读不到载荷、
+    或断言只看「没有错误」，这里就会退化成通过，那是 2026-09-27 修掉的那种假绿。
+    """
+    pwsh = find_pwsh()
+    if pwsh is None:
+        pytest.skip("本机没有可用的 pwsh")
+    report = run_ps_parse(pwsh, tmp_path, [{"label": "broken", "cmd": "if ($true { Write-Output 1 }"}])
+    assert report["parsed"] == 1, report
+    assert report["bad"], "坏命令没被报出来——解析器没真的干活"

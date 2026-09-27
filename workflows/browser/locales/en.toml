@@ -1,0 +1,100 @@
+# English strings for the screen-operation workflow.
+# Invariants locked by tests/workflows/browser/test_locales.py: the same key set as zh,
+# per-language labels and vocabularies that never overlap across languages, a **shared**
+# cell separator, and sensitive object labels that really contain a sensitive word.
+
+[meta]
+title = "Screen Elements"
+colon = ": "
+screen_label = "Window"
+task_label = "Task"
+cell_sep = " · "
+
+[role]
+field = "text field"
+link = "link"
+tab = "tab"
+button = "button"
+
+[state]
+ready = "ready"
+current = "already current"
+disabled = "greyed out"
+hidden = "not visible"
+
+[intent]
+fill = "Fill in "
+open = "Open "
+switch = "Switch to "
+submit = "Press "
+
+[object]
+note = "the note"
+pay_password = "the payment password"
+monthly_report = "the monthly report"
+unsubscribe = "the unsubscribe page"
+export_view = "the export view"
+pay_history = "the payment history"
+draft = "the draft"
+order = "the submit order button"
+phone = "the phone number"
+help = "the help center"
+overview = "the overview view"
+cancel = "Cancel"
+address = "the shipping address"
+manual = "the user manual"
+history = "the history list"
+refresh = "Refresh"
+
+[sensitive]
+# The sensitive list, printed verbatim in the instructions; a label hits it when the word
+# shows up anywhere inside it.
+words = ["submit order", "delete", "pay", "publish", "unsubscribe"]
+
+[policy]
+text = "Rules: (1) Task-intent table - 'Fill in' operates a text field and the action is type; 'Open' operates a link and the action is open; 'Switch to' operates a tab and the action is switch; 'Press' operates a button and the action is click. (2) Usability - only elements whose state is 'ready' can be operated; elements whose state is 'already current', 'greyed out' or 'not visible' cannot. (3) Completion - if the table already holds a row whose state is 'already current', whose role matches the task-intent table and whose label is exactly the object the task names, the task is already done and needs no further operation. (4) Sensitivity - when the label of the object to operate contains any word from the sensitive list (submit order, delete, pay, publish, unsubscribe), ask the human first."
+
+[fam.done]
+q = [
+  "By the completion rule, is this task already done?",
+  "Is the goal already reached on this screen?",
+  "Does the task still need one more operation?",
+]
+
+[fam.done.criteria]
+true = "done: the object to operate is already current, so nothing needs to be operated"
+false = "not done: the object still needs one operation"
+
+[fam.target]
+q = [
+  "Which element should be operated next?",
+  "By the rules, which element does this step touch?",
+  "Which element should be operated?",
+]
+
+[fam.action]
+q = [
+  "What action should this step perform?",
+  "Which action applies to that element?",
+  "By the task-intent table, what is the action for this step?",
+]
+
+[fam.risk]
+q = [
+  "Should this step ask the human first?",
+  "Is this a sensitive operation that needs human confirmation?",
+  "By the sensitivity rule, should this step be held for confirmation?",
+]
+
+[fam.risk.criteria]
+true = "yes: the label of the object to operate hits the sensitive list"
+false = "no: the label of the object to operate does not hit the sensitive list"
+
+[option.action]
+type = "type"
+open = "open"
+switch = "switch"
+click = "click"
+
+[option.position]
+element = "#{n}: {role} · {label} · {state}"
