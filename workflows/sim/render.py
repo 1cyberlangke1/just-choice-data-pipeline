@@ -7,13 +7,14 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 from .spec import SimRow, SimSpec
 
 
-def field_line(label: str, value: str, loc: dict[str, Any]) -> str:
+def field_line(label: str, value: str, loc: dict[str, JsonValue]) -> str:
     """输入：标签、值、语言字典。输出：`标签：值` 一行。
 
     预期行为：分隔符统一从 `meta.colon` 取——反解要求标签后面紧跟分隔符，
@@ -22,7 +23,7 @@ def field_line(label: str, value: str, loc: dict[str, Any]) -> str:
     return f"{label}{loc['meta']['colon']}{value}"
 
 
-def row_line(index: int, row: SimRow, loc: dict[str, Any]) -> str:
+def row_line(index: int, row: SimRow, loc: dict[str, JsonValue]) -> str:
     """输入：序号（从 1 起）、一行动作、语言字典。输出：局面那一行。
 
     预期行为：四格按固定顺序拼——动作名 / 耗 / 收益 / 冷却，用语言文件里的分隔符连起来。
@@ -37,7 +38,7 @@ def row_line(index: int, row: SimRow, loc: dict[str, Any]) -> str:
     return f"[{index}] " + str(loc["meta"]["cell_sep"]).join(str(cell) for cell in cells)
 
 
-def build(spec: SimSpec, loc: dict[str, Any]) -> str:
+def build(spec: SimSpec, loc: dict[str, JsonValue]) -> str:
     """输入：规格、语言字典。输出：整屏局面文本。
 
     预期行为：每一格都只从**规格里已经算好的东西**取（单号、抬头三格、六行动作），

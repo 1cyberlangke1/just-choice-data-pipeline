@@ -11,25 +11,22 @@ import pytest
 
 from workflows.hybrid.spec import HybridConfig
 from workflows.invoice.spec import InvoiceConfig
-from workflows.citation.spec import CitationConfig
 from workflows.mail.workflow import MailConfig
 from workflows.maze.spec import MazeConfig
-from workflows.routing.spec import RoutingConfig
-from workflows.guardrail.spec import GuardConfig
-from workflows.rerank.spec import RerankConfig
 from workflows.match.spec import MatchConfig
-from workflows.shell.spec import ShellConfig
-from workflows.search.spec import SearchConfig
-from workflows.autoformat.spec import DocConfig
 from workflows.functions.spec import CallConfig
-from workflows.lint.spec import LintConfig
-from workflows.modelroute.spec import RouteConfig
-from workflows.context.spec import SessionConfig
-from workflows.browser.spec import ScreenConfig
-from workflows.review.spec import ReviewConfig
 from workflows.skillpick.spec import SkillConfig
-from workflows.rubric.spec import RubricConfig
 from workflows.sim.spec import SimConfig
+from workflows.bench.spec import BenchConfig
+from workflows.shell.workflow import ShellConfig
+from workflows.modelroute.workflow import RouteConfig
+from workflows.verify.workflow import VerifyConfig
+from workflows.toolgate.workflow import ToolGateConfig
+from workflows.search.workflow import SearchConfig
+from workflows.compact.workflow import CompactConfig
+from workflows.browser.workflow import BrowserConfig
+from workflows.routing.workflow import RoutingConfig
+from workflows.review.workflow import ReviewConfig
 
 #: (config 类, 旋钮名)：每个取值表清空后都必须当场报错。
 EMPTY_POOLS: tuple[tuple[type, str], ...] = (
@@ -59,108 +56,37 @@ EMPTY_POOLS: tuple[tuple[type, str], ...] = (
     (HybridConfig, "phrasings"),
     (HybridConfig, "themes"),
     (MailConfig, "phrasing_pool"),
-    (ShellConfig, "dialects"),
-    (ShellConfig, "ops"),
-    (ShellConfig, "wrappers"),
-    (ShellConfig, "goal_styles"),
-    (ShellConfig, "read_counts"),
-    (ShellConfig, "phrasings"),
-    (SearchConfig, "topics"),
-    (SearchConfig, "best_flavors"),
-    (SearchConfig, "mixes"),
-    (SearchConfig, "layouts"),
-    (SearchConfig, "probes"),
-    (SearchConfig, "pair_kinds"),
-    (SearchConfig, "query_styles"),
-    (SearchConfig, "phrasings"),
-    (CitationConfig, "topics"),
-    (CitationConfig, "statuses"),
-    (CitationConfig, "quote_forms"),
-    (CitationConfig, "section_counts"),
-    (CitationConfig, "noises"),
-    (CitationConfig, "claim_styles"),
-    (CitationConfig, "wheres"),
-    (CitationConfig, "doc_styles"),
-    (CitationConfig, "phrasings"),
-    (RoutingConfig, "areas"),
-    (RoutingConfig, "issues"),
-    (RoutingConfig, "tiers"),
-    (RoutingConfig, "impacts"),
-    (RoutingConfig, "urgencies"),
-    (RoutingConfig, "compliances"),
-    (RoutingConfig, "waits"),
-    (RoutingConfig, "phrasings"),
-    (GuardConfig, "reaches"),
-    (GuardConfig, "directions"),
-    (GuardConfig, "violations"),
-    (GuardConfig, "mentions"),
-    (GuardConfig, "audiences"),
-    (GuardConfig, "histories"),
-    (GuardConfig, "wordings"),
-    (GuardConfig, "phrasings"),
-    (RerankConfig, "topics"),
-    (RerankConfig, "aspects"),
-    (RerankConfig, "shapes"),
-    (RerankConfig, "traps"),
-    (RerankConfig, "wordings"),
-    (RerankConfig, "phrasings"),
     (MatchConfig, "products"),
     (MatchConfig, "patterns"),
     (MatchConfig, "spellings"),
     (MatchConfig, "layouts"),
     (MatchConfig, "extras"),
     (MatchConfig, "phrasings"),
-    (DocConfig, "topics"),
-    (DocConfig, "wraps"),
-    (DocConfig, "shapes"),
-    (DocConfig, "variants"),
-    (DocConfig, "code_families"),
-    (DocConfig, "phrasings"),
     (CallConfig, "tools"),
     (CallConfig, "voices"),
     (CallConfig, "windows"),
     (CallConfig, "aliases"),
     (CallConfig, "phrasings"),
-    (LintConfig, "rules"),
-    (LintConfig, "genres"),
-    (LintConfig, "hits"),
-    (LintConfig, "phrasings"),
-    (RouteConfig, "tasks"),
-    (RouteConfig, "complexities"),
-    (RouteConfig, "latencies"),
-    (RouteConfig, "costs"),
-    (RouteConfig, "retries"),
-    (RouteConfig, "datas"),
-    (RouteConfig, "phrasings"),
-    (SessionConfig, "keep_forms"),
-    (SessionConfig, "drop_forms"),
-    (SessionConfig, "kind_sets"),
-    (SessionConfig, "extras"),
-    (SessionConfig, "orders"),
-    (SessionConfig, "phrasings"),
-    (ScreenConfig, "tasks"),
-    (ScreenConfig, "forms"),
-    (ScreenConfig, "dones"),
-    (ScreenConfig, "decoy_states"),
-    (ScreenConfig, "orders"),
-    (ScreenConfig, "phrasings"),
-    (ReviewConfig, "triples"),
-    (ReviewConfig, "noises"),
-    (ReviewConfig, "changes"),
-    (ReviewConfig, "orders"),
-    (ReviewConfig, "phrasings"),
     (SkillConfig, "tags"),
     (SkillConfig, "layouts"),
     (SkillConfig, "grants"),
     (SkillConfig, "inuse_modes"),
     (SkillConfig, "phrasings"),
-    (RubricConfig, "sheets"),
-    (RubricConfig, "layouts"),
-    (RubricConfig, "slacks"),
-    (RubricConfig, "phrasings"),
     (SimConfig, "boards"),
     (SimConfig, "layouts"),
     (SimConfig, "phrasings"),
+    (BenchConfig, "tables"),
+    (BenchConfig, "layouts"),
+    (BenchConfig, "phrasings"),
+    (ShellConfig, "phrasing_pool"),
+    (RouteConfig, "phrasing_pool"),
+    (VerifyConfig, "phrasing_pool"),
+    (ToolGateConfig, "phrasing_pool"),
+    (SearchConfig, "phrasing_pool"),
+    (CompactConfig, "phrasing_pool"),
+    (BrowserConfig, "phrasing_pool"),
+    (RoutingConfig, "phrasing_pool"),
+    (ReviewConfig, "phrasing_pool"),
 )
 
 #: (config 类, 旋钮名)：区间类旋钮，元素个数不对时必须当场报错。
@@ -192,23 +118,20 @@ def test_bad_bounds_report_field(config_cls: type, field: str) -> None:
         InvoiceConfig,
         HybridConfig,
         MailConfig,
-        ShellConfig,
-        SearchConfig,
-        CitationConfig,
-        RoutingConfig,
-        GuardConfig,
-        RerankConfig,
         MatchConfig,
-        DocConfig,
         CallConfig,
-        LintConfig,
-        RouteConfig,
-        SessionConfig,
-        ScreenConfig,
-        ReviewConfig,
         SkillConfig,
-        RubricConfig,
         SimConfig,
+        BenchConfig,
+        ShellConfig,
+        RouteConfig,
+        VerifyConfig,
+        ToolGateConfig,
+        SearchConfig,
+        CompactConfig,
+        BrowserConfig,
+        RoutingConfig,
+        ReviewConfig,
     ],
 )
 def test_defaults_still_construct(config_cls: type) -> None:

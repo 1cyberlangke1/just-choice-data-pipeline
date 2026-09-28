@@ -11,9 +11,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass
-from typing import Any
+
 
 from jc import assemble
 from jc.judge import Verdict
@@ -23,7 +24,7 @@ from . import locales, parse, questions
 from .spec import SimSpec
 
 
-def answer_value(question: dict[str, Any], answer: dict[str, Any]) -> Any:
+def answer_value(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> object:
     """输入：一道题、它的答案。输出：可比的值。
 
     预期行为：choice 给**选项名**（不是编号——编号只由组装器产生）、score 给**档位下标**、
@@ -55,19 +56,19 @@ def answer_value(question: dict[str, Any], answer: dict[str, Any]) -> Any:
     return None
 
 
-def recompute(board: parse.ParsedBoard, loc: dict[str, Any]) -> dict[str, list[Any]]:
+def recompute(board: parse.ParsedBoard, loc: dict[str, JsonValue]) -> dict[str, list[JsonValue]]:
     """输入：反解出来的局面、语言字典。输出：{题族: 期望答案列表}（按题序）。
 
     预期行为：走**同一套出题逻辑**（`questions.build`），只是输入换成从文本读回来的六行与
     抬头三格——所以「渲染写歪」会直接变成「答案对不上」。问法编号给 0：它只影响措辞。
     """
-    out: dict[str, list[Any]] = {}
+    out: dict[str, list[JsonValue]] = {}
     for item in questions.build(board.rows, board, loc, 0):
         out.setdefault(item.family, []).append(item.answer)
     return out
 
 
-def compare(sample: dict[str, Any], expected: dict[str, list[Any]]) -> list[str]:
+def compare(sample: dict[str, JsonValue], expected: dict[str, list[JsonValue]]) -> list[str]:
     """输入：一条样本、期望答案表。输出：差异列表（空 = 全对）。
 
     预期行为：按题号走一遍，同族按出现顺序对上第几条；题多了、题少了、答案不对、
@@ -99,7 +100,7 @@ def compare(sample: dict[str, Any], expected: dict[str, list[Any]]) -> list[str]
 
 
 def roundtrip_diff(
-    spec: SimSpec, board: parse.ParsedBoard, loc: dict[str, Any]
+    spec: SimSpec, board: parse.ParsedBoard, loc: dict[str, JsonValue]
 ) -> list[str]:
     """输入：真值规格、反解结果、语言字典。输出：不一致项列表（空 = 逐格一致）。
 
@@ -107,7 +108,7 @@ def roundtrip_diff(
     语言文案」不算差异（两边都会翻回同一个键）。
     """
     del loc
-    checks: list[tuple[str, Any, Any]] = [
+    checks: list[tuple[str, object, object]] = [
         ("单号", board.request_id, spec.request_id),
         ("回合", board.turn, spec.turn),
         ("资源", board.resources, spec.resources),
@@ -136,7 +137,7 @@ class RoundtripJudge:
     name: str = "roundtrip"
     locale: str = "zh"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值 spec。输出：Verdict。预期行为：没有 spec 就跳过（不误判）。"""
         if not isinstance(spec, SimSpec):
             return Verdict(True, reason="没有 spec，跳过结构判别", raw={"skipped": True})
@@ -156,7 +157,7 @@ class LabelJudge:
     name: str = "label"
     locale: str = "zh"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值规格。输出：Verdict。预期行为：规格类型不对直接报错。"""
         if not isinstance(spec, SimSpec):
             return Verdict(False, reason=f"判别器拿到的规格类型不对：{type(spec).__name__}")

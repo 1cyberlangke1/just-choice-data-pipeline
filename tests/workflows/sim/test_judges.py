@@ -1,10 +1,11 @@
 """判别器的测试：答案取值、重算与产线一致、逐格往返、以及每种坏法都要被抓到。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import dataclasses
 import random
-from typing import Any
+
 
 from jc import assemble
 from tests.workflows.sim.conftest import _make_spec
@@ -13,7 +14,7 @@ from workflows.sim import judges, locales, parse, questions, render, spec as sp
 LOC = locales.load("zh")
 
 
-def _sample(**overrides: Any) -> tuple[dict[str, Any], sp.SimSpec]:
+def _sample(**overrides: object) -> tuple[dict[str, JsonValue], sp.SimSpec]:
     """输入：case 覆盖项。输出：(走产线组装出来的样本, 真值规格)。"""
     spec = _make_spec(**overrides)
     items = questions.build(spec.rows, spec, LOC, spec.phrasing)
@@ -58,7 +59,7 @@ def test_recompute_matches_the_production_path() -> None:
     spec = _make_spec(board="b6", layout="l3")
     board = parse.parse_board(render.build(spec, LOC), parse.labels_of(LOC))
     expected = judges.recompute(board, LOC)
-    produced: dict[str, list[Any]] = {}
+    produced: dict[str, list[JsonValue]] = {}
     for item in questions.build(spec.rows, spec, LOC, spec.phrasing):
         produced.setdefault(item.family, []).append(item.answer)
     assert expected == produced

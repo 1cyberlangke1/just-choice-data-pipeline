@@ -1,237 +1,237 @@
-"""检索 workflow 的判别器：构造式数据用纯规则判别即可（**零 token**）。
+"""检索结果判读的判别器：分工是「纯代码能查的」与「只能问模型的」。
 
-- `RoundtripJudge`：把结果页反解回字段，与真值 spec **逐字**比对
-  （抓字段漏写、分隔符写错、摘要被截断）；
-- `LabelJudge`：反解文本后**独立重算**每道题的金答案（页文本 → 事实 → 答案），
-  与数据里的答案比对。它只看渲染出来的文本与题面，不看 spec 里的答案——
-  否则就是「拿答案验证答案」。
+- `HygieneJudge`（零 token）：三段文本必须存在、单行、不含围栏 / HTML 标签 / 段落名残留；
+- `FrameJudge`（零 token）：「来源与时效」那一行必须逐格等于注入特征（来源类型 / 时效），
+  规则表必须逐行等于规范表——渲染串味（挂错 tags、漏行、错格）全在这一关拦下；
+- `TraceJudge`（一次后端调用）：把整段结果页交回后端反解**查询意图 / 是否切题 / 是不是
+  垃圾**，三个答案都必须与注入特征一致。这是「渲染必须可反解」的落地（PLAN 3.4 第 ③ 档）：
+  三段文本是模型写的，唯一由文本承载的三个标签就是这三维，它们必须能从文本里读回来，
+  否则这道题没人答得对。
 
-两族题（问「结果 N」与问「结果 i 与结果 j」）点名的编号**从题面本身读**：
-「问的是第几条」是题面的一部分，判别器不该回头问生成器。
-
-输入/输出：只出 `Verdict`，不改样本。对不上就判不通过——宁可少要几条，
-也不要一条「题面和页面对不上」的数据。
+输入/输出：只出 `Verdict`，不改样本。反解失败一律判不通过——宁可少要几条，
+也不要一条标签和文本对不上的数据。但**端点故障不算数据不合格**：重试与降级都试过之后
+还拿不到草稿，只能记成 `skipped=True`（没判成），否则端点抖动会被写成合成质量问题。
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final, Literal
 
+from pydantic import BaseModel
+
+from jc.backend.types import BackendError, GenerationBackend, GenerationTask
 from jc.judge import Verdict
-from jc.workflow import family_of
+from jc.jsontypes import JsonValue
 
-from . import locales, parse, questions, render
-from . import spec as spec_mod
-from .spec import AUTHORITIES, TOPIC_NAMES, SearchSpec, TruthRow
+from . import locales, render
+from .spec import SearchSpec
 
-_NUM: Final[re.Pattern[str]] = re.compile(r"\d+")
+#: 格式残留：单独成行的围栏 / HTML 换行标签（围栏在三段文本里由 `render.check_draft` 与
+#: 卫生判别器各查一次；这里再按「单独成行」查一遍整段 state——模型偶尔会把整段回答
+#: 包进 ``` 里，那样的行会落在文本段之外）。
+LEFTOVER_LINES: Final[frozenset[str]] = frozenset(
+    {"```", "```json", "```toml", "```text", "```markdown"}
+)
+LEFTOVER_TAGS: Final[tuple[str, ...]] = ("<br>", "<br/>", "<br />", "</br>")
+
+#: 反解时重问的原子题族（题族名与数据集里完全一致，选项也用同一份 locale）。
+TRACE_FAMILIES: Final[tuple[str, ...]] = ("query_kind", "topicality", "spam")
 
 
-def question_indices(sample: dict[str, Any]) -> tuple[int, tuple[int, int]]:
-    """输入：样本。输出：(被点名的单条编号, 被点名的那一对编号)。
+class TraceDraft(BaseModel):
+    """反解草稿：反解「查询意图 / 是否切题 / 是不是垃圾」三维。
 
-    预期行为：从**题面**里读编号——同组题面给出的编号必须一致，不一致直接报错，
-    不猜也不取第一个：编号对不上说明渲染与出题走偏了，那是要拦下来的错。
+    取值域必须与 `features.QUERY_KINDS` / `TOPICALITIES` / `SPAMS` 以及 locale 里
+    `criteria` 的 key 一致；这条由 `tests/workflows/search/test_locales.py` 锁住，不靠人记。
     """
-    probes: set[int] = set()
-    pairs: set[tuple[int, int]] = set()
-    for qid, question in sample["questions"].items():
-        family = family_of(qid)
-        if family in questions.PROBE_FAMILIES:
-            numbers = [int(token) for token in _NUM.findall(question["instructions"])]
-            if len(numbers) != 1:
-                raise ValueError(f"{qid} 的题面里编号不是恰好一个：{question['instructions']!r}")
-            probes.add(numbers[0])
-        elif family in questions.PAIR_FAMILIES:
-            numbers = [int(token) for token in _NUM.findall(question["instructions"])]
-            if len(numbers) != 2:
-                raise ValueError(f"{qid} 的题面里编号不是恰好两个：{question['instructions']!r}")
-            pairs.add((numbers[0], numbers[1]))
-    if len(probes) != 1 or len(pairs) != 1:
-        raise ValueError(f"题面里的编号不一致：单条 {sorted(probes)}，成对 {sorted(pairs)}")
-    return probes.pop(), pairs.pop()
+
+    query_kind: Literal["navigational", "informational", "transactional"]
+    topicality: Literal["on_topic", "off_topic"]
+    spam: Literal["clean", "spam"]
 
 
-def topic_of_query(page: parse.ParsedPage, loc: dict[str, Any]) -> str:
-    """输入：反解出来的页、语言字典。输出：问题问的主题键。
+def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
+    """组装反解提示词。
 
-    预期行为：按「问题里出现了哪个主题名」认，必须**恰好一个**——各主题的名字互不包含
-    （由 `test_locales.py` 锁住），所以这条判据是干净的。认不出或认出多个直接报错：
-    静默挑一个会让判别器用错主题，把好数据判成坏的。
+    输入：渲染好的 state、语言字典。
+    输出：提示词。预期行为：把 `TRACE_FAMILIES` 里的原子题连同选项原样再问一遍——
+    反解用的选项与数据集里的一致，否则「答对了」与「标签对了」不是一回事。
     """
-    found = [name for name in TOPIC_NAMES if loc["topic"][name]["label"] in page.query]
-    if len(found) != 1:
-        raise ValueError(f"用户问题里认出的主题不是恰好一个：{found}（问题：{page.query!r}）")
-    return found[0]
+    lines = [
+        str(loc["verify"]["intro"]),
+        "",
+        str(loc["verify"]["state_header"]),
+        state,
+        "",
+        str(loc["verify"]["questions_header"]),
+    ]
+    for index, family in enumerate(TRACE_FAMILIES, start=1):
+        lines.append(f"{index}. {loc['fam'][family]['q'][0]}")
+        for name, desc in loc["fam"][family]["criteria"].items():
+            lines.append(str(loc["verify"]["option_line"]).format(name=name, desc=desc))
+    return "\n".join(lines)
 
 
-def truth_rows_of_page(page: parse.ParsedPage, loc: dict[str, Any]) -> tuple[TruthRow, ...]:
-    """输入：反解出来的页、语言字典。输出：每条的**可判定事实**（判别侧）。
-
-    预期行为：**只吃文本**——主题是否对上按「标题里有没有问题的主题名」判、类型是否对上
-    按两边渲染出来的类型文本判、时效按日期比大小判、权威按语言文件反查回键。
-    不看 spec 里的任何答案。
-    """
-    topic_label = loc["topic"][topic_of_query(page, loc)]["label"]
-    authority_key = {loc["authority"][key]: key for key in AUTHORITIES}
-    rows: list[TruthRow] = []
-    for row in page.results:
-        if row.authority not in authority_key:
-            raise ValueError(f"认不出的来源权威：{row.authority!r}")
-        rows.append(
-            TruthRow(
-                index=row.index,
-                doc_id=row.doc_id,
-                topic_match=topic_label in row.title,
-                kind_match=row.kind == page.want_kind,
-                fresh=row.updated >= page.since,
-                authority=authority_key[row.authority],
-                updated=row.updated,
-                snippet=row.snippet,
-            )
-        )
-    return tuple(rows)
-
-
-def recompute(
-    page: parse.ParsedPage, loc: dict[str, Any], probe: int, pair: tuple[int, int]
-) -> dict[str, Any]:
-    """输入：反解出来的页、语言字典、题面点名的单条与成对编号。输出：{题族名: 重算的答案}。
-
-    预期行为：**只吃文本**——所以它能独立验证构造器。
-    """
-    rows = truth_rows_of_page(page, loc)
-    by_index = {row.index: row for row in rows}
-    missing = [index for index in (*pair, probe) if index not in by_index]
-    if missing:
-        raise ValueError(f"题面点名的编号在这一页里不存在：{missing}")
-    topic = loc["topic"][topic_of_query(page, loc)]
-    points = tuple(topic["points"])
-    top = spec_mod.best_of(rows)
-    left, right = (by_index[index] for index in pair)
-    probe_row = by_index[probe]
-    return {
-        "best_result": f"result_{top.index}",
-        "next_action": spec_mod.action_of(rows, points),
-        "relevance": spec_mod.relevance_of(probe_row),
-        "covered_points": spec_mod.covers_of(probe_row, points),
-        "answerable": spec_mod.covers_of(top, points) == len(points),
-        "conflict": spec_mod.conflict_of(left, right, topic["metric"], tuple(topic["values"])),
-        "same_source": left.doc_id == right.doc_id,
-        "probe_fresh": probe_row.fresh,
-    }
-
-
-def roundtrip_diff(spec: SearchSpec, page: parse.ParsedPage, loc: dict[str, Any]) -> list[str]:
-    """输入：真值规格、反解出来的页、语言字典。输出：差异列表（空 = 一致）。
-
-    预期行为：请求头四个字段与每一条的七格逐字比——连缩进被吃掉、摘要被截断都算差异。
-    条数不同就直接返回：再比下去只会刷一屏「第 N 条」。
-    """
-    diff: list[str] = []
-    fields = render.topic_fields(spec.topic.name, loc)
-    want_query = render.query_text(spec, loc)
-    if page.query != want_query:
-        diff.append(f"用户问题：渲染 {page.query!r} vs 期望 {want_query!r}")
-    if page.want_kind != loc["doc_kind"][spec.want_kind]:
-        diff.append(f"要求的文档类型：渲染 {page.want_kind!r} vs 期望 {loc['doc_kind'][spec.want_kind]!r}")
-    if page.since != spec.since:
-        diff.append(f"时效要求：渲染 {page.since!r} vs 期望 {spec.since!r}")
-    want_points = (fields["p1"], fields["p2"])
-    if page.points != want_points:
-        diff.append(f"问题要点：渲染 {page.points!r} vs 期望 {want_points!r}")
-    if len(page.results) != len(spec.results):
-        diff.append(f"结果条数：渲染 {len(page.results)} vs 期望 {len(spec.results)}")
-        return diff
-    for want, got in zip(spec.results, page.results, strict=True):
-        row_fields = render.topic_fields(want.topic, loc)
-        checks = (
-            ("编号", got.index, want.index),
-            ("文档号", got.doc_id, want.doc_id),
-            ("标题", got.title, loc["title"][want.title]["text"].format(**row_fields)),
-            ("类型", got.kind, loc["doc_kind"][want.kind]),
-            ("来源", got.authority, loc["authority"][want.authority]),
-            ("更新日期", got.updated, want.updated),
-            ("摘要", got.snippet, loc["snippet"][want.snippet]["text"].format(**row_fields)),
-        )
-        for name, rendered, expected in checks:
-            if rendered != expected:
-                diff.append(f"第 {want.index} 条的{name}：渲染 {rendered!r} vs 期望 {expected!r}")
-    return diff
+def _has_leftover(state: str) -> str:
+    """输入：state 文本。输出：命中的残留（没有就空串）。"""
+    for line in state.splitlines():
+        if line.strip() in LEFTOVER_LINES:
+            return line.strip()
+    for tag in LEFTOVER_TAGS:
+        if tag in state:
+            return tag
+    return ""
 
 
 @dataclass(frozen=True)
-class RoundtripJudge:
-    """结构判别器：结果页反解后必须与真值 spec 完全一致。"""
+class HygieneJudge:
+    """零 token 判别器：state 里不许有格式残留，三段文本还得有内容、是单行。
 
-    name: str = "roundtrip"
-    locale: str = "zh"
+    查三类：**单独成行的围栏 / HTML 换行标签**、**三段文本是空的**、**三段文本是多行**。
+    口径压到最窄——宁可漏检也不误判，因为误判会直接拒掉好数据。
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
-        """输入：样本、真值 spec。输出：Verdict。预期行为：没有 spec 就跳过（不误判）。"""
+    字段：`locale` 语言（要按语言认那几段的段落名）。
+    """
+
+    locale: str
+    name: str = "hygiene"
+
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。预期行为：只看残留与形状，不看语义。"""
+        del spec
+        state = sample["state"]
+        if not isinstance(state, str):
+            return Verdict(True, reason="state 不是文本，跳过卫生检查")
+        loc = locales.load(self.locale)
+        leftover = _has_leftover(state)
+        if leftover:
+            return Verdict(False, reason=f"state 里有格式残留：{leftover!r}")
+        problems: list[str] = []
+        for key, label in (
+            ("query_label", "查询"),
+            ("title_label", "标题"),
+            ("snippet_label", "摘要"),
+        ):
+            lines = render.field_lines(state, loc, key)
+            if not lines:
+                problems.append(f"「{label}」是空的")
+            elif len(lines) > 1:
+                problems.append(f"「{label}」是多行（{len(lines)} 行）")
+            else:
+                leaked = render.label_leak(lines[0], loc)
+                if leaked:
+                    problems.append(f"「{label}」里混进了段落名「{leaked}」")
+        if not problems:
+            return Verdict(True, reason="三段文本都是单行、非空，没有格式残留")
+        return Verdict(False, reason="；".join(problems))
+
+
+@dataclass(frozen=True)
+class FrameJudge:
+    """零 token 判别器：来源行与规则表必须与代码算出来的一模一样。
+
+    字段：`locale` 语言。预期行为：逐格比对「来源与时效」（来源类型 / 时效），
+    再逐行比对规则表（规则名 + 处置）；任何一处对不上都判不通过——那是渲染挂错了 tags，
+    标签会跟着一起错。
+    """
+
+    locale: str
+    name: str = "frame"
+
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。预期行为：只做结构比对。"""
         if not isinstance(spec, SearchSpec):
-            return Verdict(True, reason="没有 spec，跳过结构判别", raw={"skipped": True})
+            return Verdict(True, reason="没有 spec，跳过框架比对", skipped=True)
+        state = sample["state"]
+        if not isinstance(state, str):
+            return Verdict(True, reason="state 不是文本，跳过框架比对", skipped=True)
         loc = locales.load(self.locale)
-        try:
-            page = parse.parse_page(
-                sample["state"], parse.label_index(loc), (loc["meta"]["field_sep"],)
-            )
-        except ValueError as exc:
-            return Verdict(False, reason=f"反解失败：{exc}")
-        diff = roundtrip_diff(spec, page, loc)
-        return Verdict(not diff, reason="; ".join(diff[:5]), raw={"diff": diff})
+        expected = render.SourceState(
+            authority=spec.tags.authority, freshness=spec.tags.freshness
+        )
+        problems: list[str] = []
+        parsed = render.source_of(state, loc)
+        if parsed != expected:
+            problems.append(f"来源行与注入特征对不上：解析出 {parsed}，应为 {expected}")
+        rules = render.rules_of(state, loc)
+        canonical = render.canonical_rules(loc)
+        if rules != canonical:
+            problems.append(f"规则表与规范表对不上：解析出 {len(rules)} 行，应为 {len(canonical)} 行")
+        if not problems:
+            return Verdict(True, reason="来源行与规则表都与注入特征一致")
+        return Verdict(False, reason="；".join(problems), raw={"source": str(parsed)})
 
 
 @dataclass(frozen=True)
-class LabelJudge:
-    """答案判别器：反解文本后独立重算金答案，逐题比对。"""
+class TraceJudge:
+    """模型判别器：把整段结果页交回后端反解三维，必须与注入的一致。
 
-    name: str = "label"
-    locale: str = "zh"
-    max_problems: int = 5
+    字段：`backend` 生成后端（由 `bind_backend` 注入）；`locale` 语言。
+    """
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
-        """输入：样本、真值 spec（不用）。输出：Verdict。预期行为：答案对不上就判不通过。"""
+    backend: GenerationBackend
+    locale: str
+    name: str = "trace"
+
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。
+
+        预期行为：不一致时把「注入的」与「反解出来的」列在理由里，方便人看是哪里写歪了。
+        端点故障与草稿缺字段都只算「没判成」（`skipped=True`）——记成「不通过」会把
+        端点抖动写成数据质量问题。
+        """
+        if not isinstance(spec, SearchSpec):
+            return Verdict(True, reason="没有 spec，跳过反解", skipped=True)
+        if self.backend is None:
+            return Verdict(True, reason="没有后端，跳过反解", skipped=True)
         loc = locales.load(self.locale)
+        task = GenerationTask(
+            task_id=spec.trace_task_id,
+            kind="text",
+            domain="search-result-reading",
+            prompt=build_trace_prompt(str(sample["state"]), loc),
+            response_model=TraceDraft,
+            spec={"tags": spec.tags.as_dict()},
+        )
         try:
-            page = parse.parse_page(
-                sample["state"], parse.label_index(loc), (loc["meta"]["field_sep"],)
+            draft = self.backend.generate(task)
+        except BackendError as exc:
+            if getattr(exc, "fatal_for_run", False):
+                raise  # 全部 provider 都挂了：整批该停下（PLAN 3.1.4）
+            return Verdict(
+                True,
+                reason=f"反解没跑成（端点故障，不是数据问题）：{exc}",
+                raw={"error": type(exc).__name__},
+                skipped=True,
             )
-            probe, pair = question_indices(sample)
-            expected = recompute(page, loc, probe, pair)
-        except ValueError as exc:
-            return Verdict(False, reason=f"重算失败：{exc}")
-        problems = self._check(sample, expected)
+        data = draft.data if isinstance(draft.data, dict) else {}
+        broken = [name for name in TRACE_FAMILIES if name not in data]
+        if broken:
+            return Verdict(
+                True,
+                reason=f"反解草稿缺字段，判不了：{'、'.join(broken)}",
+                raw={"raw_text": draft.raw_text[:500]},
+                skipped=True,
+            )
+        labels = spec.labels
+        problems = [
+            f"{family}: 注入 {getattr(labels, family)!r}，反解成 {data[family]!r}"
+            for family in TRACE_FAMILIES
+            if data[family] != getattr(labels, family)
+        ]
         return Verdict(
             not problems,
-            reason="; ".join(problems[: self.max_problems]),
-            raw={"problems": problems},
+            reason="; ".join(problems),
+            raw={"traced": {family: data[family] for family in TRACE_FAMILIES}},
         )
 
-    def _check(self, sample: dict[str, Any], expected: dict[str, Any]) -> list[str]:
-        """输入：样本、重算出来的答案。输出：问题列表（空 = 全部对得上）。"""
-        problems: list[str] = []
-        for qid, question in sample["questions"].items():
-            want = expected.get(family_of(qid))
-            if want is None:
-                problems.append(f"{qid}: 未知题族")
-                continue
-            answer = sample["answers"][qid]
-            qtype = question["type"]
-            if qtype == "choice":
-                options = list(question["criteria"])
-                index = answer["choice"]
-                if not 0 <= index < len(options):
-                    problems.append(f"{qid}: 答案编号越界（{index}）")
-                    continue
-                got = options[index]
-                if got != want:
-                    problems.append(f"{qid}: 答案指向 {got}，按页面重算是 {want}")
-            elif qtype == "noul":
-                if answer["noul"] is not want:
-                    problems.append(f"{qid}: 答案是 {answer['noul']}，按页面重算是 {want}")
-            elif answer["score"] != want:
-                problems.append(f"{qid}: 答案是 {answer['score']}，按页面重算是 {want}")
-        return problems
+
+def option_names(question: dict[str, JsonValue]) -> list[str]:
+    """输入：一道 choice 题。输出：按**产物里写的顺序**排好的选项名。
+
+    预期行为：答案编号就是在这个顺序里的下标（见 `jc.assemble`）——审计要拿它把编号
+    换回选项名，才能与纯代码重算的结果比对。
+    """
+    criteria = question.get("criteria")
+    return list(criteria) if isinstance(criteria, dict) else []

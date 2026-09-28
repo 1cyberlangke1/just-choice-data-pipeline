@@ -1,172 +1,150 @@
-"""题族的单元测试：四个题族的出题规则、选项、以及「均衡靠构造」这条设计。"""
+"""浏览器 / GUI 操作的题族测试：题型、选项、金答案与问法轮换。"""
 
 from __future__ import annotations
 
-from collections import Counter
+from jc.workflow import LabeledQuestion
 
-import pytest
+from workflows.browser import features, locales, questions
+from workflows.browser.features import TagSet
 
-from tests.workflows.browser.conftest import _make_case, _make_spec
-from workflows.browser import locales, questions, spec as sp
-
-
-def _build(**overrides: object) -> list[object]:
-    """输入：case 覆盖项。输出：这道题的题目列表（中文、第一套句面）。"""
-    spec = _make_spec(**overrides)
-    return questions.build(spec.rows, spec.task, spec.object, locales.load("zh"), spec.phrasing)
+TAGS = TagSet(intent="switch", state="disabled", sensitive="yes", decoy="same_role", screen="list")
 
 
-def test_families_for_follows_the_completion_rule() -> None:
-    """输入：没做完 / 做完两种 case。输出：无。
+def by_family(tags: TagSet = TAGS) -> dict[str, LabeledQuestion]:
+    """输入：一组特征。输出：{题族名: 题目}。"""
+    return {item.family: item for item in questions.build(tags, locales.load("zh"), 0)}
 
-    预期行为：做完时只出完成度题；没做完时四族齐全。这条必须与 `build` 一一对应。
+
+def test_every_family_has_the_declared_type() -> None:
+    """输入：一组特征。输出：无。预期行为：三族 choice、三族 noul、一族 score。"""
+    families = by_family()
+    assert set(families) == set(questions.FAMILIES)
+    for family in questions.CHOICE_FAMILIES:
+        assert families[family].question["type"] == "choice"
+    for family in questions.NOUL_FAMILIES:
+        assert families[family].question["type"] == "noul"
+    for family in questions.SCORE_FAMILIES:
+        assert families[family].question["type"] == "score"
+
+
+def test_question_shape_matches_the_contract() -> None:
+    """输入：一组特征。输出：无。预期行为：每道题只有契约允许的三个字段，且题面非空。"""
+    for item in questions.build(TAGS, locales.load("zh"), 0):
+        assert set(item.question) == {"type", "instructions", "criteria"}
+        assert str(item.question["instructions"]).strip()
+
+
+def test_answers_match_the_labels() -> None:
+    """输入：一组特征。输出：无。预期行为：每族金答案等于特征层算出来的那一格。"""
+    labels = TAGS.label()
+    families = by_family()
+    assert families["intent"].answer == labels.intent
+    assert families["target"].answer == labels.target
+    assert families["action"].answer == labels.action
+    assert families["done"].answer is labels.done
+    assert families["blocked"].answer is labels.blocked
+    assert families["confirm"].answer is labels.confirm
+    assert families["risk"].answer == labels.risk
+
+
+def test_intent_answer_follows_the_tags_not_the_table() -> None:
+    """输入：两个只差意图的组合。输出：无。
+
+    预期行为：`intent` 那一族的金答案就是注入取值本身——它由那句话承载，
+    判据在标签里，不在文本里（标签先行，文本后写）。
     """
-    for done, want in (
-        (False, ("action", "done", "risk", "target")),
-        (True, ("done",)),
-    ):
-        spec = _make_spec(done=done)
-        assert questions.families_for(spec.rows, spec.task, spec.object) == want
-        assert tuple(sorted(item.family for item in _build(done=done))) == want
+    left = by_family(TagSet(intent="fill", state="ready", sensitive="no", decoy="none", screen="form"))
+    right = by_family(TagSet(intent="open", state="ready", sensitive="no", decoy="none", screen="form"))
+    assert left["intent"].answer == "fill"
+    assert right["intent"].answer == "open"
 
 
-def test_done_question_is_always_asked() -> None:
-    """输入：两种完成档。输出：无。预期行为：`done` 那一族总是出，答案就是真值。"""
-    for done in (False, True):
-        items = _build(done=done)
-        assert items[0].family == "done"
-        assert items[0].question["type"] == "noul"
-        assert items[0].answer is done
-        assert set(items[0].question["criteria"]) == {"true", "false"}
+def test_target_options_are_this_screen_plus_none() -> None:
+    """输入：一组特征。输出：无。
 
-
-def test_target_answer_points_at_the_operable_row() -> None:
-    """输入：全部 480 个 case。输出：无。
-
-    预期行为：定位题的答案就是目标槽的位置，而且那个位置的选项描述里写着目标那一行的三格。
-    """
-    loc = locales.load("zh")
-    for case in sp.build_cases(sp.ScreenConfig()):
-        spec = sp.sample_spec(case, "train", 0, 0, None)
-        if spec.done:
-            continue
-        items = questions.build(spec.rows, spec.task, spec.object, loc, 0)
-        target = next(item for item in items if item.family == "target")
-        index = int(str(target.answer)[1:])
-        row = spec.rows[index - 1]
-        description = target.question["criteria"][str(target.answer)]
-        assert loc["object"][row.object] in description
-        assert loc["state"][row.state] in description
-        assert set(target.question["criteria"]) == {f"p{n}" for n in range(1, 6)}
-
-
-def test_action_answer_follows_the_task() -> None:
-    """输入：全部 480 个 case。输出：无。预期行为：动作题的答案就是任务意图表里的那一档。"""
-    loc = locales.load("zh")
-    for case in sp.build_cases(sp.ScreenConfig()):
-        spec = sp.sample_spec(case, "train", 0, 0, None)
-        if spec.done:
-            continue
-        items = questions.build(spec.rows, spec.task, spec.object, loc, 0)
-        action = next(item for item in items if item.family == "action")
-        assert action.answer == sp.action_of(case.task)
-        assert set(action.question["criteria"]) == set(sp.ACTIONS)
-
-
-def test_risk_answer_follows_the_sensitive_list() -> None:
-    """输入：全部 480 个 case。输出：无。预期行为：风险题答案 = 对象是不是命中敏感清单。"""
-    loc = locales.load("zh")
-    for case in sp.build_cases(sp.ScreenConfig()):
-        spec = sp.sample_spec(case, "train", 0, 0, None)
-        if spec.done:
-            continue
-        items = questions.build(spec.rows, spec.task, spec.object, loc, 0)
-        risk = next(item for item in items if item.family == "risk")
-        assert risk.answer is sp.is_sensitive(spec.object)
-        assert risk.answer is (case.form == "sensitive")
-
-
-def test_answer_distributions_are_built_in() -> None:
-    """输入：全开网格。输出：无。
-
-    预期行为：四个题族的答案分布**全靠构造**——完成度 50/50、风险 50/50、动作四档各 1/4、
-    定位五个位置各 1/5。均衡闸不靠事后过滤，这条是它的依据。
+    预期行为：`target` 那一族的选项名就是这一屏的元素名（按显示顺序）再加一个「不操作」，
+    描述只给行号——考生得去读元素表才知道那一行是什么角色、什么状态。
     """
     loc = locales.load("zh")
-    counts: dict[str, Counter[object]] = {family: Counter() for family in questions.FAMILIES}
-    for case in sp.build_cases(sp.ScreenConfig()):
-        spec = sp.sample_spec(case, "train", 0, 0, None)
-        for item in questions.build(spec.rows, spec.task, spec.object, loc, 0):
-            counts[item.family][item.answer] += 1
-    assert counts["done"] == Counter({True: 240, False: 240})
-    assert counts["risk"] == Counter({True: 120, False: 120})
-    assert counts["action"] == Counter({name: 60 for name in sp.ACTIONS})
-    assert counts["target"] == Counter({f"p{n}": 48 for n in range(1, 6)})
+    options = questions.target_options(TAGS, loc)
+    rows = features.rows_for(TAGS)
+    assert list(options) == [row.label for row in rows] + [features.NONE_TARGET]
+    assert len(options) == len(set(options))
+    template = str(loc["fam"]["target"]["row_option"])
+    for index, row in enumerate(rows, start=1):
+        assert options[row.label] == template.format(index=index)
+    assert options[features.NONE_TARGET] == str(loc["fam"]["target"]["none"])
 
 
-def test_phrasing_only_changes_the_wording() -> None:
-    """输入：同一 case 的两套句面。输出：无。
+def test_target_answer_is_always_one_of_the_options() -> None:
+    """输入：全空间组合。输出：无。
 
-    预期行为：题号与答案逐题一致，只有题面文字不同——句面因此可以整档留出做 OOD。
+    预期行为：每一条的 `target` 金答案都必须落在它自己的选项表里——否则组装器
+    在 `criteria.index(答案)` 那一步就会炸，或者更糟：悄悄给出错的编号。
     """
     loc = locales.load("zh")
-    spec = _make_spec()
-    first = questions.build(spec.rows, spec.task, spec.object, loc, 0)
-    second = questions.build(spec.rows, spec.task, spec.object, loc, 1)
-    assert [(item.family, item.answer) for item in first] == [
-        (item.family, item.answer) for item in second
-    ]
-    assert first[0].question["instructions"] != second[0].question["instructions"]
+    for case in features.build_cases(1024):
+        options = questions.target_options(case, loc)
+        assert case.label().target in options
 
 
-def test_instructions_carry_the_whole_rulebook() -> None:
-    """输入：四道题。输出：无。
+def test_choice_options_are_only_the_allowed_ones() -> None:
+    """输入：一组特征。输出：无。预期行为：意图 / 动作两族的选项名就是该族允许的取值。"""
+    families = by_family()
+    for family in ("intent", "action"):
+        criteria = families[family].question["criteria"]
+        assert list(criteria) == list(features.CHOICE_OPTIONS[family])
 
-    预期行为：判据整段写在题面里（范式 §9.8）——只读 state 与题面就该能算出来，
-    所以每条题面里都得有那份 `policy`。
+
+def test_noul_and_score_criteria_shapes() -> None:
+    """输入：一组特征。输出：无。
+
+    预期行为：noul 的选项是 `true` / `false`；score 的选项是有序阶梯（档数 == `RISK_LEVELS`）。
     """
     loc = locales.load("zh")
-    for item in _build():
-        assert loc["policy"]["text"] in item.question["instructions"]
+    families = by_family()
+    for family in questions.NOUL_FAMILIES:
+        assert list(families[family].question["criteria"]) == ["true", "false"]
+    assert list(families["risk"].question["criteria"]) == list(loc["fam"]["risk"]["levels"])
+    assert len(families["risk"].question["criteria"]) == features.RISK_LEVELS
 
 
-def test_fill_reports_leftover_placeholders() -> None:
-    """输入：一个少填槽的模板。输出：无。预期行为：报人话（不然发出去的是读不懂的题）。"""
-    assert questions._fill("第 {n} 个", n="1") == "第 1 个"
-    with pytest.raises(ValueError, match="占位符"):
-        questions._fill("第 {n} 个：{role}", n="1")
+def test_only_the_score_and_noul_families_are_unshuffled() -> None:
+    """输入：一组特征。输出：无。
 
-
-def test_choice_rejects_duplicate_descriptions_and_unknown_answers() -> None:
-    """输入：描述重复的选项 / 答案不在选项里。输出：无。预期行为：都报人话。"""
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice("target", "题面", {"p1": "一样", "p2": "一样"}, "p1")
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("target", "题面", {"p1": "甲"}, "p2")
-
-
-def test_build_rejects_a_wrong_number_of_rows() -> None:
-    """输入：四行元素。输出：无。预期行为：报人话（少一行说明元素表没拼完）。"""
-    spec = _make_spec()
-    with pytest.raises(ValueError, match="5 行"):
-        questions.build(spec.rows[:4], spec.task, spec.object, locales.load("zh"), 0)
-
-
-def test_build_rejects_a_contradiction_between_the_two_rules() -> None:
-    """输入：同一个对象挂两行（一行已是当前、一行可用）。输出：无。
-
-    预期行为：报人话——这时「完成判据」与「可用判据」互相打架，静默出一套自相矛盾的题
-    比直接报错危险得多。
+    预期行为：有序阶梯与布尔题不打乱（打乱破坏语义），三个 choice 题族都允许打乱
+    （防「答案总在第 n 个」的位置捷径）。
     """
-    spec = _make_spec()
-    row = sp.Element(spec.rows[0].role, spec.object, "ready")
-    broken = (sp.Element(spec.rows[0].role, spec.object, "current"), row, *spec.rows[2:])
-    with pytest.raises(ValueError, match="打架"):
-        questions.build(broken, spec.task, spec.object, locales.load("zh"), 0)
+    families = by_family()
+    for family in questions.FAMILIES:
+        if family in questions.SCORE_FAMILIES or family in questions.NOUL_FAMILIES:
+            assert families[family].shuffle is False
+        else:
+            assert families[family].shuffle is True
 
 
-def test_unknown_task_fails_loudly() -> None:
-    """输入：一个认不出的任务意图。输出：无。预期行为：查表报 KeyError，不静默兜底。"""
-    spec = _make_spec()
-    with pytest.raises(KeyError, match="task"):
-        questions.build(spec.rows, "nope", spec.object, locales.load("zh"), 0)
+def test_phrasings_rotate() -> None:
+    """输入：三个问法编号。输出：无。预期行为：同一族的题面在三个编号上都取得到。"""
+    for family in questions.FAMILIES:
+        texts = {
+            next(
+                item.question["instructions"]
+                for item in questions.build(TAGS, locales.load("zh"), phrasing)
+                if item.family == family
+            )
+            for phrasing in (0, 1, 2)
+        }
+        assert len(texts) == 3, family
+
+
+def test_families_for_returns_the_full_table() -> None:
+    """输入：任意特征。输出：无。预期行为：七个题族对任何组合都问得出来。"""
+    for tags in features.build_cases(1024):
+        assert questions.families_for(tags) == questions.FAMILIES
+
+
+def test_question_order_is_fixed() -> None:
+    """输入：一组特征。输出：无。预期行为：出题顺序恒等于 `FAMILIES`（题号才稳定）。"""
+    assert [item.family for item in questions.build(TAGS, locales.load("zh"), 0)] == list(
+        questions.FAMILIES
+    )

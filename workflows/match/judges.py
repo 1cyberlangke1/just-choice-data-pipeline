@@ -11,10 +11,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import re
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from jc.judge import Verdict
 from jc.workflow import family_of
@@ -29,7 +30,7 @@ SIZE_TOKEN: Final[re.Pattern[str]] = re.compile(r"(\d+(?:\.\d+)?)\s*(ml|l)\b", r
 NUMBER: Final[re.Pattern[str]] = re.compile(r"\d+(?:\.\d+)?")
 
 
-def normalize(field: str, text: str, loc: dict[str, Any]) -> str:
+def normalize(field: str, text: str, loc: dict[str, JsonValue]) -> str:
     """输入：栏名、原文、语言字典。输出：归一化后的值（字符串，可直接比）。
 
     预期行为：判据里那四条规则的**唯一实现**——名称 / 品牌忽略大小写与连续空格；
@@ -57,7 +58,7 @@ def normalize(field: str, text: str, loc: dict[str, Any]) -> str:
     return table[text]
 
 
-def kinds_of(left: tuple[str, ...], right: tuple[str, ...], loc: dict[str, Any]) -> tuple[str, ...]:
+def kinds_of(left: tuple[str, ...], right: tuple[str, ...], loc: dict[str, JsonValue]) -> tuple[str, ...]:
     """输入：两侧每栏的原文、语言字典。输出：每一栏的关系。
 
     预期行为：**先看原文是否逐字相同**（相同就是 `same`），再看归一化后是否相同
@@ -91,7 +92,7 @@ class Facts:
         return self.kinds[spec_mod.FIELDS.index(field)] != spec_mod.DIFF
 
 
-def recompute(parsed: parse.ParsedMatch, loc: dict[str, Any]) -> Facts:
+def recompute(parsed: parse.ParsedMatch, loc: dict[str, JsonValue]) -> Facts:
     """输入：反解结果、语言字典。输出：`Facts`。
 
     预期行为：只从文本本身算——逐栏归一化、比、数个数；四个派生量走 `spec` 里与构造侧
@@ -112,7 +113,7 @@ def recompute(parsed: parse.ParsedMatch, loc: dict[str, Any]) -> Facts:
     )
 
 
-def option_text(family: str, facts: Facts, loc: dict[str, Any]) -> str:
+def option_text(family: str, facts: Facts, loc: dict[str, JsonValue]) -> str:
     """输入：题族、事实、语言字典。输出：该题族金答案对应的**选项描述原文**。
 
     预期行为：用与 `questions.options_of` 同一个模板拼出来再比——比「从描述里切出编号」
@@ -123,7 +124,7 @@ def option_text(family: str, facts: Facts, loc: dict[str, Any]) -> str:
     return loc["fam"]["variant_count"]["criteria"][f"v{facts.variant_count}"]
 
 
-def expected_of(family: str, facts: Facts, loc: dict[str, Any]) -> str | bool | int:
+def expected_of(family: str, facts: Facts, loc: dict[str, JsonValue]) -> str | bool | int:
     """输入：题族、事实、语言字典。输出：按 state 重算出来的答案。
 
     预期行为：choice 比选项描述原文、noul 比布尔、score 比档位下标；未知题族直接报错
@@ -138,7 +139,7 @@ def expected_of(family: str, facts: Facts, loc: dict[str, Any]) -> str | bool | 
     raise ValueError(f"未知题族：{family!r}")
 
 
-def check_sample(sample: dict[str, Any], facts: Facts, loc: dict[str, Any]) -> list[str]:
+def check_sample(sample: dict[str, JsonValue], facts: Facts, loc: dict[str, JsonValue]) -> list[str]:
     """输入：样本、从 state 重算出来的事实、语言字典。输出：问题列表（空 = 全部对得上）。
 
     预期行为：逐题按**题族**重算再比对——choice 比选项描述原文、noul 比布尔、score 比档位。
@@ -174,7 +175,7 @@ def check_sample(sample: dict[str, Any], facts: Facts, loc: dict[str, Any]) -> l
     return problems
 
 
-def roundtrip_diff(spec: MatchSpec, parsed: parse.ParsedMatch, loc: dict[str, Any]) -> list[str]:
+def roundtrip_diff(spec: MatchSpec, parsed: parse.ParsedMatch, loc: dict[str, JsonValue]) -> list[str]:
     """输入：真值规格、反解结果、语言字典。输出：不一致项列表（空 = 逐格一致）。"""
     problems: list[str] = []
     if parsed.request_id != spec.query_id:
@@ -208,7 +209,7 @@ class RoundtripJudge:
     name: str = "roundtrip"
     locale: str = "zh"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值 spec。输出：Verdict。预期行为：没有 spec 就跳过（不误判）。"""
         if not isinstance(spec, MatchSpec):
             return Verdict(True, reason="没有 spec，跳过结构判别", raw={"skipped": True})
@@ -229,7 +230,7 @@ class LabelJudge:
     locale: str = "zh"
     max_problems: int = 5
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值 spec（不用）。输出：Verdict。预期行为：答案对不上就判不通过。"""
         loc = locales.load(self.locale)
         try:

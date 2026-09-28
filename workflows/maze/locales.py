@@ -6,11 +6,12 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")
 
@@ -21,7 +22,7 @@ def available() -> list[str]:
 
 
 @lru_cache(maxsize=8)
-def load(lang: str) -> dict[str, Any]:
+def load(lang: str) -> dict[str, JsonValue]:
     """读取并缓存一个语言文件。
 
     输入：语言代码。
@@ -34,7 +35,7 @@ def load(lang: str) -> dict[str, Any]:
         return tomllib.load(handle)
 
 
-def phrasing(loc: dict[str, Any], family: str, index: int, **kwargs: str) -> str:
+def phrasing(loc: dict[str, JsonValue], family: str, index: int, **kwargs: str) -> str:
     """取某题族的第 index 种问法并填充占位符。
 
     输入：语言字典、题族名、问法编号、占位符键值。
@@ -49,6 +50,6 @@ def phrasing(loc: dict[str, Any], family: str, index: int, **kwargs: str) -> str
     return out
 
 
-def phrasing_count(loc: dict[str, Any], family: str) -> int:
+def phrasing_count(loc: dict[str, JsonValue], family: str) -> int:
     """某题族有多少种问法。"""
     return len(loc["fam"][family]["q"])

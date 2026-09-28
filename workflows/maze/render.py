@@ -16,8 +16,9 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any, Final
+from typing import Final
 
 from . import grid, spec as spec_mod
 
@@ -118,7 +119,7 @@ def wall_ascii_lines(maze: spec_mod.MazeSpec) -> list[str]:
     return lines
 
 
-def legend_map(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> dict[str, str]:
+def legend_map(maze: spec_mod.MazeSpec, loc: dict[str, JsonValue]) -> dict[str, str]:
     """图例：符号 → 含义。
 
     输入：spec、语言字典。
@@ -137,7 +138,7 @@ def legend_map(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> dict[str, str]:
     return out
 
 
-def legend_line(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> str:
+def legend_line(maze: spec_mod.MazeSpec, loc: dict[str, JsonValue]) -> str:
     """图例的单行文本（块状字符串格式用）。
 
     输入：spec、语言字典。
@@ -148,7 +149,7 @@ def legend_line(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> str:
     return ", ".join(f"{glyph}={text}" for glyph, text in legend_map(maze, loc).items())
 
 
-def history_text(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> str | None:
+def history_text(maze: spec_mod.MazeSpec, loc: dict[str, JsonValue]) -> str | None:
     """最近 n 次决策的文本；不需要时返回 None。
 
     输入：spec、语言字典。
@@ -162,14 +163,14 @@ def history_text(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> str | None:
     return loc["history"]["prefix"] + loc["history"]["sep"].join(words)
 
 
-def passages_payload(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> dict[str, Any]:
+def passages_payload(maze: spec_mod.MazeSpec, loc: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """结构化通路格式的 state。
 
     输入：spec、语言字典。
     输出：含 size / start / exit / marks / passages 的对象；
     智能体存在时附 `agent.current`，开了 mark_trail 时再附 `agent.trail`。
     """
-    payload: dict[str, Any] = {
+    payload: dict[str, JsonValue] = {
         "size": [maze.rows, maze.cols],
         "start": list(grid.rowcol_of(maze.start, maze.cols)),
         "exit": list(grid.rowcol_of(maze.exit, maze.cols)),
@@ -180,7 +181,7 @@ def passages_payload(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> dict[str, 
         ],
     }
     if maze.agent.moves:
-        agent: dict[str, Any] = {"current": list(grid.rowcol_of(maze.current(), maze.cols))}
+        agent: dict[str, JsonValue] = {"current": list(grid.rowcol_of(maze.current(), maze.cols))}
         if maze.render.mark_trail:
             # 与字符格式保持一致：起点/出口/字母标记会保留自己的符号，所以不进 trail
             reserved = {maze.start, maze.exit, *maze.marks.values()}
@@ -193,7 +194,7 @@ def passages_payload(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> dict[str, 
     return payload
 
 
-def render_state(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> Any:
+def render_state(maze: spec_mod.MazeSpec, loc: dict[str, JsonValue]) -> object:
     """按 spec.render.fmt 渲染 state。
 
     输入：spec、语言字典。
@@ -213,7 +214,7 @@ def render_state(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> Any:
         parts = [p for p in (history, legend_line(maze, loc)) if p]
         return "\n".join([*parts, *wall_ascii_lines(maze)])
     if fmt == spec_mod.FMT_BLOCK_OBJECT:
-        payload: dict[str, Any] = {"legend": legend_map(maze, loc), "grid": grid_lines(maze)}
+        payload: dict[str, JsonValue] = {"legend": legend_map(maze, loc), "grid": grid_lines(maze)}
         if history:
             payload["history"] = history
         return payload
@@ -227,7 +228,7 @@ def render_state(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> Any:
     raise ValueError(f"未知渲染格式：{fmt!r}")
 
 
-def instructions_extras(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> dict[str, Any]:
+def instructions_extras(maze: spec_mod.MazeSpec, loc: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """array 型 state（block_rows）无法自带图例与历史，改由 instructions 的 object 形态承载。
 
     输入：spec、语言字典。
@@ -235,7 +236,7 @@ def instructions_extras(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> dict[st
     """
     if maze.render.fmt != spec_mod.FMT_BLOCK_ROWS:
         return {}
-    extras: dict[str, Any] = {"legend": legend_map(maze, loc)}
+    extras: dict[str, JsonValue] = {"legend": legend_map(maze, loc)}
     history = history_text(maze, loc)
     if history:
         extras["history"] = history
@@ -243,7 +244,7 @@ def instructions_extras(maze: spec_mod.MazeSpec, loc: dict[str, Any]) -> dict[st
 
 
 def cell_kind_label(
-    maze: spec_mod.MazeSpec, loc: dict[str, Any], direction: int
+    maze: spec_mod.MazeSpec, loc: dict[str, JsonValue], direction: int
 ) -> str:
     """方向型选项的「目标方块是什么」文案（option_detail=cell 时用）。
 

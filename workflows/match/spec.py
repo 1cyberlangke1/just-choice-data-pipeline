@@ -16,11 +16,13 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import hashlib
+import random
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from jc.knobs import require_pool
 
@@ -151,7 +153,7 @@ def verdict_of(pattern: tuple[str, ...]) -> str:
     return "review"
 
 
-def field_value(field: str, product: str) -> Any:
+def field_value(field: str, product: str) -> object:
     """输入：栏名、商品键。输出：这一栏**归一化后**的值（名称 / 品牌用商品键当代理）。
 
     预期行为：只有用来判「另一个商品在这一栏上确实不同」，所以名称与品牌拿商品键比就够
@@ -197,7 +199,7 @@ class MatchCase:
     layout: str
     extra: str
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：{维度名: 取值}（顺序稳定；字段关系摊成 `sdvdv` 这种紧凑串）。"""
         return {
             "product": self.product,
@@ -214,7 +216,7 @@ class MatchCase:
 
     def unseen_dims(self) -> tuple[str, ...]:
         """输入：无。输出：这个 case 里训练侧没见过的维度名（空 = 全部见过）。"""
-        checks: tuple[tuple[str, Any, frozenset[Any]], ...] = (
+        checks: tuple[tuple[str, object, frozenset[object]], ...] = (
             ("product", self.product, SEEN_PRODUCTS),
             ("spelling", self.spelling, SEEN_SPELLINGS),
         )
@@ -345,7 +347,7 @@ class MatchSpec:
 
 
 def sample_spec(
-    rng: Any, case: MatchCase, split: str, seq: int, phrasing: int
+    rng: random.Random, case: MatchCase, split: str, seq: int, phrasing: int
 ) -> MatchSpec:
     """输入：RNG（**不用**）、case、切分、序号、问法。输出：真值规格。
 
@@ -367,7 +369,7 @@ def sample_spec(
     )
 
 
-def spec_to_dict(spec: MatchSpec) -> dict[str, Any]:
+def spec_to_dict(spec: MatchSpec) -> dict[str, JsonValue]:
     """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
     return {
         "case": spec.case.describe(),
@@ -396,7 +398,7 @@ SEEN_SPELLINGS: Final[frozenset[tuple[int, int]]] = frozenset(
 )
 
 
-def seen_in_order(values: Sequence[Any], seen: frozenset[Any]) -> tuple[Any, ...]:
+def seen_in_order(values: Sequence[JsonValue], seen: frozenset[object]) -> tuple[object, ...]:
     """输入：完整取值表、训练侧见过的取值集合。输出：按**原表顺序**过滤后的元组。
 
     预期行为：不用 `sorted`——原表顺序本身有意义（商品表的下标决定 `other_product` 从哪一格

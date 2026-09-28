@@ -1,100 +1,180 @@
-# English strings for the screen-operation workflow.
-# Invariants locked by tests/workflows/browser/test_locales.py: the same key set as zh,
-# per-language labels and vocabularies that never overlap across languages, a **shared**
-# cell separator, and sensitive object labels that really contain a sensitive word.
+# English strings for the browser / GUI-action workflow: prompt, question phrasings, option texts,
+# role / state words and the verification prompt. See `zh.toml` for the reasoning behind each rule.
+#
+# Element names (收件地址 / 删除 / 概览 …) are NOT here: they come from the fixed vocabulary in
+# `features.LABELS` and are shared by every language, because they are the UI's own labels copied
+# verbatim from the screen snapshot and `wanted_label` must be language-independent.
+lang = "en"
+language_name = "English"
+
+# Phrases banned from the user's sentence: the element's state (greyed out / not visible / already
+# current) and the names of the three tables all belong to the sections of `state`, and repeating
+# them here makes the sentence fight those tables. Kept to high-precision phrases only — a false
+# positive rejects an otherwise usable sample at render time.
+# `disabled` / `hidden` are the state column's own value tokens, so echoing them leaks the answer;
+# plain `ready` / `current` are far too common in ordinary text ("ready to go", "current plan").
+banned_intent_phrases = [
+  "user request",
+  "screen elements",
+  "element table",
+  "gate table",
+  "intent table",
+  "row number",
+  "sensitive list",
+  "greyed out",
+  "grayed out",
+  "disabled",
+  "hidden",
+]
 
 [meta]
-title = "Screen Elements"
+request_label = "User request"
+elements_label = "Screen elements"
+gates_label = "Gates"
+criteria_label = "Intent table"
+header = "[{title}]"
+row_prefix = "- "
+paren = " ({text})"
 colon = ": "
-screen_label = "Window"
-task_label = "Task"
-cell_sep = " · "
+elements_columns = "row | role | element | state"
+gates_columns = "gate | meaning"
+criteria_columns = "intent | role | action | risk when not sensitive | risk when sensitive"
+
+# The sensitive word list is filled into {words} by code: copying it here would drift, and
+# "what counts as sensitive" is exactly the criterion behind the `confirm` family.
+[gates]
+sensitive = "the element name contains any of \"{words}\", so it is a sensitive action"
+done = "the target element is already the current screen"
+blocked = "the target element is greyed out or not visible"
+confirm = "the target element is available and the action is sensitive"
+
+[dims]
+intent = "what the user wants this turn"
+
+[prompt]
+intro = "Below is a **feature list for one screen snapshot**. Write the sentence the user says this turn."
+bullet = "- {dim}: {brief} ({hint})"
+target_bullet = "- the element the user refers to: {label} (the sentence must quote this name verbatim, character for character)"
+rules = [
+  "The sentence must be **single line** (one line is enough, no line breaks); no Markdown fences, no comments",
+  "It must read like something a user actually types: \"please fill in the shipping address\" is fine, a field name like \"intent: fill\" is not",
+  "The sentence must quote the element name above **verbatim** (character for character), and it must refer to that one element only — do not mention any other element",
+  "Do **not** describe the element's state (clickable / greyed out / not visible / already the current screen), and do not mention its row number in the table — those belong to the \"screen elements\" table, and writing them here makes the sentence fight it",
+  "Write only the one thing the user wants this turn; do not line up other operations as well",
+  "Do not name real companies, products, or code repositories; use invented names",
+  "Write everything in {language}; keep the element name copied verbatim",
+]
+
+[feature.intent.fill]
+brief = "the user wants to type something into an input field"
+hint = "write it like \"please fill in the shipping address for me\""
+
+[feature.intent.open]
+brief = "the user wants to open a link / go to a page"
+hint = "write it like \"I'd like to look at the help center\""
+
+[feature.intent.switch]
+brief = "the user wants to switch to another tab / another view"
+hint = "write it like \"switch me over to the details\""
+
+[feature.intent.submit]
+brief = "the user wants to press a button (submit / confirm)"
+hint = "write it like \"looks good, go ahead and place the order\""
+
+[verify]
+intro = "Below is one screen snapshot. Infer its features using the given options and questions."
+state_header = "[Full snapshot]"
+questions_header = "[Questions]"
+option_line = "   - {name}: {desc}"
+q_intent = "What does the user want this turn?"
+q_row = "Which row of the \"screen elements\" table does the user refer to? (1-based; copy the \"row\" column)"
+q_label = "Which element does the user refer to? (copy that element name verbatim)"
 
 [role]
-field = "text field"
+field = "input field"
 link = "link"
 tab = "tab"
 button = "button"
 
 [state]
-ready = "ready"
+ready = "available"
 current = "already current"
 disabled = "greyed out"
 hidden = "not visible"
 
-[intent]
-fill = "Fill in "
-open = "Open "
-switch = "Switch to "
-submit = "Press "
-
-[object]
-note = "the note"
-pay_password = "the payment password"
-monthly_report = "the monthly report"
-unsubscribe = "the unsubscribe page"
-export_view = "the export view"
-pay_history = "the payment history"
-draft = "the draft"
-order = "the submit order button"
-phone = "the phone number"
-help = "the help center"
-overview = "the overview view"
-cancel = "Cancel"
-address = "the shipping address"
-manual = "the user manual"
-history = "the history list"
-refresh = "Refresh"
-
-[sensitive]
-# The sensitive list, printed verbatim in the instructions; a label hits it when the word
-# shows up anywhere inside it.
-words = ["submit order", "delete", "pay", "publish", "unsubscribe"]
-
-[policy]
-text = "Rules: (1) Task-intent table - 'Fill in' operates a text field and the action is type; 'Open' operates a link and the action is open; 'Switch to' operates a tab and the action is switch; 'Press' operates a button and the action is click. (2) Usability - only elements whose state is 'ready' can be operated; elements whose state is 'already current', 'greyed out' or 'not visible' cannot. (3) Completion - if the table already holds a row whose state is 'already current', whose role matches the task-intent table and whose label is exactly the object the task names, the task is already done and needs no further operation. (4) Sensitivity - when the label of the object to operate contains any word from the sensitive list (submit order, delete, pay, publish, unsubscribe), ask the human first."
-
-[fam.done]
+[fam.intent]
 q = [
-  "By the completion rule, is this task already done?",
-  "Is the goal already reached on this screen?",
-  "Does the task still need one more operation?",
+  "What does the user want this turn?",
+  "Pick one for what the user wants.",
+  "Which intent does this sentence carry?",
 ]
-
-[fam.done.criteria]
-true = "done: the object to operate is already current, so nothing needs to be operated"
-false = "not done: the object still needs one operation"
+[fam.intent.criteria]
+fill = "type something into an input field"
+open = "open a link / go to a page"
+switch = "switch to another tab / view"
+submit = "press a button"
 
 [fam.target]
 q = [
-  "Which element should be operated next?",
-  "By the rules, which element does this step touch?",
-  "Which element should be operated?",
+  "Which element should be acted on next?",
+  "Given this screen's state, which element should be touched?",
+  "Which element is the one to click / fill?",
 ]
+row_option = "row {index}"
+none = "no element can be acted on"
 
 [fam.action]
 q = [
-  "What action should this step perform?",
-  "Which action applies to that element?",
-  "By the task-intent table, what is the action for this step?",
+  "What action should be taken next?",
+  "Per the intent table, which action does this turn call for?",
+  "Which action applies here?",
 ]
+[fam.action.criteria]
+type = "type into the input field"
+open = "open the link / page"
+switch = "switch over"
+click = "press the button"
+none = "do nothing"
+
+[fam.done]
+q = [
+  "Is the target element already the current screen?",
+  "Should this turn be skipped because it is already the current screen?",
+  "Per the gates, is the target element already done?",
+]
+[fam.done.criteria]
+true = "yes: the target element is already the current screen"
+false = "no: the target element is not the current screen yet"
+
+[fam.blocked]
+q = [
+  "Is the target element unusable right now?",
+  "Should this turn be stopped because the element cannot be used?",
+  "Per the gates, is the target element blocked?",
+]
+[fam.blocked.criteria]
+true = "yes: the target element is greyed out or not visible, so it cannot be used"
+false = "no: the target element can be used"
+
+[fam.confirm]
+q = [
+  "Should a human confirm before this step?",
+  "Per the gates, should this turn be confirmed first?",
+  "Is the target element a sensitive action (when it is available)?",
+]
+[fam.confirm.criteria]
+true = "yes: the target element is available and the action is sensitive (money / deletion / publishing / unsubscribing)"
+false = "no: the target element is not sensitive, or it cannot be used right now"
 
 [fam.risk]
 q = [
-  "Should this step ask the human first?",
-  "Is this a sensitive operation that needs human confirmation?",
-  "By the sensitivity rule, should this step be held for confirmation?",
+  "Which risk level does this turn carry?",
+  "Score this turn's risk per the intent table.",
+  "Where does this turn rank on risk?",
 ]
-
-[fam.risk.criteria]
-true = "yes: the label of the object to operate hits the sensitive list"
-false = "no: the label of the object to operate does not hit the sensitive list"
-
-[option.action]
-type = "type"
-open = "open"
-switch = "switch"
-click = "click"
-
-[option.position]
-element = "#{n}: {role} · {label} · {state}"
+levels = [
+  "level 0: no risk",
+  "level 1: low risk",
+  "level 2: medium risk",
+  "level 3: high risk",
+]

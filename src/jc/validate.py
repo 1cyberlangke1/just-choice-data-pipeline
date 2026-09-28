@@ -6,13 +6,14 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import re
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from . import contract, jsonio
 
@@ -112,7 +113,7 @@ def validate_sample(
         add(contract.E_ROW_NOT_OBJECT, "$", f"每行必须是 JSON 对象，实际是 {contract.json_kind(obj)}")
         return issues
 
-    row: dict[str, Any] = obj  # type: ignore[assignment]
+    row: dict[str, JsonValue] = obj  # type: ignore[assignment]
 
     # ---------- 顶层字段 ----------
     if isinstance(row.get("id"), str):
@@ -200,7 +201,7 @@ def validate_sample(
     return issues
 
 
-def _validate_criteria(qtype: str, question: dict[str, Any], qpath: str, add: Any) -> None:
+def _validate_criteria(qtype: str, question: dict[str, JsonValue], qpath: str, add: object) -> None:
     """按题型校验 criteria。
 
     输入：题型、题目对象、题目路径、Issue 追加函数。
@@ -263,11 +264,11 @@ def _validate_criteria(qtype: str, question: dict[str, Any], qpath: str, add: An
 
 def _validate_answer_value(
     qtype: str,
-    answer: dict[str, Any],
+    answer: dict[str, JsonValue],
     apath: str,
     qid: str,
     questions: object,
-    add: Any,
+    add: object,
 ) -> None:
     """按题型校验答案取值。
 
@@ -306,7 +307,7 @@ def validate_file(path: str | Path, *, max_issues: int = 0) -> ValidationReport:
     """
     report = ValidationReport()
     seen_ids: set[str] = set()
-    rows: Iterator[tuple[int, Any]] = _safe_iter(path, report)
+    rows: Iterator[tuple[int, object]] = _safe_iter(path, report)
     for lineno, obj in rows:
         report.total += 1
         issues = validate_sample(obj, line=lineno, seen_ids=seen_ids)
@@ -321,7 +322,7 @@ def validate_file(path: str | Path, *, max_issues: int = 0) -> ValidationReport:
     return report
 
 
-def _safe_iter(path: str | Path, report: ValidationReport) -> Iterator[tuple[int, Any]]:
+def _safe_iter(path: str | Path, report: ValidationReport) -> Iterator[tuple[int, object]]:
     """迭代 JSONL，把解析错误记进报告并继续（坏行用 (行号, None) 占位）。
 
     输入：文件路径、报告对象。

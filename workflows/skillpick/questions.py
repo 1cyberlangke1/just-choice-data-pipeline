@@ -18,9 +18,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from collections.abc import Sequence
-from typing import Any, Final, Protocol
+from typing import Final, Protocol
 
 from jc.workflow import LabeledQuestion
 
@@ -91,7 +92,7 @@ def _fill(text: str, **slots: str) -> str:
     return out
 
 
-def _instructions(loc: dict[str, Any], family: str, phrasing: int, **slots: str) -> str:
+def _instructions(loc: dict[str, JsonValue], family: str, phrasing: int, **slots: str) -> str:
     """输入：语言字典、题族、问法编号、槽位取值。输出：题面（问句 + 判据原文）。
 
     预期行为：判据（`loc["policy"]["text"]`）整段拼在问句后面——题面自带判据，
@@ -123,7 +124,7 @@ def _choice(
 
 
 def _noul(
-    family: str, loc: dict[str, Any], phrasing: int, answer: bool, position: int | None = None
+    family: str, loc: dict[str, JsonValue], phrasing: int, answer: bool, position: int | None = None
 ) -> LabeledQuestion:
     """输入：题族、语言字典、问法编号、金答案、位置（可选）。输出：一道 noul 题。
 
@@ -140,7 +141,7 @@ def _noul(
     return LabeledQuestion(family, question, answer, shuffle=False)
 
 
-def _slot_options(rows: Sequence[RowLike], loc: dict[str, Any]) -> dict[str, str]:
+def _slot_options(rows: Sequence[RowLike], loc: dict[str, JsonValue]) -> dict[str, str]:
     """输入：技能表、语言字典。输出：位置选项（`s1`..`s6`）。
 
     预期行为：描述里带上那一行的三格（适用场景 · 权限范围 · 资源），并且带上位置号——
@@ -164,7 +165,7 @@ def build(
     grant: str,
     inuse: str,
     rows: Sequence[RowLike],
-    loc: dict[str, Any],
+    loc: dict[str, JsonValue],
     phrasing: int,
 ) -> list[LabeledQuestion]:
     """输入：请求标签 / 授权 / 已占用标签 / 技能表 / 语言字典 / 问法编号。输出：题目 + 金答案。

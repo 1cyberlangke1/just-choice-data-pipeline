@@ -20,11 +20,12 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import datetime as dt
 import random
 from dataclasses import dataclass, field
-from typing import Any, Final
+from typing import Final
 
 from jc.knobs import require_pool
 
@@ -94,7 +95,7 @@ def weekday_of(date: tuple[int, int, int]) -> int:
     return dt.date(*date).isoweekday()
 
 
-def intervals_overlap(left: Any, right: Any) -> bool:
+def intervals_overlap(left: object, right: object) -> bool:
     """输入：两场会（只要各自有 `start` / `end` 就行）。输出：它们在时间上是否重叠。
 
     预期行为：用**对称判据** `left.start < right.end and right.start < left.end`，
@@ -126,7 +127,7 @@ class HybridCase:
     weekday: int
     duration_mix: str
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：{维度名: 取值}，顺序与声明一致（哈希分桶按它算，必须稳定）。"""
         return {
             "meetings": self.meetings,
@@ -489,7 +490,7 @@ def sample_spec(
     )
 
 
-def spec_to_dict(spec: HybridSpec) -> dict[str, Any]:
+def spec_to_dict(spec: HybridSpec) -> dict[str, JsonValue]:
     """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
     return {
         "case": spec.case.describe(),

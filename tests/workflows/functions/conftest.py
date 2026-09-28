@@ -1,15 +1,17 @@
 """函数调用 workflow 测试的公共夹具：小规格构造器（不联网、不落盘）。"""
 
 from __future__ import annotations
+from collections.abc import Callable
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 import pytest
 
 from workflows.functions import spec as sp
 
 #: 默认 case：画价格走势、语气中等、时间范围一周、写代码、第一套句面。
-CASE_DEFAULTS: dict[str, Any] = {
+CASE_DEFAULTS: dict[str, JsonValue] = {
     "tool": "plot_price",
     "voice": "chatty",
     "window": "1w",
@@ -18,14 +20,14 @@ CASE_DEFAULTS: dict[str, Any] = {
 }
 
 
-def _make_case(**overrides: Any) -> sp.CallCase:
+def _make_case(**overrides: object) -> sp.CallCase:
     """输入：维度覆盖项。输出：一个 case。预期行为：未覆盖的维度取 `CASE_DEFAULTS`。"""
     fields = dict(CASE_DEFAULTS)
     fields.update(overrides)
     return sp.CallCase(**fields)
 
 
-def _make_spec(**overrides: Any) -> sp.CallSpec:
+def _make_spec(**overrides: object) -> sp.CallSpec:
     """输入：case 覆盖项。输出：真值规格。
 
     预期行为：同 case 必得同一份规格（计划由素材指纹派生，不掷骰子）。
@@ -52,12 +54,12 @@ def tiny_config(split: str = "train", *, ood_only: bool = False) -> sp.CallConfi
 
 
 @pytest.fixture
-def make_case() -> Any:
+def make_case() -> Callable[..., sp.CallCase]:
     """工厂夹具：`make_case(tool="top_movers", voice="terse")` 造一个 case。"""
     return _make_case
 
 
 @pytest.fixture
-def make_spec() -> Any:
+def make_spec() -> Callable[..., sp.CallSpec]:
     """工厂夹具：`make_spec(tool="compare_returns")` 造一条真值规格。"""
     return _make_spec

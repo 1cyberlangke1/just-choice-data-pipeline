@@ -1,128 +1,170 @@
-# 模型路由与降级 workflow 的中文文案：标签、词表、正文模板、判据原文与选项描述。
-#
-# 约定（由 tests/workflows/modelroute/test_locales.py 锁住）：
-# - 画像每一格都有自己的标签，反解按标签认行；
-# - 各语言的标签互不重叠（`reparse` 用合并表做语言无关的反解）；
-# - 判据（档位表 / 首选档表 / 升级链 / 挪档表 / 成本与缓存规则）整段写进每道题的题面，
-#   只读 state 与题面的读者必须能自己把答案算出来。
+lang = "zh"
+language_name = "简体中文"
 
 [meta]
-title = "模型路由台"
+request_label = "请求"
+catalog_label = "候选模型"
+needs_label = "筛选门槛"
+header = "【{title}】"
+row_prefix = "- "
+none_mark = "无"
+paren = "（{text}）"
 colon = "："
-request_label = "请求号"
-complexity_label = "复杂度"
-latency_label = "延迟预算"
-cost_label = "成本敏感"
-retry_label = "尝试记录"
-data_label = "数据分级"
-body_label = "正文"
+catalog_columns = "名字 | 提供方 | 窗口 | 能力 | 价格 | 时延"
+needs_columns = "窗口 | 能力 | 时延 | 价格 | 挂掉的提供方"
 
-[complexity]
-low = "低"
-mid = "中"
-high = "高"
+[dims]
+task_kind = "任务类型"
+size = "材料规模"
+latency = "时延要求"
+budget = "预算档"
+health = "提供方健康"
 
-[latency]
-relaxed = "宽松"
-normal = "常规"
-strict = "紧"
-
-[cost]
-normal = "不敏感"
-tight = "敏感"
-
-[retry]
-first = "还没有失败记录"
-retry = "已经失败过一次"
-
-[data]
-public = "公开"
-private = "私有"
-
-# 正文模板：任务类型只活在这里（画像没有「任务类型」那一栏），
-# 每个模板里都埋着 `[task_phrase]` 的那个短语，判别器靠它把任务认回来。
-[body]
-classify = "把这段运维日志归类到一个标签上。"
-extract = "把这封邮件里的寄件人、日期和金额抽取出来填表。"
-codefix = "这段测试红了，找出代码里的缺陷并改掉。"
-reason = "把这套多步推理题一步步解出来，给出最终结论。"
-
-[task_phrase]
-classify = "归类"
-extract = "抽取"
-codefix = "缺陷"
-reason = "多步推理"
-
-[policy]
-# 判据原文：整段拼在每道题的问句后面（范式 §9.8）。
-text = "档位表（成本/能力/速度/窗口，均 1~4 分，速度越大越快）：nano 1/1/3/1；mini 2/2/4/2；core 3/3/2/3；max 4/4/1/3。任务能力需求：归类 1、抽取 2、缺陷 3、多步推理 4。首选档位 = 能力需求对应的最低档：归类 → nano、抽取 → mini、缺陷 → core、多步推理 → max。升级链 = 首选档之上按能力加一档（nano → mini → core → max）；max 之上没有档，所以没有升级链。只有已经失败过一次的请求才允许升级，首次请求不升级。推理深度按复杂度档取（低/中/高）：延迟宽松时上挪一档、延迟紧时下挪一档，到顶或触底不再挪。成本敏感时允许降一档能力。数据分级为私有的请求不进缓存。"
-
-[fam.tier]
-q = [
-  "这条请求的首选档位是哪个？",
-  "按能力需求，这条请求该选哪个档位？",
-  "这条请求应当先用哪一档？",
+[prompt]
+intro = "下面是一条**模型路由请求的特征清单**。请按清单写出一句真实的用户请求。"
+bullet = "- {dim}：{brief}（{hint}）"
+rules = [
+  "「请求」必须是**一句话、单行**；不要写多行，不要用 Markdown 围栏，也不要写注释",
+  "请求里**不许出现任何模型名或提供方名**（atlas、borealis、cinder 这类）——该选哪个由后面的候选表决定，不是请求说了算",
+  "请求里不要写「任务类型：」这种字段名前缀，也不要照抄清单的措辞；要用真人会说的话",
+  "请求必须与「任务类型」一致，判断依据是**用户想让你做什么**（写代码 / 压摘要 / 抽字段 / 闲聊 / 算术 / 看图），不是材料有多大——材料可以很长，想要的是闲聊就还得是闲聊",
+  "请求里体现的材料规模要与「材料规模」相称：小档只有几行到一段，中档几页，大档上百页或整个代码库",
+  "不要写真实存在的公司、产品或数据集名字，一律用虚构的名字",
+  "全部用{language}写；模型名、提供方名与标识符保持 ASCII",
 ]
 
-[fam.next]
+[feature.task_kind.code_gen]
+brief = "写或改代码"
+hint = "请求里要出现具体的代码片段或明确的改动要求"
+
+[feature.task_kind.long_summary]
+brief = "把长材料压成摘要"
+hint = "请求里要出现一份很长的文档或记录，并要求**用几句话概括它**（写出一段原文里没有的概括文字，不是挑字段）"
+
+[feature.task_kind.extraction]
+brief = "从材料里抽字段"
+hint = "请求里要给出一段材料，并要求抽出**其中已经写着的**几个字段（照抄原文里的值，不是重新组织成摘要）"
+
+[feature.task_kind.chat]
+brief = "多轮闲聊问答"
+hint = "请求是日常问答或闲聊：用户想要的是聊几句或问个具体问题，不是写代码、不是抽字段、也不是把材料压成摘要（材料本身可以很长）"
+
+[feature.task_kind.math_reason]
+brief = "多步数学推理"
+hint = "请求里要有一道得算好几步才能得出答案的题"
+
+[feature.task_kind.vision]
+brief = "看图"
+hint = "请求里要出现一张图片（截图 / 照片 / 图表），并要求根据图片回答"
+
+[feature.size.small]
+brief = "很小，几行到一段"
+hint = "材料只有几行字或一小段"
+
+[feature.size.medium]
+brief = "中等，几页"
+hint = "材料有几页到十几页"
+
+[feature.size.huge]
+brief = "很大，上百页或整库"
+hint = "材料有上百页，或者是一整个代码库、全部历史记录"
+
+[feature.latency.interactive]
+brief = "要马上出结果"
+hint = "用户在交互界面里等着，慢一点就不行"
+
+[feature.latency.batch]
+brief = "离线批处理，不着急"
+hint = "夜里跑批，慢一点没关系"
+
+[feature.budget.tight]
+brief = "预算很紧"
+hint = "尽量用便宜的，价格偏高的模型一律不考虑"
+
+[feature.budget.normal]
+brief = "预算正常"
+hint = "价格不是主要限制，能接受偏贵的模型"
+
+[feature.health.all_ok]
+brief = "提供方都正常"
+hint = "目录里的提供方现在都调得通"
+
+[feature.health.atlas_down]
+brief = "atlas 这个提供方挂了"
+hint = "atlas 名下的模型现在全都调不通"
+
+[feature.health.borealis_down]
+brief = "borealis 这个提供方挂了"
+hint = "borealis 名下的模型现在全都调不通"
+
+[fam.kind]
 q = [
-  "升级链上，首选档之后的一站是哪个档？",
-  "首选档失败后，接着升到哪个档？",
-  "这条请求的升级链下一站是哪个档？",
+  "这句请求属于哪一类任务？",
+  "按任务类型分，这句请求是哪一种？",
+  "这句话要做的是一件什么事？",
 ]
 
-[fam.effort]
+[fam.kind.criteria]
+code_gen = "写或改代码"
+long_summary = "把长材料压成摘要：产出一段**原文里没有的**概括文字"
+extraction = "从材料里抽字段：把**原文里已经写着**的几个值照抄出来"
+chat = "多轮闲聊问答"
+math_reason = "多步数学推理"
+vision = "看图"
+
+[fam.route]
 q = [
-  "这条请求的推理深度该定在哪一档？",
-  "按复杂度与延迟预算，推理深度取哪一档？",
-  "这条请求该用多深的推理？",
+  "按候选表与门槛筛一遍，这条请求该路由到哪个模型？",
+  "四道门槛过完，最终应该用哪个候选来跑？",
+  "最后选中哪个候选（一个都不满足就是 none）？",
 ]
 
-[fam.is_first]
+[fam.route.criteria]
+"atlas-xl" = "窗口 200k、能力 3 档、价格 3 档、时延 3 档：最强也最贵最慢"
+"atlas-lite" = "窗口 32k、能力 1 档、价格 1 档、时延 1 档：最便宜也最快，能力与窗口最低"
+"borealis-pro" = "窗口 128k、能力 2 档、价格 2 档、时延 2 档：三档都居中"
+"cinder-mini" = "窗口 64k、能力 2 档、价格 1 档、时延 3 档：便宜但最慢"
+none = "没有任何候选同时过得了全部四道门槛"
+
+[fam.blocked]
 q = [
-  "这条请求是首次请求吗？",
-  "这条请求之前有没有失败记录？",
-  "这条请求算不算首次尝试？",
+  "候选表第一行（atlas-xl）这次为什么不能用？",
+  "atlas-xl 这次没被选上，是卡在哪一关？",
+  "第一行候选过不了哪道门槛（四道都过就是 usable）？",
 ]
 
-[fam.is_first.criteria]
-true = "是：之前没有任何失败记录"
-false = "不是：已经失败过一次"
+[fam.blocked.criteria]
+usable = "能用：四道门槛都过，提供方也没挂"
+provider_down = "它的提供方挂了"
+latency = "它的时延超过了这次的时延要求"
+budget = "它的价格超过了这次的预算档"
 
-[fam.degrade]
+[fam.cost]
 q = [
-  "这条请求是否允许降一档能力？",
-  "成本敏感的话，这条请求允许降一档能力吗？",
-  "这条请求要不要为了省钱降一档能力？",
+  "选中模型的价格是第几档？",
+  "按价格档算，这次要花的是哪一档？",
+  "选中模型的贵贱属于哪一档？",
+]
+levels = [
+  "0 档：没有可用候选，也就没有花费",
+  "1 档：选中的模型是最便宜的一档",
+  "2 档：选中的模型是中等价格的一档",
+  "3 档：选中的模型是最贵的一档",
 ]
 
-[fam.degrade.criteria]
-true = "允许：成本敏感，可以降一档能力换成本"
-false = "不允许：成本不敏感，不必降能力"
-
-[fam.cache]
+[fam.slack]
 q = [
-  "这条请求可以进缓存吗？",
-  "这条请求适合走缓存吗？",
-  "这条请求的结果能不能缓存起来？",
+  "选中的模型，窗口有没有至少两倍于本次需求的富余？",
+  "相对这次的材料规模，选中模型的窗口富余够不够两倍？",
+  "按窗口算，选中的模型是不是绰绰有余（至少两倍）？",
 ]
 
-[fam.cache.criteria]
-true = "可以：数据分级是公开"
-false = "不可以：数据分级是私有"
+[fam.slack.criteria]
+"true" = "有：窗口至少是需求的两倍"
+"false" = "没有：窗口不到需求的两倍，或者压根没选中模型"
 
-[option.tier]
-nano = "nano（成本 1 / 能力 1 / 速度 3 / 窗口 1）"
-mini = "mini（成本 2 / 能力 2 / 速度 4 / 窗口 2）"
-core = "core（成本 3 / 能力 3 / 速度 2 / 窗口 3）"
-max = "max（成本 4 / 能力 4 / 速度 1 / 窗口 3）"
-
-[option.next]
-mini = "mini（成本 2 / 能力 2 / 速度 4 / 窗口 2）"
-core = "core（成本 3 / 能力 3 / 速度 2 / 窗口 3）"
-max = "max（成本 4 / 能力 4 / 速度 1 / 窗口 3）"
-
-[option.effort]
-low = "低：浅推理"
-mid = "中：常规推理"
-high = "高：深推理"
+[verify]
+intro = "读下面这条路由请求，按给定的选项判断。每道题只选一个。"
+state_header = "【请求全文】"
+questions_header = "【问题】"
+option_line = "   - {name}：{desc}"

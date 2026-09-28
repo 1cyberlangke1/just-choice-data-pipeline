@@ -44,7 +44,9 @@ def test_rot90_four_times_is_identity() -> None:
     assert cur == mask
 
 
-def _brute_force_distance(mask, rows, cols, src, dst) -> int:
+def _brute_force_distance(
+    mask: tuple[int, ...], rows: int, cols: int, src: int, dst: int
+) -> int:
     """朴素 DFS 穷举最短距离（作为 BFS 的独立对照实现）。"""
     best = None
     stack = [(src, 0, frozenset({src}))]

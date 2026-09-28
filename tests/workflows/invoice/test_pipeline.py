@@ -1,11 +1,12 @@
 """端到端测试：小规模跑通整条管线、可复现、审计与接线。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import json
 import random
 from pathlib import Path
-from typing import Any
+
 
 import pytest
 
@@ -234,7 +235,7 @@ def test_available_locales() -> None:
     assert inv_workflow.InvoiceWorkflow().available_locales() == locales.available()
 
 
-def _row(state: str, questions: dict[str, Any], answers: dict[str, Any]) -> dict[str, Any]:
+def _row(state: str, questions: dict[str, JsonValue], answers: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """造一条最小样本行（审计只读 state / questions / answers）。"""
     return {
         "id": "invoice-train-0000000",
@@ -279,7 +280,7 @@ def test_audit_catches_an_impossible_tax_question_and_a_bad_index(tmp_path: Path
     assert any("题族 date_field 一条都没出" in item for item in missing)
 
 
-def test_audit_passes_a_self_consistent_artifact(tmp_path: Path, make_spec: Any) -> None:
+def test_audit_passes_a_self_consistent_artifact(tmp_path: Path, make_spec: object) -> None:
     """输入：一条自己组装出来的、自洽的产物行（含税额行）。输出：(报告, 缺失项)。
 
     预期行为：零缺失——题族齐全、答案编号都在范围内、有税额行的单据才问税额一致性。

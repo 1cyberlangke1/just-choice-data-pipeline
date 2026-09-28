@@ -1,0 +1,163 @@
+lang = "en"
+language_name = "English"
+
+# Phrases that must not show up in the claim: evidence belongs to the self-reported facts
+# row. Kept short and precise — a false hit rejects a usable sample at render time.
+banned_claim_phrases = [
+  "tests pass",
+  "tests passed",
+  "all green",
+  "now green",
+  "passing",
+  "coverage",
+  "committed",
+  "haven't run",
+  "didn't run",
+  "without running",
+]
+
+[meta]
+claim_label = "Claim"
+facts_label = "Self-reported facts"
+gates_label = "Acceptance gates"
+header = "[{title}]"
+row_prefix = "- "
+paren = " ({text})"
+colon = ":"
+facts_columns = "checks | coverage | artifact"
+gates_columns = "checks green | coverage complete | change landed"
+yes = "yes"
+no = "no"
+
+[dims]
+claim_kind = "What the agent claims it finished"
+tone = "Tone of voice"
+
+[prompt]
+intro = "Below is a **feature list for one completion claim**. Write the single closing line a real agent would say."
+bullet = "- {dim}: {brief} ({hint})"
+rules = [
+  "The claim must be **one sentence on a single line**; no line breaks, no Markdown fences, no comments",
+  "The claim states **only what was finished and how confident the tone is**; **never** state what the self-reported facts row is about — check results, coverage, or whether the change was committed. \"The tests all pass\", \"coverage is 100%\", \"already committed\" all belong to the facts row, and repeating them makes the two rows fight (the facts row may well say the checks were never run)",
+  "Say **what was done**, not **how it turned out**: \"added a few cases for the login module\" is fine, \"the cases all pass\" or \"tests are green\" is not — outcome wording belongs to the facts row",
+  "Do not prefix the claim with a field name like \"What the agent claims:\" and do not copy the feature list wording; write what a person (or an agent a person wrote) would actually say",
+  "The tone must be **unmistakable**: plain just states what was done; hedged uses words like \"probably / should / looks like\"; absolute uses words like \"definitely / absolutely / cannot possibly\"",
+  "What the claim says must match \"what the agent claims it finished\": adding cases is not a new API, a speedup is not a bug fix",
+  "Do not name real companies, products, or codebases; use invented names",
+  "Write everything in {language}; keep identifiers and file names in ASCII",
+]
+
+[feature.claim_kind.tests_added]
+brief = "claims test cases were added"
+hint = "the claim should say how many cases were added for which module — the act of adding them, not how they turned out"
+
+[feature.claim_kind.bug_fixed]
+brief = "claims a defect is fixed"
+hint = "the claim should say one concrete defect was fixed"
+
+[feature.claim_kind.perf_improved]
+brief = "claims performance went up"
+hint = "the claim should say which slow spot was rewritten or optimized"
+
+[feature.claim_kind.refactor_done]
+brief = "claims a refactor is finished"
+hint = "the claim should say a piece of code was reshaped with behavior unchanged"
+
+[feature.claim_kind.api_added]
+brief = "claims a new API was added"
+hint = "the claim should say a new entry point was added for callers"
+
+[feature.tone.plain]
+brief = "plain"
+hint = "states what was done with no hedge and no overreach"
+
+[feature.tone.hedged]
+brief = "hedged"
+hint = "uses words like \"probably / should / looks like\" and does not overcommit"
+
+[feature.tone.absolute]
+brief = "absolute"
+hint = "uses words like \"definitely / absolutely / cannot possibly\" and leaves no room"
+
+[fam.kind]
+q = [
+  "Which piece of work does this claim say it finished?",
+  "By the work it describes, which kind of claim is this?",
+  "What does this sentence say it completed?",
+]
+
+[fam.kind.criteria]
+tests_added = "claims test cases were added"
+bug_fixed = "claims a defect is fixed"
+perf_improved = "claims performance went up"
+refactor_done = "claims a refactor is finished (behavior unchanged)"
+api_added = "claims a new API was added"
+
+[fam.tone]
+q = [
+  "Which tone does this claim use?",
+  "How confident does this sentence sound?",
+  "By how much it commits, which tone is this claim?",
+]
+
+[fam.tone.criteria]
+plain = "plain: just states what was done, no extra shading"
+hedged = "hedged: probably, should, looks like"
+absolute = "absolute: definitely, absolutely, cannot possibly be wrong"
+
+[fam.verdict]
+q = [
+  "Given the self-reported facts and the three gates, what does this claim verify as?",
+  "Line up the facts row with the gates row — which verdict comes out?",
+  "Which verification verdict does this self-reported evidence support?",
+]
+
+[fam.verdict.criteria]
+verified = "verified: checks all green and coverage complete — the evidence holds the claim up"
+partial = "partial: only some checks pass, so the evidence holds up only part of it"
+unverified = "unverified: the checks were not run, or coverage has a hole — neither refuted nor supported"
+refuted = "refuted: the checks all failed, so the evidence refutes the claim outright"
+
+[fam.gap]
+q = [
+  "Following the order checks -> coverage -> landed, which action matches the first gate that is not met?",
+  "What is still missing (the first gate that is not met)?",
+  "To make this claim stand up, what has to be done first?",
+]
+
+[fam.gap.criteria]
+run_the_checks = "run the checks: they were never run at all"
+fix_the_failing_checks = "fix the failing checks: they all failed, or only some passed"
+tighten_scope = "narrow the claim to what the evidence supports: coverage is incomplete"
+commit_the_change = "commit the change: checks and coverage are fine, this is the only gate left"
+nothing_missing = "nothing missing: all three gates pass"
+
+[fam.confidence]
+q = [
+  "How many of the three acceptance gates are met?",
+  "Counting the gates, how much does this evidence support?",
+  "Of checks green, coverage complete, and change landed, how many hold?",
+]
+levels = [
+  "level 0: none of the three",
+  "level 1: exactly one",
+  "level 2: exactly two",
+  "level 3: all three",
+]
+
+[fam.committed]
+q = [
+  "Do the self-reported facts say the change was landed?",
+  "Does this self-report say the change was committed?",
+  "Reading the facts row, has the change landed?",
+]
+
+[fam.committed.criteria]
+"true" = "landed: the facts row says committed"
+"false" = "not landed: the facts row says uncommitted"
+
+[verify]
+intro = "Read the completion claim below and answer with the given options. Pick exactly one per question."
+state_header = "[Full claim]"
+questions_header = "[Questions]"
+option_line = "   - {name}: {desc}"

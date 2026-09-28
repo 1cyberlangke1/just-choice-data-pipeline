@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import random
-from typing import Any
+
 
 import pytest
 
@@ -79,14 +79,14 @@ def test_build_cases_ood_only_keeps_exactly_the_novel_combinations() -> None:
     assert len(ood) == 3960
 
 
-def test_sample_spec_is_deterministic(make_spec: Any) -> None:
+def test_sample_spec_is_deterministic(make_spec: object) -> None:
     """输入：两个种子。输出：规格。预期行为：同种子完全相同，不同种子不同。"""
     assert make_spec(7) == make_spec(7)
     assert make_spec(7) != make_spec(8)
 
 
 @pytest.mark.parametrize("tax_state", sp.TAX_STATES)
-def test_tax_state_decides_the_tax_amount(make_spec: Any, tax_state: str) -> None:
+def test_tax_state_decides_the_tax_amount(make_spec: object, tax_state: str) -> None:
     """输入：税额行状态。输出：规格。
 
     预期行为：`none` 没有税额行（金额记 0）；`ok` 恰好等于「小计 × 税率」；
@@ -106,7 +106,7 @@ def test_tax_state_decides_the_tax_amount(make_spec: Any, tax_state: str) -> Non
 
 
 @pytest.mark.parametrize("subtotal_ok", (True, False))
-def test_subtotal_flag_decides_the_subtotal(make_spec: Any, subtotal_ok: bool) -> None:
+def test_subtotal_flag_decides_the_subtotal(make_spec: object, subtotal_ok: bool) -> None:
     """输入：小计正确与否。输出：规格。
 
     预期行为：`True` 时小计恰好等于明细金额之和，`False` 时一定不等（差 ≥ 3）。
@@ -118,7 +118,7 @@ def test_subtotal_flag_decides_the_subtotal(make_spec: Any, subtotal_ok: bool) -
 
 
 @pytest.mark.parametrize("defects", sp.DEFECT_COUNTS)
-def test_defect_count_matches_the_broken_lines(make_spec: Any, defects: int) -> None:
+def test_defect_count_matches_the_broken_lines(make_spec: object, defects: int) -> None:
     """输入：注入的错处数。输出：规格。
 
     预期行为：恰好这么多行的「数量 × 单价 ≠ 金额」，且 `bad_lines` 与之一致。
@@ -128,7 +128,7 @@ def test_defect_count_matches_the_broken_lines(make_spec: Any, defects: int) -> 
     assert spec.bad_lines == defects
 
 
-def test_same_kind_values_are_pairwise_distinct(make_spec: Any) -> None:
+def test_same_kind_values_are_pairwise_distinct(make_spec: object) -> None:
     """输入：一批规格（覆盖四种版式 × 税额状态 × 小计状态）。输出：无。
 
     预期行为：同一份单据里单价两两不同、金额槽两两不同、日期两两不同、当事方互不相同——
@@ -149,7 +149,7 @@ def test_same_kind_values_are_pairwise_distinct(make_spec: Any) -> None:
                 assert len(set(spec.parties)) == 3
 
 
-def test_dates_are_ordered_and_ids_are_prefixed(make_spec: Any) -> None:
+def test_dates_are_ordered_and_ids_are_prefixed(make_spec: object) -> None:
     """输入：一份规格。输出：无。
 
     预期行为：收件 < 开票 < 到期（构造时按 `timedelta` 偏移）；三种编号各有前缀，
@@ -162,7 +162,7 @@ def test_dates_are_ordered_and_ids_are_prefixed(make_spec: Any) -> None:
     assert spec.contract_no.startswith("CT-")
 
 
-def test_slot_lookups_reject_unknown_slots(make_spec: Any) -> None:
+def test_slot_lookups_reject_unknown_slots(make_spec: object) -> None:
     """输入：未知槽名 / 没有税额行时问 `tax`。输出：KeyError。
 
     预期行为：一律报错而不是给个默认值——静默兜底会让「答案」悄悄变成另一个字段。
@@ -179,7 +179,7 @@ def test_slot_lookups_reject_unknown_slots(make_spec: Any) -> None:
             call(slot)
 
 
-def test_money_slots_drop_tax_without_a_tax_row(make_spec: Any) -> None:
+def test_money_slots_drop_tax_without_a_tax_row(make_spec: object) -> None:
     """输入：有/没有税额行的规格。输出：可问的金额槽。
 
     预期行为：没有税额行时 `tax` 不在选项集合里（否则选项描述会缺失或重复）。
@@ -188,7 +188,7 @@ def test_money_slots_drop_tax_without_a_tax_row(make_spec: Any) -> None:
     assert make_spec(14, tax_state="ok").money_slots == sp.MONEY_SLOTS
 
 
-def test_spec_to_dict_is_serializable_and_carries_the_case(make_spec: Any) -> None:
+def test_spec_to_dict_is_serializable_and_carries_the_case(make_spec: object) -> None:
     """输入：一份规格。输出：字典。预期行为：能直接 `json.dumps`（manifest 要用），
     并且带上 case 描述、每行的一致性结论。
     """
@@ -240,7 +240,7 @@ class _StuckRandom(random.Random):
         return self.fixed.get((a, b), super().randint(a, b))
 
 
-def test_repeated_unit_prices_are_shifted_apart(make_case: Any) -> None:
+def test_repeated_unit_prices_are_shifted_apart(make_case: object) -> None:
     """输入：一个「单价永远抽到同一个数」的随机源。输出：规格。
 
     预期行为：撞车时顺延（500 → 501 → 502）——单价是 `line_field` 的选项描述，
@@ -251,7 +251,7 @@ def test_repeated_unit_prices_are_shifted_apart(make_case: Any) -> None:
     assert [item.unit for item in spec.items] == [500, 501, 502]
 
 
-def test_shipping_is_shifted_off_a_collision(monkeypatch: Any, make_case: Any) -> None:
+def test_shipping_is_shifted_off_a_collision(monkeypatch: object, make_case: object) -> None:
     """输入：把税率函数钉成常数、运费第一次抽到同一个数。输出：规格。
 
     预期行为：运费撞上别的金额时顺延——否则那道金额题的选项描述会重复，

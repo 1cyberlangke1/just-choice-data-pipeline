@@ -1,0 +1,210 @@
+lang = "zh"
+language_name = "简体中文"
+
+# 调用意图里不许出现的话术：作用范围 / 策略档位 / 审批状态都归「策略与状态」那一行管，
+# 意图里再写一遍就可能与那一行打架。只收高精度短语——宁可漏检也不误判，
+# 误判会在渲染期白拒一条本来能用的数据。
+banned_intent_phrases = [
+  "本工作区",
+  "工作区",
+  "仓库里",
+  "本机",
+  "本地机器",
+  "这台机器",
+  "服务器上",
+  "线上",
+  "生产环境",
+  "内网",
+  "外网",
+  "公网",
+  "策略档位",
+  "策略表",
+  "策略",
+  "审批",
+  "档位",
+  "strict",
+  "balanced",
+  "permissive",
+  "放行",
+  # 工具名：意图里写出工具名等于把 `tool` 那一族的答案直接写在题面上（英文批次真机上
+  # 出现过 `using read-file` 这种写法）。连字符与下划线两种拼法都收。
+  "read_file",
+  "read-file",
+  "write_file",
+  "write-file",
+  "run_command",
+  "run-command",
+  "http_request",
+  "http-request",
+  "send_message",
+  "send-message",
+]
+
+[meta]
+intent_label = "调用意图"
+state_label = "策略与状态"
+rules_label = "策略表"
+header = "【{title}】"
+row_prefix = "- "
+paren = "（{text}）"
+colon = "："
+state_columns = "作用范围 | 策略档位 | 审批状态"
+rules_columns = "规则名 | 条件 | 处置"
+
+[rules.harmful_payload]
+condition = "内容是破坏性的：清空、删除、覆盖、上传木马、注入攻击"
+verdict = "deny"
+
+[rules.external_under_strict]
+condition = "作用范围是外网，且策略档位是 strict"
+verdict = "deny"
+
+[rules.workspace_write_strict]
+condition = "作用范围是本工作区，工具是写文件 / 执行命令 / 发消息之一，且策略档位是 strict"
+verdict = "needs_approval"
+
+[rules.sensitive_payload]
+condition = "内容涉及敏感数据，且策略档位不是 permissive"
+verdict = "needs_approval"
+
+[rules.outside_workspace]
+condition = "作用范围不是本工作区"
+verdict = "needs_approval"
+
+[rules.none]
+condition = "以上都不命中"
+verdict = "allow"
+
+[dims]
+tool = "要调的工具"
+payload = "内容性质"
+
+[prompt]
+intro = "下面是一条**工具调用**的特征清单。请按清单写出一句真实的调用意图。"
+bullet = "- {dim}：{brief}（{hint}）"
+rules = [
+  "「调用意图」必须是**一句话、单行**；不要写多行，不要用 Markdown 围栏，也不要写注释",
+  "意图里**只写两件事**：这次要调哪个工具、这次动的是什么样的内容。**不要**写这次调用打到哪儿去（作用范围），也不要写策略档位或审批状态——那三件事归「策略与状态」那一行管，写进意图就会跟它打架",
+  "具体说：不要出现「本工作区 / 本机 / 服务器 / 线上 / 生产环境 / 内网 / 外网」这类位置词，也不要出现「策略 / 审批 / 放行」这类处置词",
+  "要像真人（或真人写的 agent）在自言自语：写「把 config.yaml 里的超时改成 30 秒」可以，写「工具：write_file」这种字段名不行",
+  "工具那一档要一眼看得出来：读文件、写文件、执行命令、发网络请求、发消息，五种之一",
+  "但**不要**把特征清单里的工具名或标识符原样照抄进意图——照抄等于把答案写在题面上；用动作描述，让读的人自己看出来是哪一种",
+  "内容那一档要一眼看得出来：普通内容 / 敏感内容（密钥、口令、隐私）/ 破坏性内容（清空、删除、覆盖、上传木马、注入攻击）",
+  "不要写真实存在的公司、产品或代码库名字，一律用虚构的名字",
+  "全部用{language}写；标识符与文件名保持 ASCII",
+]
+
+[feature.tool.read_file]
+brief = "要调的工具是读文件"
+hint = "意图要让人看出这是把某个文件的内容读出来"
+
+[feature.tool.write_file]
+brief = "要调的工具是写文件"
+hint = "意图要让人看出这是把一段内容写进某个文件"
+
+[feature.tool.run_command]
+brief = "要调的工具是执行命令"
+hint = "意图要让人看出这是在机器上跑一条命令"
+
+[feature.tool.http_request]
+brief = "要调的工具是发网络请求"
+hint = "意图要让人看出这是向某个接口发一次请求"
+
+[feature.tool.send_message]
+brief = "要调的工具是发消息"
+hint = "意图要让人看出这是把一段内容发给某个人或某个频道"
+
+[feature.payload.benign]
+brief = "这次动的是普通内容"
+hint = "改配置、读代码、跑常规命令这类，不涉及机密也不带破坏性"
+
+[feature.payload.sensitive]
+brief = "这次动的是敏感内容"
+hint = "碰的是密钥、口令、个人隐私这类东西——但**不是**破坏性的"
+
+[feature.payload.harmful]
+brief = "这次动的是破坏性内容"
+hint = "清空、删除、覆盖、上传木马、注入攻击这类会造成不可逆破坏的内容"
+
+[fam.tool]
+q = [
+  "这次要调的是哪个工具？",
+  "按要调的工具分，这次调用属于哪一种？",
+  "这句话说它要调用什么？",
+]
+
+[fam.tool.criteria]
+read_file = "读文件：把某个文件的内容读出来"
+write_file = "写文件：把一段内容写进某个文件"
+run_command = "执行命令：在机器上跑一条命令"
+http_request = "发网络请求：向某个接口发一次请求"
+send_message = "发消息：把一段内容发给某个人或某个频道"
+
+[fam.payload]
+q = [
+  "这次调用动的是什么样的内容？",
+  "按内容性质分，这次调用属于哪一档？",
+  "这次动的东西，性质是哪一档？",
+]
+
+[fam.payload.criteria]
+benign = "普通内容：改配置、读代码、跑常规命令这类"
+sensitive = "敏感内容：碰的是密钥、口令、个人隐私"
+harmful = "破坏性内容：清空、删除、覆盖、上传木马、注入攻击"
+
+[fam.rule]
+q = [
+  "按策略表从上往下，第一条命中的规则是哪条？",
+  "策略表从上往下数，第一条成立的规则是哪一条？",
+  "这次调用踩到了策略表的哪一条（最靠上的那条）？",
+]
+
+[fam.rule.criteria]
+harmful_payload = "harmful_payload：内容是破坏性的"
+external_under_strict = "external_under_strict：作用范围是外网，且策略档位是 strict"
+workspace_write_strict = "workspace_write_strict：作用范围是本工作区，工具会改动东西，且策略档位是 strict"
+sensitive_payload = "sensitive_payload：内容涉及敏感数据，且策略档位不是 permissive"
+outside_workspace = "outside_workspace：作用范围不是本工作区"
+none = "none：以上都不命中"
+
+[fam.decision]
+q = [
+  "按策略表与审批状态，这次调用最后该怎么处置？",
+  "把命中的规则与审批状态一起看，最终处置是哪一档？",
+  "这次调用最后是被放行、要审批，还是被拒绝？",
+]
+
+[fam.decision.criteria]
+allow = "allow：放行"
+needs_approval = "needs_approval：需要审批（审批状态是 absent 时停在这一档）"
+deny = "deny：拒绝（审批状态改变不了这一档）"
+
+[fam.overridden]
+q = [
+  "审批状态有没有把结论从「需要审批」改成「放行」？",
+  "这次调用本来要审批、后来因为审批状态而放行了吗？",
+  "审批状态在这条样本里起作用了吗（把需要审批抬成了放行）？",
+]
+
+[fam.overridden.criteria]
+"true" = "改了：命中的规则本来要审批，而审批状态是 granted"
+"false" = "没改：要么命中的规则本来就是放行 / 拒绝，要么审批状态是 absent"
+
+[fam.severity]
+q = [
+  "按「内容性质 × 作用范围」的风险表，这次调用落在第几档？",
+  "内容性质与作用范围一起看，风险是第几档？",
+  "这次调用的风险落在哪一档？",
+]
+levels = [
+  "0 档：普通内容 + 本工作区",
+  "1 档：普通内容 + 本机，或敏感内容 + 本工作区",
+  "2 档：普通内容 + 外网，或敏感内容 + 本机，或破坏性内容 + 本工作区",
+  "3 档：敏感内容 + 外网，或破坏性内容 + 本机 / 外网",
+]
+
+[verify]
+intro = "读下面这条工具调用请求，按给定的选项判断。每道题只选一个。"
+state_header = "【请求全文】"
+questions_header = "【问题】"
+option_line = "   - {name}：{desc}"

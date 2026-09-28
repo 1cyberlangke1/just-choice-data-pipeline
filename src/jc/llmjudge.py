@@ -25,16 +25,17 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import tomllib
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from pydantic import BaseModel, Field
 
-from .backend.types import BackendError, Draft, GenerationTask
+from .backend.types import BackendError, Draft, GenerationBackend, GenerationTask
 from .contract import gold_text
 from .judge import LLM_PREFIX, Verdict
 
@@ -67,7 +68,7 @@ def available_locales() -> list[str]:
 
 
 @lru_cache(maxsize=8)
-def load(locale: str) -> dict[str, Any]:
+def load(locale: str) -> dict[str, JsonValue]:
     """输入：语言代码。输出：提示词字典（带缓存）。
 
     预期行为：文件不存在时报人话并列出可用语言——提示词缺了就没法判，
@@ -82,7 +83,7 @@ def load(locale: str) -> dict[str, Any]:
         return tomllib.load(handle)
 
 
-def render_sample(sample: dict[str, Any], loc: dict[str, Any]) -> str:
+def render_sample(sample: dict[str, JsonValue], loc: dict[str, JsonValue]) -> str:
     """输入：契约样本、语言字典。输出：题目与金答案的可读文本（提示词用）。
 
     预期行为：一律给**文字**而不是编号——编号是组装器的私事，模型看到编号只会困惑；
@@ -103,7 +104,7 @@ def render_sample(sample: dict[str, Any], loc: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_prompt(sample: dict[str, Any], loc: dict[str, Any], perspective: str) -> str:
+def build_prompt(sample: dict[str, JsonValue], loc: dict[str, JsonValue], perspective: str) -> str:
     """输入：契约样本、语言字典、视角。输出：提示词。
 
     预期行为：素材 + 题目与金答案 + 这个视角的判断标准。**一次只问一个视角**——
@@ -127,7 +128,7 @@ def build_prompt(sample: dict[str, Any], loc: dict[str, Any], perspective: str) 
     return "\n".join(lines)
 
 
-def has_kind(sample: dict[str, Any], kind: str) -> bool:
+def has_kind(sample: dict[str, JsonValue], kind: str) -> bool:
     """输入：契约样本、题型。输出：样本里有没有这种题型。"""
     return any(question.get("type") == kind for question in sample.get("questions", {}).values())
 
@@ -161,7 +162,7 @@ def to_verdict(perspective: str, draft: Draft) -> Verdict:
     )
 
 
-def make_judge(perspective: str, locale: str, backend: Any) -> "LlmJudge":
+def make_judge(perspective: str, locale: str, backend: GenerationBackend) -> "LlmJudge":
     """输入：视角名、语言、后端。输出：判别器。
 
     预期行为：视角名不认识直接报错并列出可用的——静默忽略等于「写了名字却没跑」。
@@ -181,14 +182,14 @@ class LlmJudge:
 
     perspective: str
     locale: str
-    backend: Any
+    backend: GenerationBackend
 
     @property
     def name(self) -> str:
         """输入：无。输出：判别器名（`llm:<视角>`）；统计与拒绝码都用它。"""
         return f"{LLM_PREFIX}{self.perspective}"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：契约样本、真值 spec（用不上——骨架真值就在样本里）。输出：Verdict。
 
         预期行为：不适用 → 跳过；端点故障（重试与降级都试过）→ 跳过并留原因；

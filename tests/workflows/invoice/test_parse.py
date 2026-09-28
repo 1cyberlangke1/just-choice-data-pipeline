@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+
 
 from workflows.invoice import locales, parse, render, spec as sp
 from workflows.invoice import workflow as inv_workflow
@@ -65,7 +65,7 @@ def test_match_label_prefers_the_longest_label() -> None:
     assert parse._match_label("这不是字段行", labels) is None
 
 
-def test_parse_ignores_noise_lines(make_spec: Any) -> None:
+def test_parse_ignores_noise_lines(make_spec: object) -> None:
     """输入：一份单据。输出：反解结果。
 
     预期行为：标题、明细表头、备注、段落引言都不算字段；解出来的槽正好是「会写出来的」那些。
@@ -112,7 +112,7 @@ def test_merged_labels_is_language_agnostic() -> None:
             assert seen.setdefault(label, slot) == slot, label
 
 
-def test_reparse_reads_both_languages(make_spec: Any) -> None:
+def test_reparse_reads_both_languages(make_spec: object) -> None:
     """输入：同一份规格的中文与英文文本。输出：反解结果。
 
     预期行为：`Workflow.reparse` 没有语言参数，靠合并标签表把两种语言都读出来；

@@ -5,10 +5,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import json
 import re
-from typing import Any, Final
+from typing import Final
 
 # ---------- 顶层字段（只允许这四个，多出即拒绝） ----------
 TOP_FIELDS: Final[tuple[str, ...]] = ("id", "state", "questions", "answers")
@@ -158,7 +159,7 @@ def desc_kind_ok(value: object) -> bool:
     return json_kind(value) in DESC_KINDS
 
 
-def gold_text(question: dict[str, Any], answer: dict[str, Any]) -> str:
+def gold_text(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> str:
     """把金答案还原成**文字**（人看、模型看、比对都用它）。
 
     输入：一道题、它的答案。输出：选项 / 等级的文字，或 noul 的文案。

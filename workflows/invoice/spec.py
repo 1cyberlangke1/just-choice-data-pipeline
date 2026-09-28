@@ -6,11 +6,12 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import datetime as dt
 import random
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from jc.knobs import require_pool
 
@@ -77,7 +78,7 @@ class InvoiceCase:
     subtotal_ok: bool
     tax_state: str
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：{维度名: 取值}，顺序与声明一致（哈希分桶按它算，必须稳定）。"""
         return {
             "layout": self.layout,
@@ -363,7 +364,7 @@ def sample_spec(
     )
 
 
-def spec_to_dict(spec: InvoiceSpec) -> dict[str, Any]:
+def spec_to_dict(spec: InvoiceSpec) -> dict[str, JsonValue]:
     """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
     return {
         "case": spec.case.describe(),

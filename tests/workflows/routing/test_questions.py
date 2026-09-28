@@ -1,154 +1,138 @@
-"""题族：数量、题型、金答案与题面形状。"""
+"""工单分诊的题族测试：题型、选项、金答案与打乱规则。"""
 
 from __future__ import annotations
 
-import random
+from jc.workflow import LabeledQuestion
 
-import pytest
+from workflows.routing import features, locales, questions
+from workflows.routing.features import TagSet
 
-from jc import assemble
-from tests.workflows.routing.conftest import _make_spec
-from workflows.routing import locales, questions, spec as sp
+TAGS = TagSet(issue="data_loss", urgency="blocked", tier="free", compliance="none", area="payments")
 
 
-def test_family_set_is_the_declared_one() -> None:
-    """输入：题族清单。输出：无。
+def by_family(tags: TagSet = TAGS) -> dict[str, LabeledQuestion]:
+    """输入：可选特征。输出：{题族名: 题目}。"""
+    return {item.family: item for item in questions.build(tags, locales.load("zh"), 0)}
 
-    预期行为：八个题族、三族 choice、四族 noul、一族 score，且没有重名——
-    重名会让组装器给同族加 `_2` 后缀，判别器再按族名找答案就找错了。
+
+def test_families_are_fixed_and_typed() -> None:
+    """输入：一组特征。输出：无。
+
+    预期行为：六个题族恒出；choice / noul / score 三类的划分与题面 `type` 对得上。
     """
-    assert questions.FAMILIES == (
-        "severity",
-        "queue",
-        "escalation",
-        "critical_area",
-        "needs_human",
-        "sla_breach",
-        "data_risk",
-        "priority",
-    )
-    assert len(set(questions.FAMILIES)) == len(questions.FAMILIES) == 8
-    assert len(questions.CHOICE_FAMILIES) == 3
-    assert len(questions.NOUL_FAMILIES) == 4
-    assert questions.SCORE_FAMILIES == ("priority",)
-
-
-@pytest.mark.parametrize("lang", ("zh", "en"))
-def test_build_returns_one_question_per_family(lang: str) -> None:
-    """输入：一条规格 + 一种语言。输出：无。
-
-    预期行为：题族顺序与 `FAMILIES` 一致，题型与声明一致，金答案与规格一致。
-    """
-    loc = locales.load(lang)
-    spec = _make_spec(tier="enterprise", compliance="security", issue="bug")
-    built = questions.build(spec, loc, 0, random.Random(1))
+    built = questions.build(TAGS, locales.load("zh"), 0)
     assert [item.family for item in built] == list(questions.FAMILIES)
-    want = {
-        "severity": spec.severity,
-        "queue": spec.queue,
-        "escalation": spec.escalation,
-        "critical_area": spec.critical_area,
-        "needs_human": spec.needs_human,
-        "sla_breach": spec.sla_breach,
-        "data_risk": spec.data_risk,
-        "priority": spec.priority,
-    }
-    for item in built:
-        assert item.answer == want[item.family]
-        expected_type = (
-            "choice"
-            if item.family in questions.CHOICE_FAMILIES
-            else "noul"
-            if item.family in questions.NOUL_FAMILIES
-            else "score"
-        )
-        assert item.question["type"] == expected_type
+    grouped = (
+        questions.CHOICE_FAMILIES + questions.NOUL_FAMILIES + questions.SCORE_FAMILIES
+    )
+    assert set(grouped) == set(questions.FAMILIES)
+    assert len(grouped) == len(questions.FAMILIES)
+    families = by_family()
+    for family in questions.CHOICE_FAMILIES:
+        assert families[family].question["type"] == "choice"
+    for family in questions.NOUL_FAMILIES:
+        assert families[family].question["type"] == "noul"
+    for family in questions.SCORE_FAMILIES:
+        assert families[family].question["type"] == "score"
 
 
-@pytest.mark.parametrize("lang", ("zh", "en"))
-def test_choice_questions_carry_their_option_sets(lang: str) -> None:
-    """输入：一种语言。输出：无。
+def test_question_shape_matches_the_contract() -> None:
+    """输入：一组特征。输出：无。预期行为：每道题只有契约允许的三个字段，且题面非空。"""
+    for item in questions.build(TAGS, locales.load("zh"), 0):
+        assert set(item.question) == {"type", "instructions", "criteria"}
+        assert str(item.question["instructions"]).strip()
 
-    预期行为：choice 的 `criteria` 是 {选项名: 描述}、描述两两不同、金答案是选项名；
-    答案不在选项里、或描述撞车都必须在出题时就炸掉。
+
+def test_answers_match_the_labels() -> None:
+    """输入：一组特征。输出：无。预期行为：每族金答案等于特征层算出来的那一格。"""
+    labels = TAGS.label()
+    families = by_family()
+    assert families["issue"].answer == labels.issue
+    assert families["urgency"].answer == labels.urgency
+    assert families["rule"].answer == labels.rule
+    assert families["queue"].answer == labels.queue
+    assert families["priority"].answer == labels.priority
+    assert families["needs_human"].answer is labels.needs_human
+
+
+def test_text_borne_answers_follow_the_tags() -> None:
+    """输入：两个只差文本承载两维的组合。输出：无。
+
+    预期行为：`issue` / `urgency` 两族的金答案就是注入取值本身——它们由正文承载，
+    判据在标签里，不在文本里（标签先行，文本后写）。
     """
-    loc = locales.load(lang)
-    spec = _make_spec()
-    for item in questions.build(spec, loc, 0, random.Random(2)):
-        if item.question["type"] != "choice":
-            continue
-        criteria = item.question["criteria"]
-        assert isinstance(criteria, dict)
-        assert len(set(criteria.values())) == len(criteria)
-        assert item.answer in criteria
+    other = TagSet(
+        issue="feature", urgency="deadline", tier="free", compliance="none", area="payments"
+    )
+    left, right = by_family(TAGS), by_family(other)
+    assert left["issue"].answer == "data_loss" and right["issue"].answer == "feature"
+    assert left["urgency"].answer == "blocked" and right["urgency"].answer == "deadline"
 
 
-@pytest.mark.parametrize("lang", ("zh", "en"))
-def test_noul_and_score_questions_carry_criteria(lang: str) -> None:
-    """输入：一种语言。输出：无。
+def test_priority_depends_only_on_urgency_and_tier() -> None:
+    """输入：两个只差「合规标记」与「产品域」的组合。输出：无。
 
-    预期行为：noul 带 true / false 两行判据（官方支持描述，带上它才知道真假意味着什么）；
-    score 的 `criteria` 是五档描述数组，下标从 0 起。
+    预期行为：优先级只由（紧急度 × 客户等级）决定——改合规标记或产品域都不动它。
+    这条钉住「哪个标签由哪几个特征算出」的分工。
     """
-    loc = locales.load(lang)
-    spec = _make_spec()
-    for item in questions.build(spec, loc, 0, random.Random(3)):
-        criteria = item.question["criteria"]
-        if item.question["type"] == "noul":
-            assert set(criteria) == {"true", "false"}
-            assert criteria["true"] != criteria["false"]
-        elif item.question["type"] == "score":
-            assert isinstance(criteria, list)
-            assert len(criteria) == len(sp.PRIORITY_LEVELS)
-            assert 0 <= item.answer < len(criteria)
+    other = TagSet(
+        issue="data_loss", urgency="blocked", tier="free", compliance="gdpr", area="identity"
+    )
+    left, right = by_family(TAGS), by_family(other)
+    assert left["priority"].answer == right["priority"].answer
+    assert left["priority"].answer == features.PRIORITY_TABLE[("blocked", "free")]
+    assert left["queue"].answer != right["queue"].answer  # 队列那一族确实变了
 
 
-def test_phrasing_index_wraps_around() -> None:
-    """输入：比问法池大的问法编号。输出：无。
-
-    预期行为：回绕而不是报错（题面措辞不是判据），而且回绕后的题面与第 0 号一致。
-    这里用 6 当编号：它是各题族问法条数（2 与 3）的公倍数，所以每一族都回绕到第 0 条。
-    """
-    loc = locales.load("zh")
-    spec = _make_spec()
-    first = questions.build(spec, loc, 0, random.Random(4))
-    wrapped = questions.build(spec, loc, 6, random.Random(4))
-    assert [item.question["instructions"] for item in first] == [
-        item.question["instructions"] for item in wrapped
-    ]
+def test_choice_options_are_only_the_allowed_ones() -> None:
+    """输入：一组特征。输出：无。预期行为：每道 choice 的选项名就是该族允许的取值。"""
+    families = by_family()
+    for family in questions.CHOICE_FAMILIES:
+        criteria = families[family].question["criteria"]
+        assert list(criteria) == list(features.CHOICE_OPTIONS[family])
 
 
-def test_assembled_sample_has_exactly_the_declared_families() -> None:
-    """输入：一条组装好的样本。输出：无。
+def test_noul_and_score_criteria_shapes() -> None:
+    """输入：一组特征。输出：无。
 
-    预期行为：`questions` 与 `answers` 的键集合都等于八个题族名——
-    这条抓的是「题族名与判别器键对不上」那类错（判别器会把每条样本都判成「未知题族」）。
+    预期行为：noul 的选项是 `true` / `false`；score 的选项是有序阶梯（档数 == `PRIORITY_LEVELS`）。
     """
     loc = locales.load("zh")
-    spec = _make_spec()
-    state = "state"
-    labeled = questions.build(spec, loc, 0, random.Random(5))
-    sample = assemble.assemble_sample("routing-train-0000001", state, labeled, random.Random(6))
-    assert set(sample["questions"]) == set(sample["answers"]) == set(questions.FAMILIES)
+    families = by_family()
+    assert list(families["needs_human"].question["criteria"]) == ["true", "false"]
+    assert list(families["priority"].question["criteria"]) == list(loc["fam"]["priority"]["levels"])
+    assert len(families["priority"].question["criteria"]) == features.PRIORITY_LEVELS
 
 
-def test_choice_answers_survive_shuffling() -> None:
-    """输入：同一个 case 用两个不同 RNG 组装。输出：无。
+def test_only_the_score_and_noul_families_are_unshuffled() -> None:
+    """输入：一组特征。输出：无。
 
-    预期行为：选项顺序会变，但**答案指向的描述不变**——编号只是「选项名的书写顺序」，
-    这条错了整批数据的标签就全错位了。
+    预期行为：有序阶梯与布尔题不打乱（打乱破坏语义），四个 choice 题族都允许打乱
+    （防「答案总在第 n 个」的位置捷径）。
     """
-    loc = locales.load("zh")
-    spec = _make_spec(compliance="gdpr", tier="enterprise")
-    labeled = questions.build(spec, loc, 0, random.Random(7))
-    first = assemble.assemble_sample("routing-train-0000001", "s", labeled, random.Random(8))
-    second = assemble.assemble_sample("routing-train-0000002", "s", labeled, random.Random(9))
-    for qid, question in first["questions"].items():
-        if question["type"] != "choice":
-            continue
-        names = list(question["criteria"])
-        picked = names[first["answers"][qid]["choice"]]
-        other_names = list(second["questions"][qid]["criteria"])
-        other_picked = other_names[second["answers"][qid]["choice"]]
-        assert picked == other_picked
-        assert question["criteria"][picked] == second["questions"][qid]["criteria"][other_picked]
+    families = by_family()
+    for family in questions.FAMILIES:
+        if family in questions.SCORE_FAMILIES or family in questions.NOUL_FAMILIES:
+            assert families[family].shuffle is False
+        else:
+            assert families[family].shuffle is True
+
+
+def test_phrasings_rotate() -> None:
+    """输入：三个问法编号。输出：无。预期行为：同一族的题面在三个编号上都能取到。"""
+    for family in questions.FAMILIES:
+        texts = {
+            next(
+                item.question["instructions"]
+                for item in questions.build(TAGS, locales.load("zh"), phrasing)
+                if item.family == family
+            )
+            for phrasing in (0, 1, 2)
+        }
+        assert len(texts) == 3, family
+
+
+def test_families_for_returns_the_full_table() -> None:
+    """输入：任意特征。输出：无。预期行为：六个题族对任何组合都问得出来。"""
+    for tags in features.build_cases(2048):
+        assert questions.families_for(tags) == questions.FAMILIES

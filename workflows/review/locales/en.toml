@@ -1,87 +1,181 @@
-# English strings for the change-review workflow.
-# Invariants locked by tests/workflows/review/test_locales.py: the same key set as zh,
-# per-language labels and vocabularies that never overlap across languages, a **shared**
-# cell separator, and body templates that hit exactly the rule they are labelled with.
+lang = "en"
+language_name = "English"
 
-[meta]
-title = "Change Review Sheet"
-change_label = "Change"
-colon = ": "
-cell_sep = " · "
-body_indent = "    "
-
-[file]
-src = "source"
-test = "test"
-doc = "docs"
-config = "config"
-
-[change]
-add = "added"
-edit = "modified"
-remove = "removed"
-
-[size]
-small = "small"
-big = "large"
-
-[body]
-# Body templates keyed `{rule}_{slot}` (`clean_{slot}` for the clean one). The literals in
-# the template are exactly what the rule pattern looks for; the bulk slot only reads the
-# size cell, so its text must not trip the other two rules.
-secret_heavy = "hard-coded a password = \"hunter2\" right here"
-secret_noise0 = "the sample copies a password = \"example\" line"
-debug_medium = "added a print(intermediate state) line for debugging"
-debug_noise0 = "the docs paste a print(debug output) snippet"
-debug_noise1 = "the test adds a console.log(result) line"
-bulk_light = "this hunk rewrites dozens of lines at once"
-bulk_noise1 = "this hunk reflows a whole block"
-clean_clean = "completed the comment here"
-
-[policy]
-text = "Rules: (1) Three review rules. Credential rule: the body hard-codes a credential as a name = a quoted literal, where the name contains password, passwd, pwd, secret, token, api_key, access_key, private_key or credential; severity is heavy. Debug rule: the body contains a debug output call such as print( , console.log( , debugger , var_dump , logger.debug( or fmt.Print( ; severity is medium. Bulk rule: the size cell reads 'large'; severity is light. (2) Whether to raise - hitting a rule is not enough: the credential rule is raised only in source, test and config files, never in docs; the debug rule is raised only in source and config files, never in test or docs; the bulk rule is raised only in source. (3) Severity - credential is heavy, debug is medium, bulk is light. (4) Gate - heavy is always blocked; medium gets requested changes on added and modified hunks, and is blocked on removed ones; light gets requested changes on modified hunks, and passes on added and removed ones. (5) The worst hunk - the raised hunk with the highest severity; when two hunks tie for the highest, this question is not asked."
-
-[fam.flag]
-q = [
-  "Should hunk {n} be raised as a review comment?",
-  "By the rules, does hunk {n} deserve a comment?",
-  "Is hunk {n} a problem?",
+# Phrases banned from the body: the table names only. The list is deliberately short — the body
+# is code, and identifiers like `test` / `size` / `config` are everywhere in code, so banning
+# them would reject plenty of usable samples. Table names, by contrast, would never show up in
+# real code; a hit means the model copied the section structure in.
+banned_intent_phrases = [
+  "change body",
+  "change manifest",
+  "review rules",
+  "severity table",
+  "gate table",
 ]
 
-[fam.flag.criteria]
-true = "raise it: the hunk hits a rule and its file type is in that rule's scope"
-false = "do not raise it: the hunk hits no rule, or hits one whose scope excludes its file type"
+[meta]
+body_label = "Change body"
+manifest_label = "Change manifest"
+rules_label = "Review rules"
+severity_label = "Severity table"
+gate_label = "Gate table"
+header = "【{title}】"
+row_prefix = "- "
+paren = " ({text})"
+colon = ": "
+manifest_columns = "file kind | change kind | size"
+rules_columns = "rule | condition"
+severity_columns = "rule | source | test | config | docs; level: 0 not raised / 1 low / 2 medium / 3 high"
+gate_columns = "level | added | modified | deleted; action: allow / request_changes / block"
+
+[dims]
+secret = "whether the change's added lines contain a `name = \"quoted value\"` credential literal"
+debug = "whether the change's added lines contain a debug-output call"
+file_kind = "file kind"
+change_kind = "change kind"
+size = "change size"
+
+[prompt]
+intro = "Below is the feature list of **one change**. Write the change body from this list — the lines of the diff, **every line starting with `+` (added), `-` (removed), or a space (context)**, for example `+ timeout = 60`."
+bullet = "- {dim}: {brief} ({hint})"
+rules = [
+  "Write only the changed lines, **one prefix per line**: `+` is an added line, `-` is a removed line, a space is a context line (put one space after the prefix)",
+  "The number of lines must fall in the range the change size names: small 1-4 lines, medium 3-8 lines, large 6-12 lines",
+  "The line prefixes must match the change kind: an addition must not have `-` lines, a deletion must not have `+` lines",
+  "Do not write Markdown fences, do not write line numbers, do not write an `@@` hunk header, and do not write the names \"change body / change manifest / review rules / severity table / gate table\"",
+  "It must look like real code: identifiers stay ASCII, comments and strings are written in {language}",
+  "The \"credential literal\" flag must be obvious at a glance: if yes, put `db_password = \"…\"` — a **quoted value** — on an **added line** (a code line is the most natural place, but prose counts too); if no, write none at all (reading an environment variable or a config file is not one). A literal that appears only on a removed line does not count as \"yes\" — that change deletes it",
+  "The \"debug output\" flag must be obvious too: if yes, put a print( / console.log( / logger.debug( style call on an **added line**; if no, write none at all",
+  "Do not use the name of any real company, product, or codebase — invent fictitious names",
+  "A docs change needs prefixes too: `+ ## Install` is right, a bare `## Install` is not (the prefix comes first; the file kind only decides what the content is)",
+]
+
+[feature.secret.no]
+brief = "no `name = \"quoted value\"` on the added lines"
+hint = "write no quoted password / token / key at all; read an environment variable instead"
+
+[feature.secret.yes]
+brief = "a `name = \"quoted value\"` on the added lines"
+hint = "put `db_password = \"hunter2\"` on an **added line** (a code line is the most natural place, but prose counts too)"
+
+[feature.debug.no]
+brief = "no debug output on the added lines"
+hint = "write no print( / console.log( / logger.debug( output"
+
+[feature.debug.yes]
+brief = "debug output on the added lines"
+hint = "put something like print( or logger.debug( on an **added line**, dumping intermediate state"
+
+[feature.file_kind.source]
+brief = "a source file"
+hint = "write the **changed lines** of business code: a prefixed function, branch, or value such as `+ def total(x):`"
+
+[feature.file_kind.test]
+brief = "a test file"
+hint = "write the **changed lines** of test code: a prefixed case name, assertion, or fixture such as `+ def test_total():`"
+
+[feature.file_kind.config]
+brief = "a config file"
+hint = "write the **changed lines** of configuration: prefixed key/value pairs such as `+ timeout: 60` (YAML / TOML / JSON style); a bare `timeout: 60` is not enough"
+
+[feature.file_kind.docs]
+brief = "a documentation file"
+hint = "write the **changed lines** of prose (Markdown style), no code: `+ ## Install` is right, a bare `## Install` is not"
+
+[feature.change_kind.added]
+brief = "an addition"
+hint = "every line is new, each starting with `+`"
+
+[feature.change_kind.modified]
+brief = "a modification"
+hint = "both added and removed lines; both prefixes must appear"
+
+[feature.change_kind.deleted]
+brief = "a deletion"
+hint = "every line is removed, each starting with `-`"
+
+[feature.size.small]
+brief = "a small change"
+hint = "1-4 lines"
+
+[feature.size.medium]
+brief = "a medium change"
+hint = "3-8 lines"
+
+[feature.size.large]
+brief = "a large change"
+hint = "6-12 lines"
+
+[rules.credential]
+condition = "an added line of the change carries a \"credential name = quoted value\", and the file kind is source / test / config"
+
+[rules.debug]
+condition = "an added line of the change carries debug output (print( / console.log( / logger.debug( and the like), and the file kind is source / config"
+
+[rules.size]
+condition = "the change size is \"large\", and the file kind is source"
+
+[rules.none]
+condition = "none of the above match"
+
+[verify]
+intro = "Below is one code change. Reverse-solve its features from the given options."
+state_header = "【Full change】"
+questions_header = "【Questions】"
+option_line = "   - {name}: {desc}"
+
+[fam.secret]
+q = [
+  "Do the change's added lines contain a `name = \"quoted value\"` credential literal?",
+  "Answer \"credential literal\" for the added lines of this change.",
+  "Do the change's added lines contain a credential literal?",
+]
+[fam.secret.criteria]
+true = "yes: an **added line** carries a `db_password = \"…\"` style quoted value (in code or in prose, both count)"
+false = "no: no added line carries one (one that appears only on a removed line does not count)"
+
+[fam.debug]
+q = [
+  "Do the change's added lines contain a debug-output call?",
+  "Answer \"debug output\" for the added lines of this change.",
+  "Do the change's added lines leave debug output behind?",
+]
+[fam.debug.criteria]
+true = "yes: an **added line** carries a print( / console.log( / logger.debug( style call"
+false = "no: no added line carries such a call (one that appears only on a removed line does not count)"
+
+[fam.rule]
+q = [
+  "Which review rule does this change match?",
+  "Reading the review rules top to bottom, which is the first match?",
+  "Pick the matching rule from the review rules.",
+]
+[fam.rule.criteria]
+credential = "an added line carries a \"credential name = quoted value\", and the file kind is source / test / config"
+debug = "an added line carries debug output, and the file kind is source / config"
+size = "the change size is \"large\", and the file kind is source"
+none = "none of the above match"
 
 [fam.severity]
 q = [
-  "Which severity band is hunk {n} in?",
-  "By the severity table, which band does hunk {n} fall in?",
-  "How severe is hunk {n}?",
+  "Which severity level is this change?",
+  "Assign a severity level from the severity table.",
+  "Where does this change land on the severity scale?",
 ]
 levels = [
-  "band 1 (light): a note only, does not block the merge",
-  "band 2 (medium): the author must respond before it merges",
-  "band 3 (heavy): it must be blocked",
+  "level 0: not raised (no finding)",
+  "level 1: low",
+  "level 2: medium",
+  "level 3: high",
 ]
 
 [fam.gate]
 q = [
-  "How should hunk {n} be handled?",
-  "By the gate table, which way does hunk {n} go?",
-  "Should hunk {n} be passed, sent back, or blocked?",
+  "Should this change be allowed, sent back for changes, or blocked?",
+  "Per the gate table, what should happen to this change?",
+  "Which gate action does this change get?",
 ]
-
-[fam.top]
-q = [
-  "Which hunk is the worst one?",
-  "Of these hunks, which is the most severe?",
-  "By severity, which hunk should be blocked first?",
-]
-
-[option.gate]
-pass = "pass: this hunk can go into the trunk as is"
-request = "requested changes: this hunk goes back to the author first"
-block = "block: this hunk must not go into the trunk"
-
-[option.position]
-element = "#{n}: {file} · {change} · {size}"
+[fam.gate.criteria]
+allow = "allow"
+request_changes = "request changes"
+block = "block"

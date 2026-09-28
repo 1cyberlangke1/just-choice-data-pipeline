@@ -1,9 +1,10 @@
 """题族的测试：十个题族、答案、选项、题面反查。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 import pytest
 
@@ -12,7 +13,7 @@ from workflows.hybrid import locales, questions, render
 from workflows.hybrid import spec as sp
 
 
-def _build(spec: sp.HybridSpec, lang: str = "zh", phrasing: int = 0) -> dict[str, Any]:
+def _build(spec: sp.HybridSpec, lang: str = "zh", phrasing: int = 0) -> dict[str, JsonValue]:
     """输入：规格、语言、问法编号。输出：{题族: LabeledQuestion}。
 
     预期行为：题号即题族名（每族只出一题），方便按名字取。
@@ -21,7 +22,7 @@ def _build(spec: sp.HybridSpec, lang: str = "zh", phrasing: int = 0) -> dict[str
     return {item.family: item for item in labeled}
 
 
-def test_all_ten_families_and_their_types(make_spec: Any) -> None:
+def test_all_ten_families_and_their_types(make_spec: object) -> None:
     """输入：一份普通日程。输出：题目列表。
 
     预期行为：十个题族全出、各一题、顺序按 `FAMILIES`；三种题型都产。
@@ -33,7 +34,7 @@ def test_all_ten_families_and_their_types(make_spec: Any) -> None:
     assert len(questions.FAMILIES) == 10
 
 
-def test_choice_shuffles_and_noul_score_do_not(make_spec: Any) -> None:
+def test_choice_shuffles_and_noul_score_do_not(make_spec: object) -> None:
     """输入：一份日程。输出：题目列表。
 
     预期行为：choice 允许打乱（防位置捷径）；noul / score 的 criteria 有固定顺序，禁止打乱。
@@ -42,7 +43,7 @@ def test_choice_shuffles_and_noul_score_do_not(make_spec: Any) -> None:
         assert item.shuffle is (item.question["type"] == "choice")
 
 
-def test_earliest_start_options_are_the_start_times(make_spec: Any) -> None:
+def test_earliest_start_options_are_the_start_times(make_spec: object) -> None:
     """输入：一份日程。输出：`earliest_start` 题。
 
     预期行为：选项名是槽名、描述是各场会的开始时刻，答案是开始最早那一场；
@@ -59,7 +60,7 @@ def test_earliest_start_options_are_the_start_times(make_spec: Any) -> None:
     assert item.question["criteria"][item.answer] == render.time_text(earliest.start, loc)
 
 
-def test_earliest_start_answer_is_not_always_the_first_slot(make_spec: Any) -> None:
+def test_earliest_start_answer_is_not_always_the_first_slot(make_spec: object) -> None:
     """输入：一批不同种子的日程。输出：`earliest_start` 的答案集合。
 
     预期行为：答案不能永远是 `m1`——展示顺序与时间顺序无关（见 spec.sample_spec），
@@ -75,7 +76,7 @@ def test_earliest_start_answer_is_not_always_the_first_slot(make_spec: Any) -> N
     assert len(answers) > 1
 
 
-def test_meeting_day_offers_seven_weekdays(make_spec: Any) -> None:
+def test_meeting_day_offers_seven_weekdays(make_spec: object) -> None:
     """输入：一份日程。输出：`meeting_day` 题。
 
     预期行为：七个选项（星期一到星期日），答案是日程日期的星期几。
@@ -88,7 +89,7 @@ def test_meeting_day_offers_seven_weekdays(make_spec: Any) -> None:
     assert item.question["criteria"][item.answer] == render.weekday_text(6, loc)
 
 
-def test_duration_options_are_fixed_and_match_the_target(make_spec: Any) -> None:
+def test_duration_options_are_fixed_and_match_the_target(make_spec: object) -> None:
     """输入：一份日程。输出：`duration_of` 题。
 
     预期行为：选项恒为 1~4 小时（短时长档下后两个是干扰项），
@@ -104,7 +105,7 @@ def test_duration_options_are_fixed_and_match_the_target(make_spec: Any) -> None
     )
 
 
-def test_room_options_are_deduplicated_on_a_shared_room(make_spec: Any) -> None:
+def test_room_options_are_deduplicated_on_a_shared_room(make_spec: object) -> None:
     """输入：`same_room` 档的日程。输出：`room_of` 题。
 
     预期行为：选项是**去重后**用到的会议室（共用一间房只算一个选项），
@@ -117,7 +118,7 @@ def test_room_options_are_deduplicated_on_a_shared_room(make_spec: Any) -> None:
     assert len(set(item.question["criteria"].values())) == 2
 
 
-def test_lead_options_are_keyed_by_slot(make_spec: Any) -> None:
+def test_lead_options_are_keyed_by_slot(make_spec: object) -> None:
     """输入：一份日程。输出：`lead_of` 题。
 
     预期行为：选项名是槽名、描述是主持人姓名（两两不同），答案就是题面那一场的槽名。
@@ -132,7 +133,7 @@ def test_lead_options_are_keyed_by_slot(make_spec: Any) -> None:
 
 
 @pytest.mark.parametrize(("family", "field"), [("title_of", "title"), ("agenda_of", "agenda")])
-def test_text_families_use_the_written_text(make_spec: Any, family: str, field: str) -> None:
+def test_text_families_use_the_written_text(make_spec: object, family: str, field: str) -> None:
     """输入：一份日程。输出：问文本的两族题。
 
     预期行为：选项就是**全部**会议的那段文本（真值 = 后端写出来的原文），
@@ -146,7 +147,7 @@ def test_text_families_use_the_written_text(make_spec: Any, family: str, field: 
     assert len(set(item.question["criteria"].values())) == 4
 
 
-def test_noul_answers_follow_the_skeleton(make_spec: Any) -> None:
+def test_noul_answers_follow_the_skeleton(make_spec: object) -> None:
     """输入：不重叠 / 重叠 / 房间冲突三种日程。输出：两族 noul 的答案。
 
     预期行为：题族名是**断言**（「互不重叠」「会议室没有冲突」），答案是断言成立与否。
@@ -159,7 +160,7 @@ def test_noul_answers_follow_the_skeleton(make_spec: Any) -> None:
     assert shared["room_free"].answer is False
 
 
-def test_score_answer_is_the_busy_level(make_spec: Any) -> None:
+def test_score_answer_is_the_busy_level(make_spec: object) -> None:
     """输入：一份日程。输出：`busy_level` 题。
 
     预期行为：等级表是五档（0~4 个整点），答案是骨架算出来的繁忙度。
@@ -173,7 +174,7 @@ def test_score_answer_is_the_busy_level(make_spec: Any) -> None:
 
 @pytest.mark.parametrize("lang", ["zh", "en"])
 @pytest.mark.parametrize("phrasing", [0, 1, 2])
-def test_locate_roundtrips_every_phrasing(make_spec: Any, lang: str, phrasing: int) -> None:
+def test_locate_roundtrips_every_phrasing(make_spec: object, lang: str, phrasing: int) -> None:
     """输入：每种问法下的一道题。输出：`locate` 的结果。
 
     预期行为：题面必须能被反查回自己的题族与目标槽——判别器完全依赖这一步，

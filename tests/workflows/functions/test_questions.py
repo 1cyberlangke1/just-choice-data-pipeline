@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 
 import pytest
 
@@ -79,7 +80,7 @@ def test_choice_and_noul_family_names_are_consistent() -> None:
             assert family != "tool"
 
 
-def test_build_emits_exactly_the_families_of_the_plan(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_build_emits_exactly_the_families_of_the_plan(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：四个工具各一个 case。输出：无。预期行为：出题族 ⊆ 该工具的可达族，且题号唯一。"""
     for tool in sp.TOOLS:
         reached: set[str] = set()
@@ -92,7 +93,7 @@ def test_build_emits_exactly_the_families_of_the_plan(make_case) -> None:  # typ
         assert reached == EXPECTED_FAMILIES[tool], (tool, sorted(EXPECTED_FAMILIES[tool] - reached))
 
 
-def test_families_for_mirrors_what_build_emits(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_families_for_mirrors_what_build_emits(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：每个 case 的金计划与它实际出的题族。输出：无。
 
     预期行为：`families_for(工具, 文本里提到过的参数)` 与 `build` 真正出的题族**完全一致**——
@@ -107,7 +108,7 @@ def test_families_for_mirrors_what_build_emits(make_case) -> None:  # type: igno
             assert set(questions.families_for(tool, stated)) == emitted, (tool, voice)
 
 
-def test_families_for_ignores_unstated_optional_args(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_families_for_ignores_unstated_optional_args(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：只提到必填参数的请求。输出：无。
 
     预期行为：没被提到的可选参数只出 `stated_*`，不出 `arg_*`——审计按「实际提到过什么」点名。
@@ -119,7 +120,7 @@ def test_families_for_ignores_unstated_optional_args(make_case) -> None:  # type
     assert "stated_symbol" not in families and "stated_window" not in families
 
 
-def test_tool_question_offers_every_function(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_tool_question_offers_every_function(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：任意一个 case。输出：无。
 
     预期行为：`tool` 题永远是四选一（四个工具都在选项里），金答案是金工具，选项描述
@@ -135,7 +136,7 @@ def test_tool_question_offers_every_function(make_case) -> None:  # type: ignore
     assert question["instructions"]
 
 
-def test_arg_question_options_are_the_value_table(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_arg_question_options_are_the_value_table(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：一个被提到的 `choice` 参数。输出：无。
 
     预期行为：选项就是该参数的**全量**取值表（不只本切分见过的那几个），金答案是请求里写的那个。
@@ -148,7 +149,7 @@ def test_arg_question_options_are_the_value_table(make_case) -> None:  # type: i
     assert str(locales.load("zh")["arg_desc"]["window"]) in item.question["instructions"]  # type: ignore[attr-defined]
 
 
-def test_stated_question_carries_the_default_rule(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_stated_question_carries_the_default_rule(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：一个可选参数。输出：无。
 
     预期行为：noul 题的判据写清「没提 = 用默认值」——这条是人为约定，必须写在题面里
@@ -162,7 +163,7 @@ def test_stated_question_carries_the_default_rule(make_case) -> None:  # type: i
     assert item.answer is False  # type: ignore[attr-defined]
 
 
-def test_required_args_never_get_a_stated_question(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_required_args_never_get_a_stated_question(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：含必填参数的工具。输出：无。
 
     预期行为：必填参数恒为 True，是常量答案——教「永远答 True」的题是坏数据（范式 §5.7）。
@@ -175,7 +176,7 @@ def test_required_args_never_get_a_stated_question(make_case) -> None:  # type: 
                 assert f"stated_{name}" not in families, (tool, voice, name)
 
 
-def test_set_argument_gets_one_member_question_per_value(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_set_argument_gets_one_member_question_per_value(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：`set` 参数。输出：无。
 
     预期行为：取值表里**每个**成员都有一道 noul 题，答案就是「请求点名要它了吗」。
@@ -190,7 +191,7 @@ def test_set_argument_gets_one_member_question_per_value(make_case) -> None:  # 
         assert item.question["type"] == "noul"  # type: ignore[attr-defined]
 
 
-def test_flag_argument_only_gets_a_stated_question(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_flag_argument_only_gets_a_stated_question(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：flag 参数被提到 / 没被提到。输出：无。
 
     预期行为：flag 没有取值，所以只有 `stated_*` 一族；提到时答案为 True。
@@ -201,7 +202,7 @@ def test_flag_argument_only_gets_a_stated_question(make_case) -> None:  # type: 
     assert not any(item.family.startswith("arg_include_volume") for item in chatty)  # type: ignore[attr-defined]
 
 
-def test_phrasing_only_changes_the_wording(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_phrasing_only_changes_the_wording(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：两套句面。输出：无。
 
     预期行为：句面只改题面文字——题族、题型与 `tool` 那一题的答案都不变。
@@ -260,7 +261,7 @@ def test_fill_leaves_unknown_placeholders_alone() -> None:
     assert questions._fill("{unknown}", arg="x") == "{unknown}"
 
 
-def test_option_descriptions_come_from_the_locale(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_option_descriptions_come_from_the_locale(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：一个成员题。输出：无。预期行为：题面里的取值描述来自 `[opt.symbol]`。"""
     item = next(
         item for item in _build(make_case(tool="compare_returns", voice="terse"))  # type: ignore[attr-defined]
@@ -269,7 +270,7 @@ def test_option_descriptions_come_from_the_locale(make_case) -> None:  # type: i
     assert str(locales.load("zh")["opt"]["symbol"]["NVDA"]) in item.question["instructions"]  # type: ignore[attr-defined]
 
 
-def test_instructions_never_leak_a_placeholder(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_instructions_never_leak_a_placeholder(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：全部工具 × 全部语气 × 两套句面。输出：无。
 
     预期行为：题面与判据里不剩 `{xxx}` 占位符——填漏一个就是考生看不懂的题。
@@ -284,7 +285,7 @@ def test_instructions_never_leak_a_placeholder(make_case) -> None:  # type: igno
                         assert "{" not in text and "}" not in text, (tool, voice, text)
 
 
-def test_render_and_question_wording_come_from_the_same_locale(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_render_and_question_wording_come_from_the_same_locale(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：一个 case。输出：无。
 
     预期行为：题面里点名的参数描述（`[arg_desc]`）与请求文本同源——不同语言各用各的，

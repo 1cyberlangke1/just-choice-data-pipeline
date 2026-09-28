@@ -8,7 +8,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import replace
-from typing import Any
+
 
 import pytest
 
@@ -42,7 +42,7 @@ class SlowEngine:
         self._in_flight = 0
         self._lock = threading.Lock()
 
-    def extract(self, request: Any) -> Any:
+    def extract(self, request: object) -> object:
         """输入：一次请求。输出：成功结果。预期行为：记下峰值并发再返回。"""
         with self._lock:
             self._in_flight += 1
@@ -59,7 +59,7 @@ class SlowEngine:
         )
 
 
-def test_provider_does_not_serialise_calls(provider_factory: Any, task_factory: Any) -> None:
+def test_provider_does_not_serialise_calls(provider_factory: object, task_factory: object) -> None:
     """3 个线程同时 `extract`，必须真的并行。
 
     输入：3 个 key、并发上限 5、每次调用占 0.15 秒。
@@ -92,7 +92,7 @@ def test_provider_does_not_serialise_calls(provider_factory: Any, task_factory: 
     assert elapsed < 0.4, f"耗时 {elapsed:.2f}s 接近串行（0.45s），说明调用被锁住了"
 
 
-def limits(**overrides: Any) -> Limits:
+def limits(**overrides: object) -> Limits:
     """输入：限额字段覆盖项。输出：Limits。预期行为：在「全关」的基线上只改指定字段。"""
     return replace(_BASE, **overrides)
 
@@ -107,7 +107,7 @@ def test_only_counted_faults_are_faults() -> None:
 
 
 def test_transport_failure_is_retried_until_success(
-    fake_engine: Any, provider_factory: Any, result_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
 ) -> None:
     """网络抖动要重试：两次失败后成功，尝试次数必须是 3。"""
     engine = fake_engine(script=[TransportError("连接超时"), TransportError("连接超时"), result_factory()])
@@ -119,7 +119,7 @@ def test_transport_failure_is_retried_until_success(
 
 
 def test_transport_failure_is_raised_after_attempts_run_out(
-    fake_engine: Any, provider_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object
 ) -> None:
     """重试用尽要原样抛出最后一个异常，不能吞掉。"""
     engine = fake_engine(script=[TransportError("500")] * 4)
@@ -130,7 +130,7 @@ def test_transport_failure_is_raised_after_attempts_run_out(
 
 
 def test_schema_unsupported_is_not_retried(
-    fake_engine: Any, provider_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object
 ) -> None:
     """「服务端不吃这一档」不是故障，重试同一档纯属浪费——交给上层降档。"""
     engine = fake_engine(script=[SchemaUnsupportedError("400")] * 3)
@@ -141,7 +141,7 @@ def test_schema_unsupported_is_not_retried(
 
 
 def test_model_misbehaviour_never_opens_the_breaker(
-    fake_engine: Any, provider_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object
 ) -> None:
     """连续 4 次「模型答非所问」也不许熔断（fail_max=2），否则弱模型会被误杀。"""
     engine = fake_engine(script=[DraftInvalidError("答非所问")] * 4)
@@ -153,7 +153,7 @@ def test_model_misbehaviour_never_opens_the_breaker(
 
 
 def test_transport_failures_do_open_the_breaker(
-    fake_engine: Any, provider_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object
 ) -> None:
     """连续 fail_max 次真故障要打开熔断，之后直接报「不可用」而**不发请求**。
 
@@ -173,7 +173,7 @@ def test_transport_failures_do_open_the_breaker(
 
 
 def test_rate_limit_halves_effective_rpm(
-    fake_engine: Any, provider_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object
 ) -> None:
     """吃到 429 就把 RPM 减半——服务商不回限速头，只能自己收敛。"""
     engine = fake_engine(script=[RateLimitError("429")])
@@ -184,7 +184,7 @@ def test_rate_limit_halves_effective_rpm(
 
 
 def test_success_eases_rpm_back_towards_the_cap(
-    fake_engine: Any, provider_factory: Any, result_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
 ) -> None:
     """降过速之后每次成功抬一点，但绝不超过配置值。"""
     engine = fake_engine(script=[RateLimitError("429"), result_factory()])
@@ -194,7 +194,7 @@ def test_success_eases_rpm_back_towards_the_cap(
 
 
 def test_retry_after_wins_over_computed_backoff(
-    fake_engine: Any, provider_factory: Any, result_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
 ) -> None:
     """429 带 Retry-After 时以服务端要求为准，不跟服务端讨价还价。"""
     sleeps: list[float] = []
@@ -209,7 +209,7 @@ def test_retry_after_wins_over_computed_backoff(
 
 
 def test_auth_error_retires_the_key(
-    fake_engine: Any, provider_factory: Any, result_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
 ) -> None:
     """401 只说明这个 key 废了，不是 provider 挂了：换下一个 key 继续。"""
     engine = fake_engine(script=[AuthError("401"), result_factory()])
@@ -222,7 +222,7 @@ def test_auth_error_retires_the_key(
 
 
 def test_daily_quota_retires_the_key(
-    fake_engine: Any, provider_factory: Any, result_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
 ) -> None:
     """每日配额烧干是「这个 key 今天没了」：降速救不回来，必须换 key。
 
@@ -244,7 +244,7 @@ def test_daily_quota_retires_the_key(
 
 
 def test_minute_rate_limit_keeps_the_key(
-    fake_engine: Any, provider_factory: Any, result_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
 ) -> None:
     """分钟级 429 只降速、不退 key——否则一波限流就把好 key 全扔了。"""
     engine = fake_engine(script=[RateLimitError("429 Too Many Requests"), result_factory()])
@@ -257,7 +257,7 @@ def test_minute_rate_limit_keeps_the_key(
 
 
 def test_pool_empty_raises_auth_error(
-    fake_engine: Any, provider_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object
 ) -> None:
     """唯一的 key 废掉后，这家就没戏了，报错要说人话。"""
     engine = fake_engine(script=[AuthError("401")])
@@ -269,7 +269,7 @@ def test_pool_empty_raises_auth_error(
         provider.extract(task_factory(), "json_schema")
 
 
-def test_modes_follow_configuration(fake_engine: Any, provider_factory: Any) -> None:
+def test_modes_follow_configuration(fake_engine: object, provider_factory: object) -> None:
     """写死档位就用它；auto 有探测结果就从探测档起步，没探测就从最严的起步。"""
     engine = fake_engine(script=[])
     assert provider_factory(engine, mode="tools").modes() == ("tools", "md_json")
@@ -278,7 +278,7 @@ def test_modes_follow_configuration(fake_engine: Any, provider_factory: Any) -> 
     assert probed.modes() == ("tools", "md_json")
 
 
-def test_concurrency_gate_serialises_calls(provider_factory: Any, result_factory: Any, task_factory: Any) -> None:
+def test_concurrency_gate_serialises_calls(provider_factory: object, result_factory: object, task_factory: object) -> None:
     """max_concurrency=1 时，两个线程同时来也只有一个能进引擎。"""
 
     class Probe:
@@ -291,7 +291,7 @@ def test_concurrency_gate_serialises_calls(provider_factory: Any, result_factory
             self.active = 0
             self.peak = 0
 
-        def extract(self, request: Any) -> Any:
+        def extract(self, request: object) -> object:
             """输入：一次请求。输出：成功结果。预期行为：记录并发峰值后睡一会儿。"""
             with self._lock:
                 self.active += 1
@@ -324,7 +324,7 @@ def test_chain_rejects_empty_list() -> None:
         ProviderChain([])
 
 
-def test_chain_iterates_in_configuration_order(fake_engine: Any, provider_factory: Any) -> None:
+def test_chain_iterates_in_configuration_order(fake_engine: object, provider_factory: object) -> None:
     """降级顺序 = 配置顺序，遍历链必须按这个顺序来。"""
     chain = ProviderChain(
         [
@@ -336,7 +336,7 @@ def test_chain_iterates_in_configuration_order(fake_engine: Any, provider_factor
 
 
 def test_min_interval_gate_spaces_out_calls(
-    fake_engine: Any, provider_factory: Any, result_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
 ) -> None:
     """同一个 key 的两次请求之间必须隔开配置的最小间隔，否则免费档会被打爆。"""
     engine = fake_engine(script=[result_factory(), result_factory()])
@@ -347,7 +347,7 @@ def test_min_interval_gate_spaces_out_calls(
     assert time.monotonic() - started >= 0.15  # 留点余量，不跟调度器较劲
 
 
-def test_chain_usable_filters_by_model_when_mixed_is_off(fake_engine: Any, provider_factory: Any) -> None:
+def test_chain_usable_filters_by_model_when_mixed_is_off(fake_engine: object, provider_factory: object) -> None:
     """不允许混用时，只保留与第一家 model 相同的 provider，免得数据分布被换模型污染。"""
     first = provider_factory(fake_engine(script=[]), name="a", model="m1")
     second = provider_factory(fake_engine(script=[]), name="b", model="m2")

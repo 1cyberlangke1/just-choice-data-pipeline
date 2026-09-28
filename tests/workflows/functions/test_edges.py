@@ -1,10 +1,11 @@
 """边界与接线：声明项、切片、审计的坏产物路径、以及「不碰后端」这条纪律。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
 from pathlib import Path
-from typing import Any
+
 
 import pytest
 
@@ -154,7 +155,7 @@ def test_config_for_ood_is_the_full_table() -> None:
     assert set(config.windows) == set(sp.WINDOWS)
 
 
-def _sample_row() -> dict[str, Any]:
+def _sample_row() -> dict[str, JsonValue]:
     """输入：无。输出：一条真样本（中文）。预期行为：判别器与审计都判它合格。"""
     case = sp.CallCase("plot_price", "chatty", "1w", "ticker", 0)
     loc = locales.load("zh")

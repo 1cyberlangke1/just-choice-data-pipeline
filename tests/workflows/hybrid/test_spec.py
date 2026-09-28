@@ -6,7 +6,7 @@ import json
 import random
 from collections import Counter
 from itertools import pairwise
-from typing import Any
+
 
 import pytest
 
@@ -242,7 +242,7 @@ def test_text_of_raises_before_render() -> None:
         spec.text_of("m1")
 
 
-def test_spec_to_dict_is_json_serializable(make_spec: Any) -> None:
+def test_spec_to_dict_is_json_serializable(make_spec: object) -> None:
     """输入：一份渲染过的规格。输出：字典。
 
     预期行为：能直接 `json.dumps`（manifest 与调试要用），且带上骨架与写好的文本。

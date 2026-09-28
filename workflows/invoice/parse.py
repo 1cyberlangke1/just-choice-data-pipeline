@@ -7,10 +7,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import re
 from dataclasses import dataclass
-from typing import Any
+
 
 #: 段落版式里字段之间的分隔（渲染用 `；`，句子用 `。` 收尾）。
 _SEPARATORS: re.Pattern[str] = re.compile(r"[。；;\n]+")
@@ -58,7 +59,7 @@ class ParsedInvoice:
         return self.fields.get(slot, "")
 
 
-def label_index(loc: dict[str, Any]) -> dict[str, str]:
+def label_index(loc: dict[str, JsonValue]) -> dict[str, str]:
     """输入：语言字典。输出：{标签文本: 槽名}（含正名与全部别名）。
 
     预期行为：只收**字段**标签；明细表的列名（品名 / 数量 / …）不算字段标签，
@@ -144,7 +145,7 @@ def _looks_like_item(cells: list[str]) -> bool:
     return all(as_int(cell) is not None for cell in cells[1:])
 
 
-def parse_document(text: str, loc: dict[str, Any]) -> ParsedInvoice:
+def parse_document(text: str, loc: dict[str, JsonValue]) -> ParsedInvoice:
     """输入：单据文本、语言字典。输出：`ParsedInvoice`。
 
     预期行为：逐段扫描——先认「四格且后三格是数字」的明细行，再认「行首是已知字段标签」
@@ -168,7 +169,7 @@ def parse_document(text: str, loc: dict[str, Any]) -> ParsedInvoice:
     return ParsedInvoice(fields=fields, items=tuple(items))
 
 
-def merged_labels() -> dict[str, Any]:
+def merged_labels() -> dict[str, JsonValue]:
     """输入：无。输出：所有语言文件的「标签 → 槽」合并表（`{"field": …}` 形态）。
 
     预期行为：`Workflow.reparse` 没有语言参数，靠合并表做到语言无关；
@@ -177,7 +178,7 @@ def merged_labels() -> dict[str, Any]:
     """
     from . import locales
 
-    merged: dict[str, dict[str, Any]] = {}
+    merged: dict[str, dict[str, JsonValue]] = {}
     for lang in locales.available():
         for slot, entry in locales.load(lang)["field"].items():
             bucket = merged.setdefault(slot, {"labels": []})

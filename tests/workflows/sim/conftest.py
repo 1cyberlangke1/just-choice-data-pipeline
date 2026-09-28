@@ -1,16 +1,17 @@
 """游戏与模拟控制 workflow 测试的公共夹具：小规格构造器（不联网、不落盘）。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 import pytest
 
 from workflows.sim import spec as sp
 
 #: 默认 case：局面 `b0` / 排布 `l0` / 第一套句面。
-CASE_DEFAULTS: dict[str, Any] = {"board": "b0", "layout": "l0", "phrasing": 0}
+CASE_DEFAULTS: dict[str, JsonValue] = {"board": "b0", "layout": "l0", "phrasing": 0}
 
 #: 小规格用的局面：**二十四张里的前六张**，性质是构造出来的（见 `test_spec.py`）——
 #: 合法动作数合计 18（占 36 的一半）、结束 3 张、没结束的 3 张都有合法动作、
@@ -18,14 +19,14 @@ CASE_DEFAULTS: dict[str, Any] = {"board": "b0", "layout": "l0", "phrasing": 0}
 TINY_BOARDS: tuple[str, ...] = sp.BOARDS[:6]
 
 
-def _make_case(**overrides: Any) -> sp.SimCase:
+def _make_case(**overrides: object) -> sp.SimCase:
     """输入：维度覆盖项。输出：一个 case。预期行为：未覆盖的维度取 `CASE_DEFAULTS`。"""
     fields = dict(CASE_DEFAULTS)
     fields.update(overrides)
     return sp.SimCase(**fields)
 
 
-def _make_spec(**overrides: Any) -> sp.SimSpec:
+def _make_spec(**overrides: object) -> sp.SimSpec:
     """输入：case 覆盖项。输出：真值规格。预期行为：同种子必得同一份规格。"""
     return sp.sample_spec(_make_case(**overrides), "train", 0, 0, random.Random(3))
 
@@ -54,12 +55,12 @@ def tiny_config(split: str = "train", *, ood_only: bool = False) -> sp.SimConfig
 
 
 @pytest.fixture
-def make_case() -> Any:
+def make_case() -> object:
     """工厂夹具：`make_case(layout="l3")` 造一个 case。"""
     return _make_case
 
 
 @pytest.fixture
-def make_spec() -> Any:
+def make_spec() -> object:
     """工厂夹具：`make_spec(board="b6")` 造一份真值规格。"""
     return _make_spec

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import random
-from typing import Any
+
 
 import pytest
 
@@ -12,7 +12,7 @@ from workflows.invoice import locales, questions, render, spec as sp
 LOCALES = locales.available()
 
 
-def test_families_for_drops_tax_consistent_without_a_tax_row(make_spec: Any) -> None:
+def test_families_for_drops_tax_consistent_without_a_tax_row(make_spec: object) -> None:
     """输入：有/没有税额行的规格。输出：题族元组。
 
     预期行为：`tax_consistent` 是条件题族——没有税额行就不问（答案无从谈起）。
@@ -25,7 +25,7 @@ def test_families_for_drops_tax_consistent_without_a_tax_row(make_spec: Any) -> 
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_build_returns_one_question_per_family_in_order(lang: str, make_spec: Any) -> None:
+def test_build_returns_one_question_per_family_in_order(lang: str, make_spec: object) -> None:
     """输入：规格、语言、问法编号。输出：题目列表。
 
     预期行为：顺序与 `FAMILIES` 一致、每族一题、题型分别是 5 choice + 2 noul + 1 score。
@@ -37,7 +37,7 @@ def test_build_returns_one_question_per_family_in_order(lang: str, make_spec: An
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_choice_options_are_unique_and_contain_the_answer(lang: str, make_spec: Any) -> None:
+def test_choice_options_are_unique_and_contain_the_answer(lang: str, make_spec: object) -> None:
     """输入：一份 4 行、有税额的单据。输出：题目。
 
     预期行为：choice 的选项描述两两不同（否则那道题有两个正确答案）、答案在选项里。
@@ -54,7 +54,7 @@ def test_choice_options_are_unique_and_contain_the_answer(lang: str, make_spec: 
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_choice_answers_point_at_the_rendered_field(lang: str, make_spec: Any) -> None:
+def test_choice_answers_point_at_the_rendered_field(lang: str, make_spec: object) -> None:
     """输入：一批规格。输出：题目。
 
     预期行为：choice 的答案永远指向本单据里真实存在的槽，且那个选项的描述
@@ -94,7 +94,7 @@ def test_line_option_numbering_starts_at_one() -> None:
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_every_question_can_be_located_from_its_text(lang: str, make_spec: Any) -> None:
+def test_every_question_can_be_located_from_its_text(lang: str, make_spec: object) -> None:
     """输入：题目列表。输出：`locate` 的结果。
 
     预期行为：判别器只靠题面反查「问的是哪个字段」，所以每一道题的题面都必须能查回来，
@@ -127,7 +127,7 @@ def test_phrasing_picks_different_wording(lang: str) -> None:
     assert len({locales.pick(pool, index) for index in (0, 1, 2)}) == 3
 
 
-def test_build_is_deterministic(make_spec: Any) -> None:
+def test_build_is_deterministic(make_spec: object) -> None:
     """输入：同一份规格 + 同种子的 RNG。输出：两次题目列表。预期行为：完全相同。"""
     loc = locales.load("zh")
     spec = make_spec(41, lines=4, defects=2)
@@ -137,7 +137,7 @@ def test_build_is_deterministic(make_spec: Any) -> None:
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_noul_and_score_shapes(lang: str, make_spec: Any) -> None:
+def test_noul_and_score_shapes(lang: str, make_spec: object) -> None:
     """输入：一份 3 行、2 处错的单据。输出：题目。
 
     预期行为：noul 的 criteria 只有 true/false、答案是布尔、不打乱；
@@ -159,7 +159,7 @@ def test_noul_and_score_shapes(lang: str, make_spec: Any) -> None:
     assert score.shuffle is False
 
 
-def test_noul_answers_follow_the_injected_defects(make_spec: Any) -> None:
+def test_noul_answers_follow_the_injected_defects(make_spec: object) -> None:
     """输入：小计对/错 × 税额对/错 四种组合。输出：noul 题的答案。
 
     预期行为：答案与注入的特征一一对应（这是「答案从素材算出来」的核心）。

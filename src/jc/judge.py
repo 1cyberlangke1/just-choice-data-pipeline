@@ -9,9 +9,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass, field
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 #: LLM 判别器的名字前缀（`llm:solvable`）。通用层负责装配它们（要后端），
 #: 各 workflow 只管在自己的判别器名单里写名字，不必重复接线。
@@ -44,7 +45,7 @@ class Verdict:
     ok: bool
     score: float | None = None
     reason: str = ""
-    raw: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, JsonValue] = field(default_factory=dict)
     skipped: bool = False
 
 
@@ -54,12 +55,12 @@ class Judge(Protocol):
 
     name: str
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值 spec。输出：Verdict。预期行为：只判定、不修改样本。"""
 
 
 def run_judges(
-    sample: dict[str, Any], spec: Any, judges: tuple[Judge, ...]
+    sample: dict[str, JsonValue], spec: object, judges: tuple[Judge, ...]
 ) -> list[tuple[str, Verdict]]:
     """依次跑所有判别器。
 

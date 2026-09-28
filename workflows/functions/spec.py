@@ -15,12 +15,13 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import hashlib
 import random
 from dataclasses import dataclass
 from itertools import product
-from typing import Any, Final
+from typing import Final
 
 from jc.knobs import require_pool
 
@@ -189,7 +190,7 @@ class CallCase:
     alias: str
     phrasing: int
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：{维度名: 取值}（五个维度全摊平）。"""
         return {
             "tool": self.tool,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from itertools import product
 
 import pytest
@@ -146,7 +147,7 @@ def test_voice_members_fit_every_set_arg() -> None:
         assert 1 <= count <= len(sp.STOCKS)
 
 
-def test_build_plan_is_deterministic(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_build_plan_is_deterministic(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：同一个 case 造两次计划。输出：无。预期行为：逐字段一致（指纹派生，不掷骰子）。"""
     case = make_case()
     assert sp.build_plan(case) == sp.build_plan(case)
@@ -154,7 +155,7 @@ def test_build_plan_is_deterministic(make_case) -> None:  # type: ignore[no-unty
     assert sp.sample_spec(case, "train", 0).plan == sp.sample_spec(case, "val", 7).plan
 
 
-def test_build_plan_takes_the_window_from_the_case(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_build_plan_takes_the_window_from_the_case(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：两个只差窗口的 case。输出：无。
 
     预期行为：窗口取值来自 case 本身（它是留出维度），不跟着指纹掷——否则留出就不成立。
@@ -164,7 +165,7 @@ def test_build_plan_takes_the_window_from_the_case(make_case) -> None:  # type: 
     assert sp.build_plan(make_case(window="1d")).binding("window").value == "1d"
 
 
-def test_set_members_follow_the_value_table_order(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_set_members_follow_the_value_table_order(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：一个 `set` 参数的绑定。输出：无。
 
     预期行为：成员按取值表本身的顺序排（不是按字母排）——读法也是按取值表顺序返回的，
@@ -178,7 +179,7 @@ def test_set_members_follow_the_value_table_order(make_case) -> None:  # type: i
         assert len(binding.members) == min(sp.VOICE_MEMBERS[voice], len(sp.STOCKS))
 
 
-def test_flag_binding_is_on_when_stated(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_flag_binding_is_on_when_stated(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：提到 / 不提 flag 的两种语气。输出：无。
 
     预期行为：提到时 `value` 恒为 `"on"`（布尔开关没有别的取值），不提时 `stated=False`。
@@ -189,7 +190,7 @@ def test_flag_binding_is_on_when_stated(make_case) -> None:  # type: ignore[no-u
     assert (terse.stated, terse.value) == (False, "")
 
 
-def test_unstated_optional_args_carry_no_value(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_unstated_optional_args_carry_no_value(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：最简语气的计划。输出：无。
 
     预期行为：没被提到的可选参数 `stated=False` 且不带取值 / 成员——这正是 `stated_*`
@@ -203,20 +204,20 @@ def test_unstated_optional_args_carry_no_value(make_case) -> None:  # type: igno
         assert binding.value == "" and binding.members == ()
 
 
-def test_plan_binding_rejects_unknown_arg(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_plan_binding_rejects_unknown_arg(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：计划里没有的参数名。输出：无。预期行为：KeyError。"""
     with pytest.raises(KeyError):
         sp.build_plan(make_case()).binding("nope")
 
 
-def test_material_of_separates_every_case(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_material_of_separates_every_case(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：全部 case。输出：无。预期行为：素材指纹两两不同（它是分桶与内容种子的输入）。"""
     cases = sp.build_cases(sp.CallConfig())
     materials = [sp.material_of(case) for case in cases]
     assert len(set(materials)) == len(materials)
 
 
-def test_unseen_dims_reports_held_out_values(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_unseen_dims_reports_held_out_values(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：全留出 / 全见过两个 case。输出：无。预期行为：按固定顺序点名留出的维度。"""
     # `top_movers` 没有别名写法，它的 `alias` 不算留出维度。
     assert make_case(tool="top_movers", window="3mo", alias="name", phrasing=1).unseen_dims() == (
@@ -277,7 +278,7 @@ def test_build_cases_ood_only_keeps_unseen_combinations() -> None:
     assert not any(case.unseen_dims() for case in every if case not in ood)
 
 
-def test_case_describe_and_as_dict(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_case_describe_and_as_dict(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：一个 case。输出：无。预期行为：五个维度都摊平，描述里五个取值都在。"""
     case = make_case(tool="top_movers", voice="chatty", window="3mo", alias="name", phrasing=1)
     assert case.as_dict() == {

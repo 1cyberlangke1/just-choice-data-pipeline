@@ -15,11 +15,12 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass
-from typing import Any, Final, Literal
+from typing import Final, Literal
 
-from jc.backend.types import BackendError, GenerationTask
+from jc.backend.types import BackendError, GenerationBackend, GenerationTask
 from jc.judge import Verdict
 from pydantic import BaseModel
 
@@ -49,7 +50,7 @@ LEFTOVER_LINES: Final[frozenset[str]] = frozenset(
 LEFTOVER_TAGS: Final[tuple[str, ...]] = ("<br>", "<br/>", "<br />", "</br>")
 
 
-def owned_domain_prefix(loc: dict[str, Any]) -> str:
+def owned_domain_prefix(loc: dict[str, JsonValue]) -> str:
     """输入：语言字典。输出：「官方域名」那一行的行首标记（模板里 `{domain}` 之前的部分）。
 
     预期行为：复用 `render.domain_line_prefix`——同一份 locale 模板只能有一个解析口径，
@@ -58,7 +59,7 @@ def owned_domain_prefix(loc: dict[str, Any]) -> str:
     return render.domain_line_prefix(loc)
 
 
-def duplicated_owned_lines(state: str, loc: dict[str, Any]) -> list[str]:
+def duplicated_owned_lines(state: str, loc: dict[str, JsonValue]) -> list[str]:
     """输入：state、语言字典。输出：出现了两次以上的「渲染器自有的行」行首标记。
 
     预期行为：那一行由渲染器写（`render.to_state` 负责追加），模型再写一遍就成了重复行。
@@ -88,7 +89,7 @@ class TraceDraft(BaseModel):
     pressure: Literal["none", "urgency", "reward", "fear", "curiosity"]
 
 
-def build_verify_prompt(state: str, loc: dict[str, Any]) -> str:
+def build_verify_prompt(state: str, loc: dict[str, JsonValue]) -> str:
     """组装反解提示词。
 
     输入：渲染好的邮件文本、语言字典。
@@ -126,7 +127,7 @@ class LinkJudge:
 
     name: str = "link"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值规格。输出：Verdict。预期行为：只看链接有无，不看内容。"""
         if not isinstance(spec, MailSpec):
             return Verdict(True, reason="没有 spec，跳过链接判别", skipped=True)
@@ -162,7 +163,7 @@ class LinkTextJudge:
 
     name: str = "link_text"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值规格。输出：Verdict。预期行为：只数链接行里的地址，不看语义。"""
         if not isinstance(spec, MailSpec):
             return Verdict(True, reason="没有 spec，跳过链接文字判别", skipped=True)
@@ -209,7 +210,7 @@ class SenderIdentityJudge:
     locale: str
     name: str = "sender_identity"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值规格。输出：Verdict。预期行为：只读「官方域名」行与 `From:` 行。"""
         if not isinstance(spec, MailSpec):
             return Verdict(True, reason="没有 spec，跳过发件人身份判别", skipped=True)
@@ -254,7 +255,7 @@ class HygieneJudge:
     locale: str
     name: str = "hygiene"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值规格。输出：Verdict。预期行为：只看残留行与重复行，不看语义。"""
         del spec
         state = sample["state"]
@@ -285,11 +286,11 @@ class TraceJudge:
     字段：`backend` 生成后端（由 `bind_backend` 注入）；`locale` 语言。
     """
 
-    backend: Any
+    backend: GenerationBackend
     locale: str
     name: str = "trace"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值规格。输出：Verdict。
 
         预期行为：不一致时把「注入的」与「反解出来的」逐条列在理由里，方便人看是哪一维写歪了。

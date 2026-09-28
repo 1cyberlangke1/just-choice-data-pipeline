@@ -17,27 +17,28 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from itertools import product
-from typing import Any, Final
+from typing import Final
 
 # 全枚举的规模上限：超过就换成对覆盖（PLAN 3.3 定的口径）。
 FULL_ENUM_LIMIT: Final[int] = 10_000
 
-Pair = tuple[str, Any, str, Any]
+Pair = tuple[str, JsonValue, str, JsonValue]
 
 #: 取值对约束：收 `(维度A, 取值A, 维度B, 取值B)`（A 在 `dims` 里更靠前），返回能否共存。
-PairRule = Callable[[str, Any, str, Any], bool]
+PairRule = Callable[[str, object, str, object], bool]
 
 
-def _always(dim_a: str, value_a: Any, dim_b: str, value_b: Any) -> bool:
+def _always(dim_a: str, value_a: object, dim_b: str, value_b: object) -> bool:
     """默认约束：任何取值对都允许。输入：两对维度取值。输出：True。"""
     del dim_a, value_a, dim_b, value_b
     return True
 
 
-def _row_allowed(names: list[str], row: Mapping[str, Any], rule: PairRule) -> bool:
+def _row_allowed(names: list[str], row: Mapping[str, JsonValue], rule: PairRule) -> bool:
     """输入：维度名顺序、一行组合、取值对约束。输出：这一行的所有取值对是否都允许。"""
     for index, left in enumerate(names):
         for right in names[index + 1 :]:
@@ -47,11 +48,11 @@ def _row_allowed(names: list[str], row: Mapping[str, Any], rule: PairRule) -> bo
 
 
 def cover_dims(
-    dims: Mapping[str, Sequence[Any]],
+    dims: Mapping[str, Sequence[JsonValue]],
     *,
     max_full: int = FULL_ENUM_LIMIT,
     allow_pair: PairRule | None = None,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, JsonValue]]:
     """枚举维度组合。
 
     输入：维度表（每个维度至少一个取值）、全枚举上限、可选的取值对约束。
@@ -67,7 +68,7 @@ def cover_dims(
     for item in values:
         total *= len(item)
     if total <= max_full:
-        rows: list[dict[str, Any]] = []
+        rows: list[dict[str, JsonValue]] = []
         for combo in product(*values):
             row = dict(zip(names, combo, strict=True))
             if _row_allowed(names, row, rule):
@@ -77,8 +78,8 @@ def cover_dims(
 
 
 def missing_pairs(
-    dims: Mapping[str, Sequence[Any]],
-    rows: Iterable[Mapping[str, Any]],
+    dims: Mapping[str, Sequence[JsonValue]],
+    rows: Iterable[Mapping[str, JsonValue]],
     *,
     allow_pair: PairRule | None = None,
 ) -> set[Pair]:
@@ -107,9 +108,9 @@ def missing_pairs(
 
 def _new_pairs(
     index: int,
-    value: Any,
-    row: list[Any | None],
-    pending: set[tuple[int, Any, int, Any]],
+    value: object,
+    row: list[object | None],
+    pending: set[tuple[int, object, int, object]],
 ) -> int:
     """数一数「把 index 维定成 value」能新覆盖多少未覆盖对（只跟已定的维比）。
 
@@ -129,8 +130,8 @@ def _new_pairs(
 
 
 def _pairwise(
-    names: list[str], values: list[list[Any]], rule: PairRule
-) -> list[dict[str, Any]]:
+    names: list[str], values: list[list[JsonValue]], rule: PairRule
+) -> list[dict[str, JsonValue]]:
     """贪心成对覆盖（AETG 式，确定性）。
 
     输入：维度名列表、各维取值列表（都非空）、取值对约束。输出：组合列表。
@@ -138,7 +139,7 @@ def _pairwise(
     一定终止），其余维度按维度顺序挑「新增覆盖最多」的取值，并列取下标小的；
     候选取值里先剔掉与已定维度冲突的那些，所以产出行天然满足约束。
     """
-    pending: set[tuple[int, Any, int, Any]] = set()
+    pending: set[tuple[int, object, int, object]] = set()
     for left in range(len(names)):
         for right in range(left + 1, len(names)):
             for left_value in range(len(values[left])):
@@ -151,10 +152,10 @@ def _pairwise(
                     ):
                         pending.add((left, left_value, right, right_value))
 
-    rows: list[dict[str, Any]] = []
+    rows: list[dict[str, JsonValue]] = []
     while pending:
         seed = min(pending)
-        row: list[Any | None] = [None] * len(names)
+        row: list[object | None] = [None] * len(names)
         row[seed[0]] = seed[1]
         row[seed[2]] = seed[3]
         for index in range(len(names)):

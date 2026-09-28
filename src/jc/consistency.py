@@ -11,10 +11,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import hashlib
 import json
-from typing import Any, Iterable
+from typing import Iterable
 
 from .contract import gold_text
 
@@ -22,7 +23,7 @@ from .contract import gold_text
 STATE_PREVIEW: int = 160
 
 
-def state_text(state: Any) -> str:
+def state_text(state: object) -> str:
     """输入：样本的 state。输出：可比文本。
 
     预期行为：非字符串（对象 / 数组形态的 state）用 JSON 序列化后再比——
@@ -32,7 +33,7 @@ def state_text(state: Any) -> str:
 
 
 def question_key(
-    question: dict[str, Any], answer: dict[str, Any]
+    question: dict[str, JsonValue], answer: dict[str, JsonValue]
 ) -> tuple[str, str, tuple[str, ...], str] | None:
     """输入：一道题、它的答案。输出：这道题的可比指纹；形态不对时 None。
 
@@ -54,7 +55,7 @@ def question_key(
     return (qtype, instructions, options, gold_text(question, answer))
 
 
-def conflicts(samples: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+def conflicts(samples: Iterable[dict[str, JsonValue]]) -> list[dict[str, JsonValue]]:
     """输入：合格样本序列。输出：冲突列表（按首次发现顺序，每个冲突点一条）。
 
     预期行为：把样本按「state 文本 + 题型 + 问法 + 选项文字」归堆，**一堆里出现两种以上
@@ -83,7 +84,7 @@ def conflicts(samples: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
             ids = bucket.setdefault(gold, [])
             if len(ids) < 2:
                 ids.append(sample_id)
-    out: list[dict[str, Any]] = []
+    out: list[dict[str, JsonValue]] = []
     for probe in order:
         bucket = table[probe]
         if len(bucket) < 2:

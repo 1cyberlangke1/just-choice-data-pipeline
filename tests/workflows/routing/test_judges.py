@@ -1,185 +1,202 @@
-"""判别器：文本反解 → 独立重算 → 逐题比对，以及各种坏输入的报错。"""
+"""工单分诊的判别器测试：三个判别器都要能放过好数据、拦住坏数据。"""
 
 from __future__ import annotations
 
-import random
-
 import pytest
 
-from jc import assemble
-from tests.workflows.routing.conftest import _make_spec
-from workflows.routing import judges, locales, parse, questions, render, spec as sp
+from jc.backend.types import AllProvidersDown, TransportError
+from jc.jsontypes import JsonValue
 
-LANGS = ("zh", "en")
+from workflows.routing import features, judges, locales, render
+from workflows.routing.features import TagSet
+from workflows.routing.spec import RoutingSpec
+
+from tests.workflows.routing.conftest import body_for
+
+TAGS = TagSet(issue="bug", urgency="deadline", tier="pro", compliance="none", area="storage")
+GOOD = {"body": body_for(TAGS.as_dict())}
 
 
-def _sample(lang: str, **overrides: object) -> tuple[dict, sp.TicketSpec, dict]:
-    """输入：语言与 case 覆盖项。输出：(样本, 真值规格, 语言字典)。
+def sample(state: object) -> dict[str, JsonValue]:
+    """输入：state。输出：最小可判样本。"""
+    return {"state": state}
 
-    预期行为：走**生产同一条路**——`questions.build` 出题、`assemble` 组装，
-    这样判别器面对的就是真实产物形态，而不是手搓的近似品。
+
+def spec() -> RoutingSpec:
+    """输入：无。输出：与 `TAGS` 对齐的真值规格。"""
+    return RoutingSpec(tags=TAGS, phrasing=0, split="train", seq=0)
+
+
+def state_of(data: dict[str, str] | None = None) -> str:
+    """输入：可选草稿覆盖。输出：拼好的 state。"""
+    loc = locales.load("zh")
+    return render.to_state({**GOOD, **(data or {})}, TAGS, loc)
+
+
+def test_hygiene_passes_a_clean_state() -> None:
+    """输入：干净 state。输出：无。预期行为：通过。"""
+    verdict = judges.HygieneJudge("zh").judge(sample(state_of()))
+    assert verdict.ok and not verdict.skipped
+
+
+def test_hygiene_catches_leftovers_multiline_and_empty() -> None:
+    """输入：带围栏 / 多行 / 空正文的 state。输出：无。预期行为：都判不通过。"""
+    judge = judges.HygieneJudge("zh")
+    assert not judge.judge(sample(state_of().replace("【工单正文】", "```\n【工单正文】"))).ok
+    assert not judge.judge(sample(state_of({"body": "第一行\n第二行"}))).ok
+    assert not judge.judge(sample(state_of({"body": "   "}))).ok
+
+
+def test_hygiene_catches_html_line_breaks() -> None:
+    """输入：正文里混进 `<br>`。输出：无。预期行为：判不通过。"""
+    assert not judges.HygieneJudge("zh").judge(sample(state_of({"body": "上一句<br>下一句"}))).ok
+
+
+def test_hygiene_catches_a_repeated_section_name() -> None:
+    """输入：正文里又写了一遍段落名。输出：无。预期行为：判不通过。"""
+    broken = state_of({"body": "工单正文：刚才那句话"})
+    assert not judges.HygieneJudge("zh").judge(sample(broken)).ok
+
+
+def test_hygiene_catches_attribute_words_in_the_body() -> None:
+    """输入：正文里写了属性词。输出：无。预期行为：判不通过。"""
+    assert not judges.HygieneJudge("zh").judge(sample(state_of({"body": "我们是企业版客户"}))).ok
+
+
+def test_hygiene_lets_a_non_text_state_through() -> None:
+    """输入：state 不是文本。输出：无。预期行为：不判、也不炸（当没查到东西）。"""
+    verdict = judges.HygieneJudge("zh").judge(sample(123))
+    assert verdict.ok
+
+
+def test_frame_passes_the_injected_row_and_tables() -> None:
+    """输入：与特征一致的 state。输出：无。预期行为：通过。"""
+    verdict = judges.FrameJudge("zh").judge(sample(state_of()), spec())
+    assert verdict.ok
+
+
+def test_frame_catches_a_wrong_attr_row() -> None:
+    """输入：属性行被改成别的取值。输出：无。预期行为：判不通过。"""
+    loc = locales.load("zh")
+    broken = state_of().replace(render.attr_lines(TAGS, loc)[0], "- storage | free | none")
+    assert not judges.FrameJudge("zh").judge(sample(broken), spec()).ok
+
+
+def test_frame_catches_a_missing_queue_table() -> None:
+    """输入：派单表被整段删掉。输出：无。预期行为：判不通过。"""
+    loc = locales.load("zh")
+    head = state_of().split(locales.header(loc, loc["meta"]["queue_label"]))[0]
+    assert not judges.FrameJudge("zh").judge(sample(head), spec()).ok
+
+
+def test_frame_catches_a_tampered_priority_row() -> None:
+    """输入：优先级表某一行的档位被改掉。输出：无。预期行为：判不通过。"""
+    loc = locales.load("zh")
+    first = render.priority_lines(loc)[0]
+    broken = state_of().replace(first, first.replace("| 0 | 0 | 1", "| 3 | 3 | 3"))
+    assert not judges.FrameJudge("zh").judge(sample(broken), spec()).ok
+
+
+def test_frame_catches_a_missing_flag_table() -> None:
+    """输入：附加规则被整段删掉。输出：无。预期行为：判不通过。"""
+    loc = locales.load("zh")
+    head = state_of().split(locales.header(loc, loc["meta"]["flags_label"]))[0]
+    assert not judges.FrameJudge("zh").judge(sample(head), spec()).ok
+
+
+def test_frame_skips_without_spec_or_text() -> None:
+    """输入：没有真值规格 / state 不是文本。输出：无。预期行为：都记成跳过。"""
+    assert judges.FrameJudge("zh").judge(sample(state_of())).skipped
+    assert judges.FrameJudge("zh").judge(sample(123), spec()).skipped
+
+
+def test_trace_passes_when_the_model_agrees(fake_backend: type) -> None:
+    """输入：从不撒谎的假后端。输出：无。预期行为：通过。"""
+    verdict = judges.TraceJudge(fake_backend(), "zh").judge(sample(state_of()), spec())
+    assert verdict.ok and not verdict.skipped
+
+
+def test_trace_catches_a_misread_issue(fake_backend: type) -> None:
+    """输入：反解把「是什么问题」说反。输出：无。预期行为：判不通过。"""
+    backend = fake_backend(trace_lies_issue=True)
+    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
+    assert not verdict.ok
+    assert "issue" in verdict.reason
+
+
+def test_trace_catches_a_misread_urgency(fake_backend: type) -> None:
+    """输入：反解把「有多急」说反。输出：无。预期行为：判不通过。"""
+    backend = fake_backend(trace_lies_urgency=True)
+    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
+    assert not verdict.ok
+    assert "urgency" in verdict.reason
+
+
+def test_trace_marks_endpoint_failure_as_skipped(fake_backend: type) -> None:
+    """输入：反解时端点故障。输出：无。
+
+    预期行为：记成**跳过**而不是不通过——端点抖动不是数据质量问题（PLAN 3.1.4）。
     """
-    loc = locales.load(lang)
-    spec = _make_spec(**overrides)
-    state = render.build(spec, loc)
-    labeled = questions.build(spec, loc, 0, random.Random(1))
-    sample = assemble.assemble_sample("routing-train-0000001", state, labeled, random.Random(2))
-    return sample, spec, loc
+    backend = fake_backend(trace_raises=TransportError("boom"))
+    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
+    assert verdict.ok and verdict.skipped
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {},
-        {"issue": "feature", "compliance": "gdpr"},
-        {"tier": "free", "wait": "short", "impact": "single_user", "urgency": "can_wait"},
-        {"issue": "data_loss", "compliance": "security", "wait": "medium"},
-    ],
-)
-def test_recompute_matches_the_spec(lang: str, overrides: dict) -> None:
-    """输入：几组 case × 两种语言。输出：无。
+def test_trace_reraises_a_fatal_backend_error(fake_backend: type) -> None:
+    """输入：全部 provider 都挂了。输出：无。
 
-    预期行为：从**文本**重算出来的八族答案与规格逐项一致——问题类型只在正文里，
-    所以这条同时验了「正文能读回问题类型」。
+    预期行为：直接往上抛——那是整批该停下的唯一条件，吞掉它就会产出一整个「全被拒」的
+    假数据集（PLAN 3.1.4）。
     """
-    sample, spec, loc = _sample(lang, **overrides)
-    ticket = parse.parse_ticket(sample["state"], parse.label_index(loc))
-    got = judges.recompute(ticket, loc)
-    assert got == {
-        "severity": spec.severity,
-        "queue": spec.queue,
-        "escalation": spec.escalation,
-        "critical_area": spec.critical_area,
-        "needs_human": spec.needs_human,
-        "sla_breach": spec.sla_breach,
-        "data_risk": spec.data_risk,
-        "priority": spec.priority,
-    }
+    backend = fake_backend(trace_raises=AllProvidersDown("全挂了"))
+    with pytest.raises(AllProvidersDown):
+        judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
 
 
-def test_recompute_covers_exactly_the_declared_families() -> None:
-    """输入：无。输出：无。
-
-    预期行为：重算结果的键集合等于 `questions.FAMILIES`——少一个键，那一族就会被
-    判别器判成「未知题族」，整批数据全灭。
-    """
-    sample, _spec, loc = _sample("zh")
-    ticket = parse.parse_ticket(sample["state"], parse.label_index(loc))
-    assert set(judges.recompute(ticket, loc)) == set(questions.FAMILIES)
+def test_trace_marks_a_broken_draft_as_skipped(fake_backend: type) -> None:
+    """输入：反解草稿缺字段。输出：无。预期行为：记成跳过。"""
+    backend = fake_backend(trace_data={"issue": "bug"})
+    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
+    assert verdict.ok and verdict.skipped
 
 
-def test_issue_of_needs_exactly_one_hit() -> None:
-    """输入：认不出问题类型的正文 / 两句都出现的正文。输出：无。
+def test_trace_skips_without_spec_or_backend(fake_backend: type) -> None:
+    """输入：没有真值规格 / 没有后端。输出：无。预期行为：都记成跳过。"""
+    assert judges.TraceJudge(fake_backend(), "zh").judge(sample(state_of())).skipped
+    assert judges.TraceJudge(None, "zh").judge(sample(state_of()), spec()).skipped
 
-    预期行为：两种情况都报错——「认不出」和「认出两句」都不是「数据难判」，
-    而是渲染与语言文件对不上的硬伤。
+
+def test_build_trace_prompt_asks_both_families_with_the_shared_options() -> None:
+    """输入：一段 state。输出：无。
+
+    预期行为：反解提示词把两族原子题连同选项原样再问一遍——选项与数据集里的一致，
+    否则「答对了」与「标签对了」不是一回事。
     """
     loc = locales.load("zh")
-    with pytest.raises(ValueError, match="问题类型"):
-        judges.issue_of("这里什么都没有", loc["area"]["payments"], loc)
-    both = (
-        loc["body"]["issue"]["bug"].format(area=loc["area"]["payments"])
-        + loc["body"]["issue"]["howto"].format(area=loc["area"]["payments"])
+    prompt = judges.build_trace_prompt(state_of(), loc)
+    assert state_of() in prompt
+    assert judges.TRACE_FAMILIES == ("issue", "urgency")
+    for family in judges.TRACE_FAMILIES:
+        assert str(loc["fam"][family]["q"][0]) in prompt
+        for name in loc["fam"][family]["criteria"]:
+            assert str(name) in prompt
+
+
+def test_trace_draft_literals_match_the_feature_tables() -> None:
+    """输入：反解草稿的取值域。输出：无。
+
+    预期行为：`TraceDraft` 的两维取值域与 `features.ISSUES` / `features.URGENCIES` 一致——
+    对不上就会出现「模型答对了但字段类型不符」这种静默失败。
+    """
+    assert set(judges.TraceDraft.model_fields["issue"].annotation.__args__) == set(
+        features.ISSUES
     )
-    with pytest.raises(ValueError, match="问题类型"):
-        judges.issue_of(both, loc["area"]["payments"], loc)
+    assert set(judges.TraceDraft.model_fields["urgency"].annotation.__args__) == set(
+        features.URGENCIES
+    )
 
 
-def test_elapsed_of_rejects_time_travel() -> None:
-    """输入：当前时间早于创建时间。输出：无。预期行为：报错而不是给出负数。"""
-    assert judges.elapsed_of("08:00", "11:20") == 200
-    with pytest.raises(ValueError, match="早于"):
-        judges.elapsed_of("11:20", "08:00")
-
-
-def test_reverse_rejects_duplicate_text() -> None:
-    """输入：两条文案相同的词表。输出：无。预期行为：报错（反解会有歧义）。"""
-    with pytest.raises(ValueError, match="文案重复"):
-        judges.reverse({"a": "同一个词", "b": "同一个词"})
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_both_judges_pass_a_clean_sample(lang: str) -> None:
-    """输入：一条干净样本。输出：无。预期行为：两个判别器都通过。"""
-    sample, spec, _loc = _sample(lang, compliance="gdpr", tier="enterprise")
-    for judge in (judges.RoundtripJudge(locale=lang), judges.LabelJudge(locale=lang)):
-        verdict = judge.judge(sample, spec)
-        assert verdict.ok, f"{judge.name}: {verdict.reason}"
-
-
-def test_roundtrip_judge_skips_without_spec() -> None:
-    """输入：不带真值规格的样本。输出：无。
-
-    预期行为：跳过而不是判错——判别器在「拿不到真值」时该闭嘴，不能把不确定说成不合格。
-    """
-    sample, _spec, _loc = _sample("zh")
-    verdict = judges.RoundtripJudge().judge(sample, None)
-    assert verdict.ok and verdict.raw.get("skipped") is True
-
-
-@pytest.mark.parametrize(
-    ("old", "new"),
-    [("影响面：单个用户", "影响面：全部用户"), ("紧急度：可以等", "紧急度：业务受阻")],
-)
-def test_roundtrip_judge_catches_tampered_state(old: str, new: str) -> None:
-    """输入：被改过一格的工单文本。输出：无。
-
-    预期行为：结构判别器判不通过并点出是哪一格——它是「渲染有没有走样」的看门人。
-    """
-    spec = _make_spec(impact="single_user", urgency="can_wait")
-    loc = locales.load("zh")
-    state = render.build(spec, loc).replace(old, new)
-    sample = {"state": state, "questions": {}, "answers": {}}
-    verdict = judges.RoundtripJudge().judge(sample, spec)
-    assert not verdict.ok
-    assert verdict.raw["diff"]
-
-
-def test_label_judge_catches_a_wrong_choice_index() -> None:
-    """输入：把某道 choice 的答案编号挪一格。输出：无。
-
-    预期行为：判不通过，且理由里出现题号——这条是「标签有没有错位」的看门人。
-    """
-    sample, _spec, _loc = _sample("zh")
-    qid = "queue"
-    options = list(sample["questions"][qid]["criteria"])
-    sample["answers"][qid]["choice"] = (sample["answers"][qid]["choice"] + 1) % len(options)
-    verdict = judges.LabelJudge().judge(sample)
-    assert not verdict.ok
-    assert any(problem.startswith(f"{qid}:") for problem in verdict.raw["problems"])
-
-
-def test_label_judge_catches_a_flipped_noul_and_a_wrong_score() -> None:
-    """输入：翻转一个 noul、改一个 score。输出：无。预期行为：两处都被抓到。"""
-    sample, _spec, _loc = _sample("zh")
-    sample["answers"]["data_risk"]["noul"] = not sample["answers"]["data_risk"]["noul"]
-    sample["answers"]["priority"]["score"] = (sample["answers"]["priority"]["score"] + 1) % 5
-    verdict = judges.LabelJudge().judge(sample)
-    assert not verdict.ok
-    problems = verdict.raw["problems"]
-    assert any(problem.startswith("data_risk:") for problem in problems)
-    assert any(problem.startswith("priority:") for problem in problems)
-
-
-def test_label_judge_flags_an_unknown_family() -> None:
-    """输入：塞一道题号不在题族清单里的题。输出：无。
-
-    预期行为：判成「未知题族」而不是静默放过——静默放过会让整批数据里混进没人验过的题。
-    """
-    sample, _spec, _loc = _sample("zh")
-    sample["questions"]["mystery"] = {"type": "noul", "instructions": "?"}
-    sample["answers"]["mystery"] = {"type": "noul", "noul": True}
-    verdict = judges.LabelJudge().judge(sample)
-    assert not verdict.ok
-    assert any("未知题族" in problem for problem in verdict.raw["problems"])
-
-
-def test_label_judge_flags_an_out_of_range_index() -> None:
-    """输入：把 choice 的编号改成越界值。输出：无。预期行为：报「编号越界」。"""
-    sample, _spec, _loc = _sample("zh")
-    sample["answers"]["severity"]["choice"] = 99
-    verdict = judges.LabelJudge().judge(sample)
-    assert not verdict.ok
-    assert any("越界" in problem for problem in verdict.raw["problems"])
-
+def test_option_names_reads_the_product_order() -> None:
+    """输入：一道 choice 题。输出：无。预期行为：按产物里的顺序取选项名。"""
+    assert judges.option_names({"criteria": {"b": "x", "a": "y"}}) == ["b", "a"]
+    assert judges.option_names({}) == []

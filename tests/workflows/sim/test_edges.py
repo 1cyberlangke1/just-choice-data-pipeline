@@ -1,10 +1,11 @@
 """产物审计的每一条分支：缺产物、编号越界、未知题族、读不出来、缺题族、答案对不上。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
 from pathlib import Path
-from typing import Any
+
 
 from jc import assemble, jsonio
 from tests.workflows.sim.conftest import _make_spec
@@ -15,7 +16,7 @@ WF = SimWorkflow()
 LOC = locales.load("zh")
 
 
-def _sample_row(**overrides: Any) -> dict[str, Any]:
+def _sample_row(**overrides: object) -> dict[str, JsonValue]:
     """输入：case 覆盖项。输出：一条走生产路径组装出来的合格样本。"""
     spec = _make_spec(**overrides)
     items = questions.build(spec.rows, spec, LOC, spec.phrasing)

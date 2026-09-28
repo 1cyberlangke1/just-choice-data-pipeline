@@ -1,121 +1,170 @@
-# English copy for the model-routing workflow: labels, vocabularies, body templates,
-# the policy text and the option descriptions. Shape mirrors zh.toml exactly
-# (locked by tests/workflows/modelroute/test_locales.py).
+lang = "en"
+language_name = "English"
 
 [meta]
-title = "Model Routing Desk"
-colon = ": "
 request_label = "Request"
-complexity_label = "Complexity"
-latency_label = "Latency budget"
-cost_label = "Cost sensitivity"
-retry_label = "Attempt record"
-data_label = "Data class"
-body_label = "Body"
+catalog_label = "Candidate models"
+needs_label = "Filter thresholds"
+header = "[{title}]"
+row_prefix = "- "
+none_mark = "none"
+paren = " ({text})"
+colon = ": "
+catalog_columns = "name | provider | window | ability | price | latency"
+needs_columns = "window | ability | latency | price | providers down"
 
-[complexity]
-low = "low"
-mid = "mid"
-high = "high"
+[dims]
+task_kind = "task kind"
+size = "material size"
+latency = "latency requirement"
+budget = "budget band"
+health = "provider health"
 
-[latency]
-relaxed = "relaxed"
-normal = "normal"
-strict = "strict"
-
-[cost]
-normal = "not sensitive"
-tight = "sensitive"
-
-[retry]
-first = "no failure recorded yet"
-retry = "already failed once"
-
-[data]
-public = "public"
-private = "private"
-
-[body]
-classify = "Please categorize this operations log into one of the existing labels."
-extract = "Please extract the sender, date and amount from this email into a form."
-codefix = "This test is red, so find the defect in the code and fix it."
-reason = "Work through this multi-step reasoning problem and give the final answer."
-
-[task_phrase]
-classify = "categorize"
-extract = "extract"
-codefix = "defect"
-reason = "multi-step reasoning"
-
-[policy]
-text = "Tier table (cost/power/speed/window, all scored 1~4, higher speed means faster): nano 1/1/3/1; mini 2/2/4/2; core 3/3/2/3; max 4/4/1/3. Power required by task: categorize 1, extract 2, defect 3, multi-step reasoning 4. Preferred tier = the lowest tier matching the required power: categorize -> nano, extract -> mini, defect -> core, multi-step reasoning -> max. Escalation chain = one tier up in power (nano -> mini -> core -> max); nothing sits above max, so there is no escalation chain. Only a request that already failed once may escalate; a first request never escalates. Reasoning depth follows the complexity level (low/mid/high): shift one step up when the latency budget is relaxed, one step down when it is strict, and stop at the ends. When cost sensitivity is on, dropping one power level is allowed. A request whose data class is private is never cached."
-
-[fam.tier]
-q = [
-  "Which tier is the preferred tier for this request?",
-  "Given the required power, which tier should this request pick?",
-  "Which tier should this request try first?",
+[prompt]
+intro = "Below is the **feature list of a model-routing request**. Write one realistic user request that matches the list."
+bullet = "- {dim}: {brief} ({hint})"
+rules = [
+  "The request must be **one single line**; no multi-line text, no Markdown fences, no comments",
+  "The request must **never name any model or provider** (atlas, borealis, cinder and the like) - which one to use is decided by the candidate table below, not by the request",
+  "Do not prefix the request with labels such as \"task kind:\" and do not copy the wording of this list; write the way a real person would",
+  "The request must match the task kind, judged by **what the user wants done** (write code / summarize / extract fields / chat / arithmetic / look at an image), not by how big the material is - the material can be long, but wanting to chat is still chatting",
+  "The material size shown in the request must fit the size feature: small is a few lines to a paragraph, medium is a few pages, huge is hundreds of pages or a whole repository",
+  "Never use real companies, products or dataset names; invent them",
+  "Write everything in {language}; keep model names, provider names and identifiers in ASCII",
 ]
 
-[fam.next]
+[feature.task_kind.code_gen]
+brief = "write or change code"
+hint = "The request must contain a concrete code snippet or a concrete change to make"
+
+[feature.task_kind.long_summary]
+brief = "compress long material into a summary"
+hint = "The request must contain a long document or record and ask for **a few sentences summarizing it** (produce wording that is not in the original, rather than picking fields)"
+
+[feature.task_kind.extraction]
+brief = "extract fields from material"
+hint = "The request must include a piece of material and ask for a few named fields **that are already written in it** (copy values from the original, rather than reorganizing them into a summary)"
+
+[feature.task_kind.chat]
+brief = "multi-turn chit-chat or Q&A"
+hint = "The request is everyday Q&A or chit-chat: the user wants a few lines of conversation or a specific question - not code work, not field extraction, not compressing material into a summary (the material itself may be long)"
+
+[feature.task_kind.math_reason]
+brief = "multi-step math reasoning"
+hint = "The request must contain a problem that takes several steps to solve"
+
+[feature.task_kind.vision]
+brief = "look at an image"
+hint = "The request must mention an image (screenshot / photo / chart) and ask about it"
+
+[feature.size.small]
+brief = "tiny, a few lines to a paragraph"
+hint = "The material is only a few lines or one short paragraph"
+
+[feature.size.medium]
+brief = "medium, a few pages"
+hint = "The material runs a few pages to a dozen pages"
+
+[feature.size.huge]
+brief = "huge, hundreds of pages or a whole repository"
+hint = "The material is hundreds of pages, or an entire codebase or full history"
+
+[feature.latency.interactive]
+brief = "must answer right away"
+hint = "A user is waiting in an interactive UI; slow is not acceptable"
+
+[feature.latency.batch]
+brief = "offline batch job, no rush"
+hint = "It runs overnight; slow is fine"
+
+[feature.budget.tight]
+brief = "tight budget"
+hint = "Prefer cheap; anything pricey is out of the question"
+
+[feature.budget.normal]
+brief = "normal budget"
+hint = "Price is not the main constraint; a pricier model is acceptable"
+
+[feature.health.all_ok]
+brief = "all providers are up"
+hint = "Every provider in the table is reachable right now"
+
+[feature.health.atlas_down]
+brief = "the atlas provider is down"
+hint = "Every model under atlas is currently unreachable"
+
+[feature.health.borealis_down]
+brief = "the borealis provider is down"
+hint = "Every model under borealis is currently unreachable"
+
+[fam.kind]
 q = [
-  "One stop up the escalation chain from the preferred tier, which tier comes next?",
-  "If the preferred tier fails, which tier do we escalate to?",
-  "Which tier is the next stop on this request escalation chain?",
+  "What kind of task is this request?",
+  "By task kind, which one is this request?",
+  "What is this sentence asking to do?",
 ]
 
-[fam.effort]
+[fam.kind.criteria]
+code_gen = "Write or change code"
+long_summary = "Compress long material into a summary: produce wording that is not in the original"
+extraction = "Extract fields from material: copy out values that are already written in the original"
+chat = "Multi-turn chit-chat or Q&A"
+math_reason = "Multi-step math reasoning"
+vision = "Look at an image"
+
+[fam.route]
 q = [
-  "Which reasoning depth should this request use?",
-  "Given complexity and latency budget, which reasoning depth applies?",
-  "How deep should the reasoning be for this request?",
+  "Run the request through the candidate table and thresholds: which model should it route to?",
+  "After all four thresholds, which candidate should actually run it?",
+  "Which candidate wins in the end (none if nothing qualifies)?",
 ]
 
-[fam.is_first]
+[fam.route.criteria]
+"atlas-xl" = "Window 200k, ability 3, price 3, latency 3: strongest, priciest and slowest"
+"atlas-lite" = "Window 32k, ability 1, price 1, latency 1: cheapest and fastest, lowest ability and window"
+"borealis-pro" = "Window 128k, ability 2, price 2, latency 2: mid on all three"
+"cinder-mini" = "Window 64k, ability 2, price 1, latency 3: cheap but slowest"
+none = "No candidate passes all four thresholds"
+
+[fam.blocked]
 q = [
-  "Is this a first attempt for this request?",
-  "Does this request have any failure recorded before it?",
-  "Does this request count as a first try?",
+  "Why can the first row of the candidate table (atlas-xl) not be used this time?",
+  "atlas-xl was not picked this time; which threshold stopped it?",
+  "Which gate does the first candidate fail (usable if it passes all four)?",
 ]
 
-[fam.is_first.criteria]
-true = "Yes: no failure recorded yet"
-false = "No: it already failed once"
+[fam.blocked.criteria]
+usable = "Usable: it passes all four thresholds and its provider is up"
+provider_down = "Its provider is down"
+latency = "Its latency exceeds the requirement for this request"
+budget = "Its price exceeds the budget band for this request"
 
-[fam.degrade]
+[fam.cost]
 q = [
-  "May this request drop one power level?",
-  "When cost matters, may this request drop one power level?",
-  "Should this request trade one power level for cost?",
+  "Which price band does the chosen model sit in?",
+  "By price band, what does this run cost?",
+  "How expensive is the chosen model?",
+]
+levels = [
+  "Band 0: no candidate qualifies, so nothing is spent",
+  "Band 1: the chosen model is in the cheapest band",
+  "Band 2: the chosen model is in the mid price band",
+  "Band 3: the chosen model is in the most expensive band",
 ]
 
-[fam.degrade.criteria]
-true = "Allowed: cost sensitivity is on, one power level may be dropped"
-false = "Not allowed: cost sensitivity is off, no need to drop power"
-
-[fam.cache]
+[fam.slack]
 q = [
-  "May this request be cached?",
-  "Is this request suitable for the cache?",
-  "Can the result of this request be cached?",
+  "Does the chosen model have at least twice the window this request needs?",
+  "Relative to the material size, is the chosen model's window at least double?",
+  "By window, does the chosen model have plenty of room (at least twice)?",
 ]
 
-[fam.cache.criteria]
-true = "Yes: the data class is public"
-false = "No: the data class is private"
+[fam.slack.criteria]
+"true" = "Yes: the window is at least twice the requirement"
+"false" = "No: the window is less than twice the requirement, or no model was chosen at all"
 
-[option.tier]
-nano = "nano (cost 1 / power 1 / speed 3 / window 1)"
-mini = "mini (cost 2 / power 2 / speed 4 / window 2)"
-core = "core (cost 3 / power 3 / speed 2 / window 3)"
-max = "max (cost 4 / power 4 / speed 1 / window 3)"
-
-[option.next]
-mini = "mini (cost 2 / power 2 / speed 4 / window 2)"
-core = "core (cost 3 / power 3 / speed 2 / window 3)"
-max = "max (cost 4 / power 4 / speed 1 / window 3)"
-
-[option.effort]
-low = "low: shallow reasoning"
-mid = "mid: regular reasoning"
-high = "high: deep reasoning"
+[verify]
+intro = "Read the routing request below and answer with the given options. Pick exactly one option per question."
+state_header = "[Full request]"
+questions_header = "[Questions]"
+option_line = "   - {name}: {desc}"

@@ -13,33 +13,30 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
+
 
 import pytest
 
 from workflows.hybrid.workflow import HybridWorkflow
 from workflows.invoice.workflow import InvoiceWorkflow
-from workflows.citation.workflow import CitationWorkflow
 from workflows.mail.workflow import MailWorkflow
-from workflows.routing.workflow import RoutingWorkflow
-from workflows.guardrail.workflow import GuardrailWorkflow
-from workflows.search.workflow import SearchWorkflow
-from workflows.shell.workflow import ShellWorkflow
-from workflows.rerank.workflow import RerankWorkflow
 from workflows.match.workflow import MatchWorkflow
-from workflows.autoformat.workflow import AutoformatWorkflow
 from workflows.functions.workflow import FunctionsWorkflow
-from workflows.lint.workflow import LintWorkflow
-from workflows.modelroute.workflow import ModelRouteWorkflow
-from workflows.context.workflow import ContextWorkflow
-from workflows.browser.workflow import BrowserWorkflow
-from workflows.review.workflow import ReviewWorkflow
 from workflows.skillpick.workflow import SkillPickWorkflow
-from workflows.rubric.workflow import RubricWorkflow
 from workflows.sim.workflow import SimWorkflow
+from workflows.bench.workflow import BenchWorkflow
+from workflows.shell.workflow import ShellWorkflow
+from workflows.modelroute.workflow import ModelRouteWorkflow
+from workflows.verify.workflow import VerifyWorkflow
+from workflows.toolgate.workflow import ToolGateWorkflow
+from workflows.search.workflow import SearchWorkflow
+from workflows.compact.workflow import CompactWorkflow
+from workflows.browser.workflow import BrowserWorkflow
+from workflows.routing.workflow import RoutingWorkflow
+from workflows.review.workflow import ReviewWorkflow
 
 
-def spans_of(workflow: Any, splits: tuple[str, ...]) -> dict[str, set[str]]:
+def spans_of(workflow: object, splits: tuple[str, ...]) -> dict[str, set[str]]:
     """输入：workflow、要统计的切分。输出：{维度名: 这些切分里出现过的取值}。
 
     预期行为：只走公开接口（`config_for` / `build_cases` / `stats_dimensions`），零 token。
@@ -52,7 +49,7 @@ def spans_of(workflow: Any, splits: tuple[str, ...]) -> dict[str, set[str]]:
     return spans
 
 
-def id_splits_of(workflow: Any) -> tuple[str, ...]:
+def id_splits_of(workflow: object) -> tuple[str, ...]:
     """输入：workflow。输出：除 `test_ood` 以外的切分名（同分布侧）。"""
     return tuple(split for split in workflow.split_names() if split != "test_ood")
 
@@ -62,10 +59,9 @@ def id_splits_of(workflow: Any) -> tuple[str, ...]:
     [
         (InvoiceWorkflow, "labels"),
         (HybridWorkflow, "layout"),
-        (CitationWorkflow, "claim_style"),
-    ],
+   ],
 )
-def test_dimension_holdout_is_realized(factory: Any, dim: str) -> None:
+def test_dimension_holdout_is_realized(factory: object, dim: str) -> None:
     """输入：workflow 与它被留出的维度。输出：无。
 
     预期行为：同分布侧**恰好一个取值**、且 `test_ood` 侧有同分布侧没见过的取值——
@@ -91,7 +87,7 @@ def test_mail_has_no_dimension_holdout() -> None:
     assert not frozen, f"mail 有维度被冻成单值：{frozen}"
 
 
-def value_spans(workflow: Any, splits: tuple[str, ...]) -> dict[str, set[str]]:
+def value_spans(workflow: object, splits: tuple[str, ...]) -> dict[str, set[str]]:
     """输入：workflow、切分。输出：{维度名: 这些切分里出现过的取值}（同 `spans_of`，按取值看）。"""
     return {dim: values for dim, values in spans_of(workflow, splits).items()}
 
@@ -99,26 +95,23 @@ def value_spans(workflow: Any, splits: tuple[str, ...]) -> dict[str, set[str]]:
 @pytest.mark.parametrize(
     ("factory", "dims"),
     [
-        (ShellWorkflow, ("op", "wrapper", "goal_style")),
-        (SearchWorkflow, ("topic", "best_flavor", "mix", "pair_kind")),
-        (CitationWorkflow, ("topic", "status", "quote_form", "noise", "claim_style")),
-        (RoutingWorkflow, ("area", "issue", "compliance")),
-        (GuardrailWorkflow, ("mentions", "history", "wording")),
-        (RerankWorkflow, ("topic", "traps", "wording")),
         (MatchWorkflow, ("product", "spelling")),
-        (AutoformatWorkflow, ("topic", "wrap", "variant", "code_family")),
-        (FunctionsWorkflow, ("tool", "window", "alias", "phrasing")),
-        (LintWorkflow, ("rule", "genre", "phrasing")),
-        (ModelRouteWorkflow, ("task", "phrasing")),
-        (ContextWorkflow, ("keep_form", "phrasing")),
-        (BrowserWorkflow, ("task", "phrasing")),
-        (ReviewWorkflow, ("noise", "phrasing")),
-        (SkillPickWorkflow, ("layout", "phrasing")),
-        (RubricWorkflow, ("layout", "phrasing")),
-        (SimWorkflow, ("layout", "phrasing")),
+       (FunctionsWorkflow, ("tool", "window", "alias", "phrasing")),
+       (SkillPickWorkflow, ("layout", "phrasing")),
+       (SimWorkflow, ("layout", "phrasing")),
+        (BenchWorkflow, ("layout", "phrasing")),
+        (ShellWorkflow, ("goal", "target")),
+        (ModelRouteWorkflow, ("task_kind",)),
+        (VerifyWorkflow, ("claim_kind", "tone")),
+        (ToolGateWorkflow, ("tool", "policy")),
+        (SearchWorkflow, ("freshness",)),
+        (CompactWorkflow, ("age",)),
+        (BrowserWorkflow, ("screen",)),
+        (RoutingWorkflow, ("area",)),
+        (ReviewWorkflow, ("change_kind",)),
     ],
 )
-def test_value_holdout_is_realized(factory: Any, dims: tuple[str, ...]) -> None:
+def test_value_holdout_is_realized(factory: object, dims: tuple[str, ...]) -> None:
     """输入：纯构造式 workflow 与它们被留出的维度。输出：无。
 
     预期行为：被点名的每个维度在 `test_ood` 侧都**真有**同分布侧没见过的取值——
@@ -126,8 +119,7 @@ def test_value_holdout_is_realized(factory: Any, dims: tuple[str, ...]) -> None:
     改一次取值表就能把 OOD 悄悄变回同分布。
 
     只看被点名的维度：留出某一维会**连带**带出别的维度的新取值
-    （shell 留出 `drop_table` / `docker_rm` 这三种操作，就必然带出数据库、容器、仓库
-    这些对象——那是留出的后果，不是漏留）。
+    ——那是留出的后果，不是漏留。
     """
     workflow = factory()
     id_spans = value_spans(workflow, id_splits_of(workflow))

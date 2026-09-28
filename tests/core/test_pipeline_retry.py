@@ -6,14 +6,17 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import json
+import random
 from pathlib import Path
-from typing import Any
+
 
 import pytest
 
 from jc import pipeline
+from jc.backend.types import GenerationBackend
 from jc.judge import Verdict
 from jc.workflow import LabeledQuestion, SplitSpec
 
@@ -39,9 +42,9 @@ class FlakyWorkflow:
         self.questions = questions
         self.renders = 0
         self.bound = 0
-        self.backend: Any = None
+        self.backend: GenerationBackend | None = None
 
-    def bind_backend(self, backend: Any) -> None:
+    def bind_backend(self, backend: GenerationBackend) -> None:
         """输入：生成后端。输出：无。预期行为：存下并计数。"""
         self.backend = backend
         self.bound += 1
@@ -49,48 +52,48 @@ class FlakyWorkflow:
     def split_names(self) -> tuple[str, ...]:
         return ("train",)
 
-    def config_for(self, split: str) -> Any:
+    def config_for(self, split: str) -> object:
         return {}
 
-    def build_cases(self, config: Any) -> list[Any]:
+    def build_cases(self, config: object) -> list[JsonValue]:
         return [{"i": 0}]
 
-    def case_label(self, case: Any) -> str:
+    def case_label(self, case: object) -> str:
         return f"case-{case['i']}"
 
-    def stats_dimensions(self, case: Any) -> dict[str, Any]:
+    def stats_dimensions(self, case: object) -> dict[str, JsonValue]:
         return {"i": case["i"]}
 
     def dimension_titles(self) -> dict[str, str]:
         return {"i": "序号"}
 
-    def plan_sample(self, rng: Any, config: Any, case: Any, seq: int) -> SplitSpec:
+    def plan_sample(self, rng: random.Random, config: object, case: object, seq: int) -> SplitSpec:
         return SplitSpec(name="train", params={"i": case["i"]})
 
-    def sample(self, rng: Any, split: SplitSpec) -> Any:
+    def sample(self, rng: random.Random, split: SplitSpec) -> object:
         return split.params
 
-    def render(self, spec: Any, rng: Any, locale: str) -> str:
+    def render(self, spec: object, rng: random.Random, locale: str) -> str:
         """输入：spec、RNG、语言。输出：带渲染次数的 state。预期行为：每次调用都计数。"""
         self.renders += 1
         return f"state-{spec['i']}-{self.renders}"
 
-    def ask(self, spec: Any, rng: Any, locale: str) -> list[LabeledQuestion]:
+    def ask(self, spec: object, rng: random.Random, locale: str) -> list[LabeledQuestion]:
         """输入：spec、RNG、语言。输出：题目列表。预期行为：`questions=0` 时返回空表，
         让管线走「没有出到任何题」这条生成期失败路径。"""
         if not self.questions:
             return []
         return [LabeledQuestion("hit", {"type": "noul", "instructions": "命中吗"}, True, shuffle=False)]
 
-    def reparse(self, state: Any, *, case: Any = None) -> Any:
+    def reparse(self, state: object, *, case: object = None) -> object:
         return None
 
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Any, ...]:
+    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[object, ...]:
         return (FlakyJudge(self),) if "flaky" in names else ()
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, Any], list[str]]:
+    ) -> tuple[dict[str, JsonValue], list[str]]:
         return {}, []
 
     def available_locales(self) -> list[str]:
@@ -109,14 +112,14 @@ class FlakyJudge:
     def __init__(self, workflow: FlakyWorkflow) -> None:
         self.workflow = workflow
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         if self.workflow.renders <= self.workflow.reject_until:
             return Verdict(False, reason=f"第 {self.workflow.renders} 次渲染不合格")
         return Verdict(True, reason="合格")
 
 
 def _run(
-    monkeypatch: Any, tmp_path: Path, workflow: FlakyWorkflow, attempts: int, run_id: str = "r1"
+    monkeypatch: object, tmp_path: Path, workflow: FlakyWorkflow, attempts: int, run_id: str = "r1"
 ) -> pipeline.RunResult:
     """输入：monkeypatch、临时目录、假 workflow、渲染上限、run_id。输出：RunResult。
 
@@ -134,7 +137,7 @@ def _run(
     )
 
 
-def test_judge_reject_triggers_a_rerender(tmp_path: Path, monkeypatch: Any) -> None:
+def test_judge_reject_triggers_a_rerender(tmp_path: Path, monkeypatch: object) -> None:
     """输入：第一次渲染会被判别器拒掉。输出：RunResult。
 
     预期行为：渲染两次、第二次过、`render_retries` 记 1 次，且**没有**拒绝记录
@@ -148,7 +151,7 @@ def test_judge_reject_triggers_a_rerender(tmp_path: Path, monkeypatch: Any) -> N
     assert result.stats["render_retries"] == 1
 
 
-def test_retries_stop_at_the_cap_and_keep_the_last_reason(tmp_path: Path, monkeypatch: Any) -> None:
+def test_retries_stop_at_the_cap_and_keep_the_last_reason(tmp_path: Path, monkeypatch: object) -> None:
     """输入：怎么渲染都被拒。输出：RunResult。
 
     预期行为：渲染次数正好等于上限（不无限重试）；只留**最后一次**的拒绝理由
@@ -164,7 +167,7 @@ def test_retries_stop_at_the_cap_and_keep_the_last_reason(tmp_path: Path, monkey
     assert result.stats["reject_codes"]["E_JUDGE_FLAKY"] == 1
 
 
-def test_one_attempt_means_no_rerender(tmp_path: Path, monkeypatch: Any) -> None:
+def test_one_attempt_means_no_rerender(tmp_path: Path, monkeypatch: object) -> None:
     """输入：上限设成 1（关掉重渲染）。输出：RunResult。预期行为：只渲染一次。"""
     workflow = FlakyWorkflow(reject_until=1)
     result = _run(monkeypatch, tmp_path, workflow, attempts=1)
@@ -173,7 +176,7 @@ def test_one_attempt_means_no_rerender(tmp_path: Path, monkeypatch: Any) -> None
     assert result.stats["render_retries"] == 0
 
 
-def test_generate_failure_is_not_rerendered(tmp_path: Path, monkeypatch: Any) -> None:
+def test_generate_failure_is_not_rerendered(tmp_path: Path, monkeypatch: object) -> None:
     """输入：一条出不出题来的样本（生成期失败）。输出：RunResult。
 
     预期行为：只渲染一次、记 `E_ASSEMBLE`——生成期失败是**生成器 bug**，
@@ -187,7 +190,7 @@ def test_generate_failure_is_not_rerendered(tmp_path: Path, monkeypatch: Any) ->
     assert result.stats["render_retries"] == 0
 
 
-def test_progress_records_attempts_and_resume_replays_them(tmp_path: Path, monkeypatch: Any) -> None:
+def test_progress_records_attempts_and_resume_replays_them(tmp_path: Path, monkeypatch: object) -> None:
     """输入：跑一遍再按同一 run_id 续跑。输出：两次的 RunResult。
 
     预期行为：进度日志里记下这条样本渲染了几次；续跑**一次都不重渲染**，
@@ -206,7 +209,7 @@ def test_progress_records_attempts_and_resume_replays_them(tmp_path: Path, monke
     assert again.stats["render_retries"] == 1
 
 
-def test_manifest_records_the_attempt_limit(tmp_path: Path, monkeypatch: Any) -> None:
+def test_manifest_records_the_attempt_limit(tmp_path: Path, monkeypatch: object) -> None:
     """输入：上限设成 3。输出：manifest。预期行为：把上限记进 manifest（溯源用）。"""
     workflow = FlakyWorkflow(reject_until=0)
     result = _run(monkeypatch, tmp_path, workflow, attempts=3)
@@ -216,7 +219,7 @@ def test_manifest_records_the_attempt_limit(tmp_path: Path, monkeypatch: Any) ->
     assert manifest["render_attempts"] == 3
 
 
-def test_render_attempts_must_be_positive(tmp_path: Path, monkeypatch: Any) -> None:
+def test_render_attempts_must_be_positive(tmp_path: Path, monkeypatch: object) -> None:
     """输入：上限 0。输出：异常。预期行为：报人话，且一个样本都不渲染。"""
     workflow = FlakyWorkflow()
     with pytest.raises(ValueError, match="render_attempts"):

@@ -1,162 +1,107 @@
-"""界面操作 workflow 的题族：把一屏元素表与任务翻成契约形态的题目。
+"""浏览器 / GUI 操作的题族：把金标签翻成契约形态的题目。
 
-输入：五行元素、任务意图、对象键、语言字典、问法编号。输出：`LabeledQuestion` 列表。
-预期行为：题号就是题族名（`done` / `target` / `action` / `risk`）；**判据（任务意图表 +
-可用判据 + 完成判据 + 敏感清单）整段写进每道题的题面里**（范式 §9.8）：只读 state 与
-题面的读者必须能自己算出来。
-
-四个题族：
-- `done`（noul，总是出）：任务是不是已经完成；
-- `target`（choice 5，**只在任务未完成时出**）：下一步该操作第几个元素；
-- `action`（choice 4，**只在任务未完成时出**）：这一步做什么动作；
-- `risk`（noul，**只在任务未完成时出**）：这一步要不要先人工确认。
-
-「出不出」由「任务完没完成」决定，这条写进 `families_for`，审计拿它算「应有题族」，
-不能只写在 `build` 里。
+输入：`TagSet`、语言字典、问法编号。输出：`LabeledQuestion` 列表。
+预期行为：
+- 题号就是题族名（如 `target`），同族不重复所以不需要后缀；
+- choice 的选项名 = locale 里 `criteria` 的 key，与标签取值一一对应；
+- `target` 那一族的选项**随这一屏的元素表变**（元素名 + 「不操作」），所以它的选项表
+  由 `target_options` 现算，不走 `features.CHOICE_OPTIONS`；
+- `risk` 是有序阶梯（0 → 3 档），禁止打乱；三个 choice 题族都允许打乱，
+  打乱能防「答案总在第 n 个」这种位置捷径。
 """
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Final
 
+from jc.jsontypes import JsonValue
 from jc.workflow import LabeledQuestion
 
-from . import locales
-from .spec import (
-    ACTIONS,
-    SLOTS,
-    RowLike,
-    action_of,
-    is_done,
-    is_sensitive,
-    target_position,
+from . import features, locales
+from .features import TagSet
+
+#: 题族的固定顺序（先读那句话承载的意图，再问该动谁 / 动什么，最后问三档门控与风险）。
+FAMILIES: Final[tuple[str, ...]] = (
+    "intent",
+    "target",
+    "action",
+    "done",
+    "blocked",
+    "confirm",
+    "risk",
 )
 
+#: 选项有自然顺序、打乱会破坏语义的题族（本 workflow 一个都没有）。
+ORDERED: Final[frozenset[str]] = frozenset()
 
-CHOICE_FAMILIES: Final[tuple[str, ...]] = ("target", "action")
-NOUL_FAMILIES: Final[tuple[str, ...]] = ("done", "risk")
-#: 全部合法题族（判别器用它认「未知题族」）。
-FAMILIES: Final[tuple[str, ...]] = tuple(sorted({*CHOICE_FAMILIES, *NOUL_FAMILIES}))
+#: 题型分组。
+CHOICE_FAMILIES: Final[tuple[str, ...]] = ("intent", "target", "action")
+NOUL_FAMILIES: Final[tuple[str, ...]] = ("done", "blocked", "confirm")
+SCORE_FAMILIES: Final[tuple[str, ...]] = ("risk",)
 
 
-def families_for(rows: tuple[RowLike, ...], task: str, object_: str) -> tuple[str, ...]:
-    """输入：五行元素、任务意图、对象键。输出：这一屏应该出的题族（排序后）。
+def families_for(tags: TagSet) -> tuple[str, ...]:
+    """输入：一组注入特征。输出：这条样本实际会出的题族（顺序按 `FAMILIES`）。
 
-    预期行为：与 `build` 的出题规则一一对应——任务已经完成时只出完成度题，定位 / 动作 /
-    风险三族都不出。这条必须写在这里，不能只写在 `build` 里。
+    预期行为：本 workflow 的七个题族对任何特征组合都问得出来，所以恒等于 `FAMILIES`。
+    留着这个函数是为了与其它 workflow 的形状一致（将来要加条件题族时只改这里）。
     """
-    out = ["done"]
-    if not is_done(rows, task, object_):
-        out += ["target", "action", "risk"]
-    return tuple(sorted(out))
+    del tags
+    return FAMILIES
 
 
-def _fill(text: str, **slots: str) -> str:
-    """输入：模板、槽位取值。输出：填好的文本。
+def target_options(tags: TagSet, loc: dict[str, JsonValue]) -> dict[str, str]:
+    """输入：注入特征、语言字典。输出：`target` 那一族的选项（这一屏的元素名 + 「不操作」）。
 
-    预期行为：填完还剩 `{xxx}` 直接报错——题面少填一个槽会变成一道读不懂的题，
-    而答案照样发出去，这种样本比直接报错危险得多。
+    预期行为：选项名就是元素名（反解判别器比的 `wanted_label` 与它们是同一份文本，
+    所以两份必须同源）；描述只给**行号**——考生得去读元素表才知道那一行是什么角色、
+    什么状态，光看选项猜不出答案。
     """
-    out = text
-    for name, value in slots.items():
-        out = out.replace("{" + name + "}", value)
-    if "{" in out and "}" in out:
-        raise ValueError(f"题面渲染后还剩占位符：{out!r}")
-    return out
-
-
-def _instructions(loc: dict[str, Any], family: str, phrasing: int) -> str:
-    """输入：语言字典、题族、问法编号。输出：题面（问句 + 判据原文）。
-
-    预期行为：判据（`loc["policy"]["text"]`）整段拼在问句后面——题面自带判据，
-    考生不需要任何外部知识。
-    """
-    question = locales.pick(loc["fam"][family]["q"], phrasing)
-    return f"{question} {loc['policy']['text']}"
-
-
-def _choice(
-    family: str, instructions: str, options: dict[str, str], answer: str
-) -> LabeledQuestion:
-    """输入：题族、题面、选项、金答案（选项名）。输出：一道 choice 题。
-
-    预期行为：选项描述重复直接报错——两个选项看起来一样，考生没法分辨，是构造 bug，
-    必须在生成时炸掉而不是产出一条坏数据。
-    """
-    if len(set(options.values())) != len(options):
-        raise ValueError(f"{family} 的选项描述重复：{options}")
-    if answer not in options:
-        raise ValueError(f"{family} 的答案 {answer!r} 不在选项里：{sorted(options)}")
-    question = {"type": "choice", "instructions": instructions, "criteria": options}
-    return LabeledQuestion(family, question, answer)
-
-
-def _noul(family: str, loc: dict[str, Any], phrasing: int, answer: bool) -> LabeledQuestion:
-    """输入：题族、语言字典、问法编号、金答案。输出：一道 noul 题。
-
-    预期行为：判据（true / false 两行文案）一并写进 `criteria`——官方支持 noul 带描述，
-    带上它模型才知道「真」与「假」分别意味着什么。
-    """
-    entry = loc["fam"][family]
-    question = {
-        "type": "noul",
-        "instructions": _instructions(loc, family, phrasing),
-        "criteria": {"true": entry["criteria"]["true"], "false": entry["criteria"]["false"]},
+    template = str(loc["fam"]["target"]["row_option"])
+    options = {
+        row.label: template.format(index=index)
+        for index, row in enumerate(features.rows_for(tags), start=1)
     }
-    return LabeledQuestion(family, question, answer, shuffle=False)
+    options[features.NONE_TARGET] = str(loc["fam"]["target"]["none"])
+    return options
 
 
-def _position_options(rows: tuple[RowLike, ...], loc: dict[str, Any]) -> dict[str, str]:
-    """输入：五行元素、语言字典。输出：位置选项（`p1`..`p5`）。
+def build(tags: TagSet, loc: dict[str, JsonValue], phrasing: int) -> list[LabeledQuestion]:
+    """输入：注入特征、语言字典、问法编号。输出：题目 + 金答案（顺序按 `FAMILIES`）。
 
-    预期行为：描述里带上那一行的三格（角色 · 对象 · 状态）——选项之间因此天然互不相同，
-    考生也不必回头数序号。
+    预期行为：题号用题族名；choice 的 `answer` 是**选项名**（编号由组装器最后一步映射），
+    score 的 `answer` 是等级下标，noul 的 `answer` 是布尔。
     """
-    template = str(loc["option"]["position"]["element"])
-    out: dict[str, str] = {}
-    for index, row in enumerate(rows, start=1):
-        out[f"p{index}"] = _fill(
-            template,
-            n=str(index),
-            role=str(loc["role"][row.role]),
-            label=str(loc["object"][row.object]),
-            state=str(loc["state"][row.state]),
-        )
-    return out
-
-
-def build(
-    rows: tuple[RowLike, ...], task: str, object_: str, loc: dict[str, Any], phrasing: int
-) -> list[LabeledQuestion]:
-    """输入：五行元素、任务意图、对象键、语言字典、问法编号。输出：题目 + 金答案（顺序稳定）。
-
-    预期行为：这里不掷骰子（选项打乱由组装器做），所以同一屏界面 + 同一份语言文件必得
-    同一批题目。顺序：完成度题、定位题、动作题、风险题。
-    """
-    if len(rows) != len(SLOTS):
-        raise ValueError(f"元素表应该是 {len(SLOTS)} 行，收到 {len(rows)} 行")
-    done = is_done(rows, task, object_)
-    position = target_position(rows, task, object_)
-    if done != (position is None):
-        raise ValueError("完成判据与可用判据打架：判成完成时不该还有可操作的目标")
-    out: list[LabeledQuestion] = [_noul("done", loc, phrasing, done)]
-    if position is None:
-        return out
-    out.append(
-        _choice(
-            "target",
-            _instructions(loc, "target", phrasing),
-            _position_options(rows, loc),
-            f"p{position}",
-        )
-    )
-    out.append(
-        _choice(
-            "action",
-            _instructions(loc, "action", phrasing),
-            {name: str(loc["option"]["action"][name]) for name in ACTIONS},
-            action_of(task),
-        )
-    )
-    out.append(_noul("risk", loc, phrasing, is_sensitive(object_)))
+    labels = tags.label()
+    out: list[LabeledQuestion] = []
+    for family in families_for(tags):
+        spec = loc["fam"][family]
+        instructions = locales.pick(spec["q"], phrasing)
+        if family in SCORE_FAMILIES:
+            question = {
+                "type": "score",
+                "instructions": instructions,
+                "criteria": list(spec["levels"]),
+            }
+            out.append(LabeledQuestion(family, question, labels.risk, shuffle=False))
+        elif family in NOUL_FAMILIES:
+            question = {
+                "type": "noul",
+                "instructions": instructions,
+                "criteria": {"true": spec["criteria"]["true"], "false": spec["criteria"]["false"]},
+            }
+            out.append(LabeledQuestion(family, question, getattr(labels, family), shuffle=False))
+        else:
+            # 只收本题允许的选项：locale 里可能有别的取值，那是给反解提示词用的
+            options = (
+                target_options(tags, loc)
+                if family == "target"
+                else {name: spec["criteria"][name] for name in features.CHOICE_OPTIONS[family]}
+            )
+            question = {"type": "choice", "instructions": instructions, "criteria": options}
+            out.append(
+                LabeledQuestion(
+                    family, question, getattr(labels, family), shuffle=family not in ORDERED
+                )
+            )
     return out

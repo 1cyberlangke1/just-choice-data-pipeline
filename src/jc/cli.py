@@ -13,13 +13,13 @@ from __future__ import annotations
 import argparse
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+
 
 from . import pipeline, validate
 from .workflow import discover, load
 
 
-def _load_backend(path: str) -> Any:
+def _load_backend(path: str) -> object:
     """按需装配生成后端。
 
     输入：后端配置 TOML 的路径（空串表示这个 workflow 不需要后端）。
@@ -51,7 +51,7 @@ def _parse_judges(values: list[str] | None) -> tuple[str, ...] | None:
     return tuple(name for name in names if name) or None
 
 
-def _format_counter(value: Any) -> str:
+def _format_counter(value: object) -> str:
     """输入：审计计数里的一个值。输出：一行可读文本。
 
     预期行为：映射（Counter / dict）按「取值×条数」展开，其余原样打印。

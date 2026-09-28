@@ -8,9 +8,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 from . import contract
 from .workflow import LabeledQuestion
@@ -45,10 +46,10 @@ def _shuffled_criteria(names: list[str], rng: random.Random) -> list[str]:
 
 def assemble_sample(
     sample_id: str,
-    state: Any,
+    state: object,
     labeled: list[LabeledQuestion],
     rng: random.Random,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """组装一条契约样本。
 
     输入：样本 id、state、题目列表、RNG（决定 choice 选项打乱）。
@@ -60,8 +61,8 @@ def assemble_sample(
     - noul：答案直接是布尔；
     - 题号由 `assign_family_ids` 唯一化，`answers` 的 key 与 `questions` 完全一致。
     """
-    questions: dict[str, Any] = {}
-    answers: dict[str, Any] = {}
+    questions: dict[str, JsonValue] = {}
+    answers: dict[str, JsonValue] = {}
     for qid, item in zip(assign_family_ids(labeled), labeled, strict=True):
         qtype = item.question["type"]
         question = dict(item.question)

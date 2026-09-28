@@ -11,9 +11,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any, Final
+from typing import Final
 
 from jc.workflow import LabeledQuestion
 
@@ -49,12 +50,12 @@ def line_option(index: int) -> str:
     return f"line_{index + 1}"
 
 
-def _slot_options(spec: InvoiceSpec, loc: dict[str, Any], slots: tuple[str, ...]) -> dict[str, str]:
+def _slot_options(spec: InvoiceSpec, loc: dict[str, JsonValue], slots: tuple[str, ...]) -> dict[str, str]:
     """输入：规格、语言字典、槽名序列。输出：{槽名: 该槽的渲染文本}。"""
     return {slot: render.field_text(spec, slot, loc) for slot in slots}
 
 
-def _line_options(spec: InvoiceSpec, loc: dict[str, Any]) -> dict[str, str]:
+def _line_options(spec: InvoiceSpec, loc: dict[str, JsonValue]) -> dict[str, str]:
     """输入：规格、语言字典。输出：{line_k: 第 k 行单价文本}（第 k 行从 1 数起）。"""
     return {
         line_option(index): render.format_money(item.unit, spec.case.currency, loc)
@@ -79,7 +80,7 @@ def _choice(
 
 
 def build(
-    spec: InvoiceSpec, loc: dict[str, Any], phrasing: int, rng: random.Random
+    spec: InvoiceSpec, loc: dict[str, JsonValue], phrasing: int, rng: random.Random
 ) -> list[LabeledQuestion]:
     """输入：规格、语言字典、问法编号、RNG。输出：题目 + 金答案（顺序按 `FAMILIES`）。
 
@@ -164,7 +165,7 @@ def build(
 
 
 def locate(
-    instructions: str, loc: dict[str, Any], line_count: int
+    instructions: str, loc: dict[str, JsonValue], line_count: int
 ) -> tuple[str, str] | None:
     """输入：题面、语言字典、明细行数。输出：(题族, 目标槽)，或 None（认不出来）。
 

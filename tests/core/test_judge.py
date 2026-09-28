@@ -6,8 +6,9 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 import pytest
 
@@ -32,7 +33,7 @@ class Judge:
         self._ok = ok
         self._exc = exc
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> judge_mod.Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> judge_mod.Verdict:
         """输入：样本与真值。输出：Verdict 或抛异常。"""
         if self._exc is not None:
             raise self._exc

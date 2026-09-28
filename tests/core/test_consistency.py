@@ -5,8 +5,9 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 from jc import consistency
 
@@ -14,12 +15,12 @@ from jc import consistency
 def make_sample(
     sample_id: str,
     *,
-    state: Any = "素材X",
+    state: object = "素材X",
     criteria: dict[str, str] | list[str] | None = None,
-    answer: dict[str, Any] | None = None,
+    answer: dict[str, JsonValue] | None = None,
     instructions: str = "选哪个？",
     qtype: str = "choice",
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """输入：样本 id 与题目 / 答案的各字段。输出：一条最小契约样本。"""
     if criteria is None:
         criteria = {"p": "甲", "q": "乙"}

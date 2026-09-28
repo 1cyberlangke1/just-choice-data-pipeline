@@ -1,0 +1,192 @@
+lang = "zh"
+language_name = "简体中文"
+
+# 正文里不许出现的话术：轮次位置 / 是否钉住 / 剩余预算都归「本块位置」那一行管，
+# 正文里再写一遍就可能与那一行打架。只收高精度短语——宁可漏检也不误判，误判会在渲染期
+# 白拒一条本来能用的数据。`pinned` / `unpinned` 是那一行的**取值词元本身**，照抄等于泄底；
+# `current` / `recent` / `old` / `tight` / `critical` 在自然文本里太常见（「旧版本」「吃紧」），
+# 收了会大面积误伤，所以只收它们跟位置连用的那几种说法。
+banned_intent_phrases = [
+  "本块内容",
+  "本块位置",
+  "处置表",
+  "轮次位置",
+  "剩余预算",
+  "钉住",
+  "钉死",
+  "钉牢",
+  "最近几轮",
+  "很早以前",
+  "当前这一轮",
+  "pinned",
+  "unpinned",
+]
+
+[meta]
+content_label = "本块内容"
+where_label = "本块位置"
+rules_label = "处置表"
+header = "【{title}】"
+row_prefix = "- "
+paren = "（{text}）"
+colon = "："
+where_columns = "轮次位置 | 是否钉住 | 剩余预算"
+rules_columns = "规则名 | 条件 | 处置"
+
+[rules.pinned_keep]
+condition = "这一块被钉住了"
+verdict = "keep"
+
+[rules.system_keep]
+condition = "这一块是系统提示词"
+verdict = "keep"
+
+[rules.fact_keep]
+condition = "这一块承载了一条持久事实"
+verdict = "keep"
+
+[rules.budget_tool]
+condition = "预算不宽裕，而且这一块是工具输出"
+verdict = "summarize"
+
+[rules.critical_old]
+condition = "预算快满了，而且这一块是很早以前的"
+verdict = "drop"
+
+[rules.tight_old]
+condition = "预算紧张，而且这一块是很早以前的"
+verdict = "summarize"
+
+[rules.old_truncate]
+condition = "这一块是很早以前的"
+verdict = "truncate"
+
+[rules.none]
+condition = "以上都不命中"
+verdict = "keep"
+
+[dims]
+kind = "这一块是什么"
+fact = "有没有承载持久事实"
+
+[prompt]
+intro = "下面是一块**会话上下文**的特征清单。请按清单写出这一块的正文。"
+bullet = "- {dim}：{brief}（{hint}）"
+rules = [
+  "正文必须是**单行**（一行或一段都行，但不要换行）；不要用 Markdown 围栏，不要写注释",
+  "正文里**不要**写这一块在会话里的位置，也不要写它有没有被钉住、预算还剩多少——那三件事归「本块位置」那一行管，写进正文就会跟它打架",
+  "具体说：不要出现「这一轮 / 最近几轮 / 很早以前 / 钉住 / 剩余预算」这类词，也不要写 pinned / unpinned 这两个词",
+  "要像真实会话里的一段：写「把 config.yaml 里的超时改成 30 秒」可以，写「类型：user」这种字段名不行",
+  "「这一块是什么」那一档要一眼看得出来：系统提示词 / 用户的话 / 助手的回复 / 工具输出 / 随手备注，五种之一",
+  "「有没有承载持久事实」那一档要一眼看得出来：里面有需要长期记住的决定 / 配置值 / 结论，还是只是闲聊、过渡话或一次性的过程记录（日志 / 报错 / 重试 / 扫描结果）",
+  "不要写真实存在的公司、产品或代码库名字，一律用虚构的名字",
+  "全部用{language}写；文件名与标识符保持 ASCII",
+]
+
+[feature.kind.system]
+brief = "这一块是系统提示词"
+hint = "写成一段设定角色与规矩的说明"
+
+[feature.kind.user]
+brief = "这一块是用户这一轮说的话"
+hint = "写成像用户敲进来的那句话"
+
+[feature.kind.assistant]
+brief = "这一块是助手这一轮的回复"
+hint = "写成像助手答的那一段"
+
+[feature.kind.tool_output]
+brief = "这一块是工具返回的一大段结果"
+hint = "写成一段偏数据、偏日志的输出（仍是文本，不要写真的 JSON 结构）"
+
+[feature.kind.note]
+brief = "这一块是随手记下的备注"
+hint = "写成像自己在旁边记下的一行小字"
+
+[feature.fact.fact]
+brief = "这一块承载了一条持久事实"
+hint = "里面要有一个**需要长期记住**的决定、配置值或结论（不是一次性的过程记录）"
+
+[feature.fact.chatter]
+brief = "这一块没有承载持久事实"
+hint = "只是闲聊、寒暄、过渡话，或一次性的过程记录（日志 / 报错 / 重试 / 扫描结果）——读完记不下任何需要长期记住的东西"
+
+[verify]
+intro = "下面是一块会话上下文。请按给定的选项反解它的特征。"
+state_header = "【上下文全文】"
+questions_header = "【问题】"
+option_line = "   - {name}：{desc}"
+
+[fam.kind]
+q = [
+  "这一块是什么？",
+  "这一段内容属于哪一类？",
+  "按「这一块是什么」选一项。",
+]
+[fam.kind.criteria]
+system = "系统提示词"
+user = "用户这一轮说的话"
+assistant = "助手这一轮的回复"
+tool_output = "工具返回的一大段结果"
+note = "随手记下的备注"
+
+[fam.fact]
+q = [
+  "这一块有没有承载一条持久事实？",
+  "这一段里有没有能长期复用的决定、配置值或结论？",
+  "按「有没有承载持久事实」选一项。",
+]
+[fam.fact.criteria]
+fact = "承载了：里面有需要长期记住的决定 / 配置值 / 结论"
+chatter = "没承载：只是闲聊、过渡话，或一次性的过程记录（日志 / 报错 / 重试 / 扫描结果）"
+
+[fam.rule]
+q = [
+  "这一块会命中处置表里的哪一条？",
+  "处置表从上往下看，第一条命中的是哪一条？",
+  "按处置表选一条命中的规则。",
+]
+[fam.rule.criteria]
+pinned_keep = "这一块被钉住了"
+system_keep = "这一块是系统提示词"
+fact_keep = "这一块承载了一条持久事实"
+budget_tool = "预算不宽裕，而且这一块是工具输出"
+critical_old = "预算快满了，而且这一块是很早以前的"
+tight_old = "预算紧张，而且这一块是很早以前的"
+old_truncate = "这一块是很早以前的"
+none = "以上都不命中"
+
+[fam.disposition]
+q = [
+  "这一块该怎么处置？",
+  "这一块是原样留着、掐一段、压成摘要，还是整块丢掉？",
+  "按处置选一项。",
+]
+[fam.disposition.criteria]
+keep = "原样留着"
+truncate = "掐头去尾留一段"
+summarize = "压成摘要"
+drop = "整块丢掉"
+
+[fam.pin_overrode]
+q = [
+  "「钉住」这一条有没有改写本该有的处置？",
+  "如果没钉住，这一块本来会被降级吗？",
+  "按「钉住有没有起作用」选一项。",
+]
+[fam.pin_overrode.criteria]
+true = "有：没钉住的话它本来会被降级"
+false = "没有：本来也是原样留着，或者压根没钉住"
+
+[fam.priority]
+q = [
+  "这一块的优先级是第几档？",
+  "按优先级给这一块定一档。",
+  "这一块该排在第几档？",
+]
+levels = [
+  "0 档：最先丢",
+  "1 档：偏低",
+  "2 档：中等",
+  "3 档：最先保住",
+]

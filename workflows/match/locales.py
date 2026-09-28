@@ -6,11 +6,12 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")
 
@@ -21,7 +22,7 @@ def available() -> list[str]:
 
 
 @lru_cache(maxsize=8)
-def load(lang: str) -> dict[str, Any]:
+def load(lang: str) -> dict[str, JsonValue]:
     """读取并缓存一个语言文件。
 
     输入：语言代码。输出：字典。预期行为：文件不存在时抛 FileNotFoundError 并列出可用语言。
@@ -41,13 +42,13 @@ def pick(seq: list[str], index: int) -> str:
     return seq[index % len(seq)]
 
 
-def reverse(table: dict[str, Any]) -> dict[str, Any]:
+def reverse(table: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """输入：{键: 写法表或词}。输出：{写法: 键}。
 
     预期行为：写法重复时直接报错——反解会把两个键认成一个，是构造 bug，不能静默取其一。
     写法表是字符串数组时逐个展开；值是字符串时按单个词收。
     """
-    out: dict[str, Any] = {}
+    out: dict[str, JsonValue] = {}
     for key, value in table.items():
         words = value if isinstance(value, list) else [value]
         for word in words:

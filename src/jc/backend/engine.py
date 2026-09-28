@@ -16,9 +16,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import instructor
 import openai
@@ -39,11 +40,12 @@ from .types import (
     DraftInvalidError,
     RateLimitError,
     SchemaUnsupportedError,
+    StructuredModel,
     TransportError,
 )
 
 #: 我们的档位 → instructor 的 Mode。
-MODE_TO_INSTRUCTOR: dict[str, Any] = {
+MODE_TO_INSTRUCTOR: dict[str, JsonValue] = {
     MODE_JSON_SCHEMA: instructor.Mode.JSON_SCHEMA,
     MODE_TOOLS: instructor.Mode.TOOLS,
     MODE_MD_JSON: instructor.Mode.MD_JSON,
@@ -62,7 +64,7 @@ class EngineRequest:
     api_key: str
     model: str
     prompt: str
-    response_model: type[Any]
+    response_model: type[StructuredModel]
     mode: str
     timeout_s: float = 120.0
     max_retries: int = 3
@@ -73,9 +75,9 @@ class EngineRequest:
 class EngineResult:
     """一次结构化输出的结果。字段：`data` 解析后的 dict；`raw_text` 原始文本。"""
 
-    data: dict[str, Any]
+    data: dict[str, JsonValue]
     raw_text: str
-    usage: dict[str, Any]
+    usage: dict[str, JsonValue]
     reasoning: str | None
     mode: str
 
@@ -172,7 +174,7 @@ def classify_exception(exc: BaseException) -> BackendError:
     return BackendError(f"未分类的后端异常（{type(exc).__name__}）：{exc}")
 
 
-def _split_raw(raw: Any) -> tuple[str, dict[str, Any], str | None]:
+def _split_raw(raw: object) -> tuple[str, dict[str, JsonValue], str | None]:
     """输入：instructor 交回的原始 completion。输出：(原始文本, usage, 推理文本)。
 
     预期行为：字段缺失一律降级成空值，不抛异常。`reasoning` 单独取出，
@@ -180,7 +182,7 @@ def _split_raw(raw: Any) -> tuple[str, dict[str, Any], str | None]:
     """
     text = ""
     reasoning: str | None = None
-    usage: dict[str, Any] = {}
+    usage: dict[str, JsonValue] = {}
     choices = getattr(raw, "choices", None) or []
     if choices:
         message = getattr(choices[0], "message", None)
@@ -211,9 +213,9 @@ class InstructorEngine:
     def __init__(self, name: str = "instructor") -> None:
         """输入：引擎名。输出：InstructorEngine 实例。"""
         self.name = name
-        self._clients: dict[tuple[str, str, str], Any] = {}
+        self._clients: dict[tuple[str, str, str], object] = {}
 
-    def _client(self, request: EngineRequest) -> Any:
+    def _client(self, request: EngineRequest) -> object:
         """输入：请求。输出：绑定到该 (端点, key, 档位) 的 instructor 客户端。
 
         预期行为：命中缓存直接返回；未命中则新建并缓存。缓存键里的 key 只存指纹。
@@ -240,7 +242,7 @@ class InstructorEngine:
         **永不传 `max_tokens`**，请求体里没这个字段、也没这个开关（PLAN 3.1.2）。
         """
         client = self._client(request)
-        messages: list[dict[str, Any]] = []
+        messages: list[dict[str, JsonValue]] = []
         if request.system:
             messages.append({"role": "system", "content": request.system})
         messages.append({"role": "user", "content": request.prompt})

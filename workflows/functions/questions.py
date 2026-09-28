@@ -17,9 +17,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any, Final
+from typing import Final
 
 from jc.workflow import LabeledQuestion
 
@@ -116,7 +117,7 @@ def _fill(text: str, **slots: str) -> str:
     return out
 
 
-def _tool_question(tool: str, loc: dict[str, Any], phrasing: int) -> LabeledQuestion:
+def _tool_question(tool: str, loc: dict[str, JsonValue], phrasing: int) -> LabeledQuestion:
     """输入：金工具、语言字典、问法编号。输出：`tool` 题。
 
     预期行为：选项描述写清每个函数干什么（`[tool_desc]`），题面不点名是哪个函数。
@@ -127,7 +128,7 @@ def _tool_question(tool: str, loc: dict[str, Any], phrasing: int) -> LabeledQues
     )
 
 
-def _arg_question(binding: Binding, loc: dict[str, Any], phrasing: int) -> LabeledQuestion:
+def _arg_question(binding: Binding, loc: dict[str, JsonValue], phrasing: int) -> LabeledQuestion:
     """输入：一个 `choice` 参数的绑定、语言字典、问法编号。输出：`arg_<参数>` 题。
 
     预期行为：选项就是该参数的取值表（描述来自 `[opt.<短语表键>]`），答案是请求里写的那个值。
@@ -150,7 +151,7 @@ def _values_of(binding: Binding) -> tuple[str, ...]:
     raise KeyError(f"工具表里没有参数 {binding.name!r}")
 
 
-def _stated_question(binding: Binding, loc: dict[str, Any], phrasing: int) -> LabeledQuestion:
+def _stated_question(binding: Binding, loc: dict[str, JsonValue], phrasing: int) -> LabeledQuestion:
     """输入：一个可选参数的绑定、语言字典、问法编号。输出：`stated_<参数>` 题。
 
     预期行为：判据写清「没提 = 用函数默认值」——这条是人为约定，必须写在题面里（范式 §9.8）。
@@ -169,7 +170,7 @@ def _stated_question(binding: Binding, loc: dict[str, Any], phrasing: int) -> La
 
 
 def _member_question(
-    value: str, stated: bool, loc: dict[str, Any], phrasing: int
+    value: str, stated: bool, loc: dict[str, JsonValue], phrasing: int
 ) -> LabeledQuestion:
     """输入：一个成员、它有没有被点名、语言字典、问法编号。输出：`member_<成员>` 题。"""
     entry = loc["fam"]["member"]
@@ -183,7 +184,7 @@ def _member_question(
 
 
 def build(
-    plan: CallPlan, loc: dict[str, Any], phrasing: int, rng: random.Random
+    plan: CallPlan, loc: dict[str, JsonValue], phrasing: int, rng: random.Random
 ) -> list[LabeledQuestion]:
     """输入：绑定计划、语言字典、问法编号、RNG。输出：题目 + 金答案（顺序稳定）。"""
     del rng  # 题目完全由绑定与语言文件决定

@@ -1,8 +1,10 @@
 """语言文件：形状一致、短语互不包含、取值短语全局唯一、模板填得满。"""
 
 from __future__ import annotations
+from collections.abc import Callable
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 import pytest
 
@@ -24,7 +26,7 @@ def _keys(value: object, prefix: str = "") -> set[str]:
     return out
 
 
-def _val_groups(loc: dict[str, Any]) -> dict[tuple[str, str], tuple[str, ...]]:
+def _val_groups(loc: dict[str, JsonValue]) -> dict[tuple[str, str], tuple[str, ...]]:
     """输入：语言字典。输出：{(短语表键, 取值): 该取值的全部写法}（带别名的表先摊平）。"""
     out: dict[tuple[str, str], tuple[str, ...]] = {}
     for key, table in loc["val"].items():
@@ -39,7 +41,7 @@ def _val_groups(loc: dict[str, Any]) -> dict[tuple[str, str], tuple[str, ...]]:
     return out
 
 
-def _templates(loc: dict[str, Any]) -> list[str]:
+def _templates(loc: dict[str, JsonValue]) -> list[str]:
     """输入：语言字典。输出：全部句子模板（请求分段 + 题面 + 判据）。"""
     out: list[str] = []
     for table in loc["req"].values():
@@ -263,7 +265,7 @@ def test_merged_phrase_groups_stay_unambiguous() -> None:
                 assert other not in phrase, (key, other_value, other, value, phrase)
 
 
-def test_merged_table_reads_both_languages(make_case) -> None:  # type: ignore[no-untyped-def]
+def test_merged_table_reads_both_languages(make_case: Callable[..., sp.CallCase]) -> None:
     """输入：合并表。输出：无。
 
     预期行为：两种语言渲染出来的文本都能被同一张合并表读回来，且意图短语是并集。

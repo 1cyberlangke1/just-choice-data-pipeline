@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from jc import contract, jsonio, validate
+from jc.jsontypes import JsonValue
 
 
 def good_sample() -> dict:
@@ -112,7 +114,9 @@ def test_write_jsonl_uses_lf_and_keeps_key_order(tmp_path: Path) -> None:
         (lambda s: s["answers"]["is_far"].update(noul=1), contract.E_NOUL_NOT_BOOL),
     ],
 )
-def test_negative_cases_report_expected_code(mutate, expected: str) -> None:
+def test_negative_cases_report_expected_code(
+    mutate: Callable[[dict[str, JsonValue]], None], expected: str
+) -> None:
     sample = good_sample()
     mutate(sample)
     assert expected in codes(validate.validate_sample(sample))

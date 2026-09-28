@@ -17,10 +17,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+
 
 from .config import BackendsConfig, resolve_keys
 from .engine import Engine, InstructorEngine
@@ -41,7 +42,7 @@ from .types import (
 )
 
 # 把一个任务 + 草稿变成契约样本的函数（由 workflow / Assembler 提供）。
-Assemble = Callable[[GenerationTask, Draft], dict[str, Any]]
+Assemble = Callable[[GenerationTask, Draft], dict[str, JsonValue]]
 
 
 class LLMBackend:

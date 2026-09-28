@@ -11,15 +11,16 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 import openai
 
 from .types import BackendCapabilities
 
 # 探测用的最小 schema：一个字符串字段。越简单越能测出「吃不吃这个参数」。
-PROBE_SCHEMA: dict[str, Any] = {
+PROBE_SCHEMA: dict[str, JsonValue] = {
     "type": "object",
     "properties": {"answer": {"type": "string"}},
     "required": ["answer"],
@@ -27,7 +28,7 @@ PROBE_SCHEMA: dict[str, Any] = {
 }
 
 # 探测用的最小工具定义。
-PROBE_TOOL: dict[str, Any] = {
+PROBE_TOOL: dict[str, JsonValue] = {
     "type": "function",
     "function": {
         "name": "emit_answer",
@@ -37,7 +38,7 @@ PROBE_TOOL: dict[str, Any] = {
 }
 
 
-def _attempt(client: openai.OpenAI, model: str, label: str, notes: list[str], **extra: Any) -> bool:
+def _attempt(client: openai.OpenAI, model: str, label: str, notes: list[str], **extra: object) -> bool:
     """输入：客户端、模型、探针名、notes 列表、额外请求参数。输出：这一项是否可用。
 
     预期行为：成功返回 True；失败返回 False 并把原因（**不含 key**）追加到 notes。

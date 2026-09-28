@@ -1,149 +1,92 @@
-"""语言文件的契约：标签互不重叠、主题词互不包含、模板齐全、题面编号干净。"""
+"""检索结果判读的文案测试：选项名与特征表对齐、禁用语可用且不误伤。"""
 
 from __future__ import annotations
 
-import re
+from workflows.search import features, locales, questions, render
 
-import pytest
-
-from workflows.search import locales, parse, questions
-from workflows.search import spec as sp
+from tests.workflows.search.conftest import TEXTS
 
 
-def test_labels_are_disjoint_across_languages() -> None:
-    """输入：全部语言。输出：无。
+def test_criteria_keys_match_the_feature_tables() -> None:
+    """输入：两语言文案。输出：无。
 
-    预期行为：合并表能覆盖每种语言的全部标签，且同一个标签文本不出现在两种语言里——
-    重叠会让语言无关的反解把两种语言的字段串成一行（`merged_labels` 会当场报错）。
+    预期行为：每个 choice / noul 题族的选项名，必须与特征层那一维的取值完全一致——
+    对不上就会出现「选项里没有的答案」或「答不出选项里的答案」。
     """
-    merged = parse.merged_labels()
     for lang in locales.available():
-        for text, slot in parse.label_index(locales.load(lang)).items():
-            assert merged[text] == slot
-    assert len(merged) == len(parse.META_KEYS) * len(locales.available())
+        loc = locales.load(lang)
+        assert list(loc["fam"]["query_kind"]["criteria"]) == list(features.QUERY_KINDS)
+        assert list(loc["fam"]["topicality"]["criteria"]) == list(features.TOPICALITIES)
+        assert list(loc["fam"]["spam"]["criteria"]) == ["true", "false"]
+        assert list(loc["fam"]["rule"]["criteria"]) == list(features.RULES)
+        assert list(loc["fam"]["verdict"]["criteria"]) == list(features.VERDICTS)
+        assert len(loc["fam"]["trust"]["levels"]) == features.TRUST_LEVELS
 
 
-@pytest.mark.parametrize("lang", ["zh", "en"])
-def test_topic_words_do_not_contain_each_other(lang: str) -> None:
-    """输入：一种语言的主题词表。输出：无。
+def test_rule_table_order_matches_the_code() -> None:
+    """输入：两语言规则表。输出：无。
 
-    预期行为：主题名之间、要点词之间、主题名与要点词之间都**互不包含**——
-    判别器靠「问题里出现了哪个主题名」认主题、靠「摘要里出现了几个要点词」算覆盖度，
-    任何包含关系都会同时污染这两条判据（跑题项的摘要会假装覆盖了要点）。
+    预期行为：locale 里 `rules` 的书写顺序必须与 `features.RULES` 一致——
+    规则表是「从上往下第一条命中」，顺序变了语义就变了。
     """
-    loc = locales.load(lang)
-    labels = [loc["topic"][name]["label"] for name in sp.TOPIC_NAMES]
-    points = [point for name in sp.TOPIC_NAMES for point in loc["topic"][name]["points"]]
-    for group in (labels, points, [*labels, *points]):
-        for one in group:
-            for other in group:
-                if one is other or one == other:
-                    continue
-                assert one not in other, f"{one!r} 出现在 {other!r} 里"
+    for lang in locales.available():
+        loc = locales.load(lang)
+        assert list(loc["rules"]) == list(features.RULES)
+        for name in features.RULES:
+            assert str(loc["rules"][name]["verdict"]) == features.RAW_VERDICTS[name]
+            assert str(loc["rules"][name]["condition"]).strip()
 
 
-@pytest.mark.parametrize("lang", ["zh", "en"])
-def test_every_template_and_key_exists(lang: str) -> None:
-    """输入：一种语言。输出：无。
+def test_every_prompt_dimension_value_has_text() -> None:
+    """输入：两语言文案。输出：无。预期行为：提示词里三维的每个取值都有 brief 与 hint。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        for dim in render.DIM_ORDER:
+            for value in features.DIMS[dim]:
+                assert str(loc["feature"][dim][value]["brief"]).strip()
+                assert str(loc["feature"][dim][value]["hint"]).strip()
 
-    预期行为：每个角色的标题与摘要模板都在；每个文档类型、来源权威、动作、主题都有文案。
-    少一条就会在生成期抛 KeyError，与其等它炸，不如在这里点名。
+
+def test_banned_phrases_are_present_and_usable() -> None:
+    """输入：两语言禁用语清单。输出：无。
+
+    预期行为：每条禁用语都能被 `render.banned_echo` 认出来，而且清单非空——
+    空清单等于这道防线不存在。
     """
-    loc = locales.load(lang)
-    for flavor in sp.FLAVORS:
-        assert flavor.snippet in loc["snippet"], flavor.name
-        assert flavor.name in loc["title"], flavor.name
-    for _snippet_a, _snippet_b, title_a, title_b, _, _ in sp.PAIR_PLANS.values():
-        assert title_a in loc["title"] and title_b in loc["title"]
-    for name in sp.TOPIC_NAMES:
-        assert name in loc["topic"]
-    for kind in sp.KINDS:
-        assert kind in loc["doc_kind"]
-    for authority in sp.AUTHORITIES:
-        assert authority in loc["authority"]
-    for action in ("answer", "search_more", "switch_source"):
-        assert action in loc["option"]["next_action"]
+    for lang in locales.available():
+        loc = locales.load(lang)
+        phrases = loc["banned_intent_phrases"]
+        assert phrases, f"{lang} 没有禁用语"
+        for phrase in phrases:
+            assert str(phrase) in render.banned_echo(f"这是{phrase}的页面", loc)
 
 
-@pytest.mark.parametrize("lang", ["zh", "en"])
-def test_only_the_conflict_snippets_mention_the_metric(lang: str) -> None:
-    """输入：一种语言。输出：无。
+def test_banned_phrases_do_not_fire_on_the_fixture_texts() -> None:
+    """输入：夹具里那几段查询 / 标题 / 摘要。输出：无。
 
-    预期行为：整页里**只有** `conflict_a` / `conflict_b` 提到指标名——于是「两条是否矛盾」
-    这件事在页面上只有一个来源，判别器的 `conflict_of` 才站得住。
+    预期行为：一条都不许撞禁用语——撞了就说明禁用语写得过宽，真跑时会把本来能用的
+    数据在渲染期白拒掉。
     """
-    loc = locales.load(lang)
-    for name in sp.TOPIC_NAMES:
-        entry = loc["topic"][name]
-        fields = {
-            "label": entry["label"],
-            "p1": entry["points"][0],
-            "p2": entry["points"][1],
-            "metric": entry["metric"],
-            "v1": entry["values"][0],
-            "v2": entry["values"][1],
-            "other": entry["label"],
-            "op1": entry["points"][0],
-            "op2": entry["points"][1],
-        }
-        for key, block in loc["snippet"].items():
-            text = block["text"].format(**fields)
-            mentions = entry["metric"] in text
-            assert mentions == (key in ("conflict_a", "conflict_b")), (name, key, text)
+    for lang in locales.available():
+        loc = locales.load(lang)
+        for payloads in TEXTS.values():
+            for field in ("title", "snippet"):
+                assert render.banned_echo(payloads[field], loc) == [], payloads[field]
 
 
-@pytest.mark.parametrize("lang", ["zh", "en"])
-def test_query_templates_carry_the_topic_and_both_points(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：每一条问法里都嵌了主题名与两个要点词——判别器靠这两样认主题、算覆盖度，
-    漏一个就会让某些样本反解不出来。
-    """
-    loc = locales.load(lang)
-    for name in sp.TOPIC_NAMES:
-        entry = loc["topic"][name]
-        fields = {
-            "label": entry["label"],
-            "p1": entry["points"][0],
-            "p2": entry["points"][1],
-        }
-        for template in loc["query"]["tpl"]:
-            text = template.format(**fields)
-            assert entry["label"] in text
-            assert entry["points"][0] in text and entry["points"][1] in text
+def test_every_family_has_three_phrasings() -> None:
+    """输入：两语言文案。输出：无。预期行为：每题族三种问法，`pick` 在三个编号上都取得到。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        for family in questions.FAMILIES:
+            assert len(loc["fam"][family]["q"]) >= 3
+            for phrasing in (0, 1, 2):
+                assert locales.pick(loc["fam"][family]["q"], phrasing)
 
 
-@pytest.mark.parametrize("lang", ["zh", "en"])
-def test_probe_and_pair_question_texts_carry_exactly_the_indices(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：问「结果 {n}」与「结果 {i} 与结果 {j}」的题面里，数字**只允许**是编号本身——
-    判别器从题面读编号重算，多一个数字就会读错。
-    """
-    loc = locales.load(lang)
-    for family in questions.PROBE_FAMILIES:
-        for template in loc["fam"][family]["q"]:
-            text = template.format(n=7)
-            assert re.findall(r"\d+", text) == ["7"], (family, text)
-    for family in questions.PAIR_FAMILIES:
-        for template in loc["fam"][family]["q"]:
-            text = template.format(i=7, j=8)
-            assert re.findall(r"\d+", text) == ["7", "8"], (family, text)
-
-
-@pytest.mark.parametrize("lang", ["zh", "en"])
-def test_score_levels_match_the_scale_width(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：相关度 4 档（0~3）、要点覆盖 3 档（0~2）——等级表的长度就是答案的取值范围，
-    短了会越界，长了会有永远取不到的等级。
-    """
-    loc = locales.load(lang)
-    assert len(loc["fam"]["relevance"]["levels"]) == 4
-    assert len(loc["fam"]["covered_points"]["levels"]) == 3
-
-
-def test_unknown_locale_lists_the_available_ones() -> None:
-    """输入：不存在的语言。输出：异常。预期行为：报错列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("nope")
+def test_meta_placeholders_render() -> None:
+    """输入：两语言 meta。输出：无。预期行为：段落头与括号模板都能格式化。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        assert "X" in locales.header(loc, "X")
+        assert loc["meta"]["paren"].format(text="T").strip()

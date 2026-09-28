@@ -1,4 +1,4 @@
-"""界面操作 workflow：构造式（一屏元素表与全部判断都由规则算出来，零 token）。
+"""浏览器 / GUI 操作（browser）workflow：元素表与两张判据表由代码写，那句话由后端写。
 
 导入本包即自注册（`jc.workflow.load("browser")` 可用）。
 """

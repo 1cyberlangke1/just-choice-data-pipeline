@@ -14,13 +14,14 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import json
 import os
 import threading
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
-from typing import Any
+
 
 from .. import jsonio
 
@@ -49,10 +50,10 @@ class ProgressEntry:
     key_fingerprint: str = ""
     attempts: int = 0
     elapsed_s: float = 0.0
-    usage: dict[str, Any] = field(default_factory=dict)
+    usage: dict[str, JsonValue] = field(default_factory=dict)
 
 
-def _flush_sync(handle: Any) -> None:
+def _flush_sync(handle: object) -> None:
     """输入：一个已打开的文件句柄。输出：无。预期行为：flush + fsync，断电也不丢这一行。"""
     handle.flush()
     os.fsync(handle.fileno())
@@ -148,7 +149,7 @@ class RunSink:
         with self._lock:
             return self._rows
 
-    def write_sample(self, sample: dict[str, Any], entry: ProgressEntry) -> ProgressEntry:
+    def write_sample(self, sample: dict[str, JsonValue], entry: ProgressEntry) -> ProgressEntry:
         """输入：一条契约样本、一条进度（`row` 由本方法回填）。输出：回填了行号的进度。
 
         预期行为：**先写产物并 fsync，再写进度**；两步都在同一把锁里，顺序不会被并发打乱。

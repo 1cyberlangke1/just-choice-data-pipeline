@@ -10,11 +10,12 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import json
 from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from . import contract
 
@@ -38,7 +39,7 @@ class _DupKey(Exception):
         self.key = key
 
 
-def _pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+def _pairs_hook(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
     """构造 dict 时顺带检测重复 key。
 
     输入：同一层对象的 (key, value) 列表（json 模块按出现顺序给出）。
@@ -52,7 +53,7 @@ def _pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return dict(pairs)
 
 
-def _reject_constant(name: str) -> Any:
+def _reject_constant(name: str) -> JsonValue:
     """拒绝 NaN / Infinity / -Infinity（它们不是合法 JSON）。
 
     输入：json 模块识别到的常量字面量名。
@@ -61,7 +62,7 @@ def _reject_constant(name: str) -> Any:
     raise StrictJsonError(contract.E_JSON_NAN, f"不是合法 JSON 的字面量：{name}")
 
 
-def loads(text: str) -> Any:
+def loads(text: str) -> JsonValue:
     """严格解析一段 JSON 文本。
 
     输入：str（不含 BOM；含 BOM 请用 loads_bytes）。
@@ -78,7 +79,7 @@ def loads(text: str) -> Any:
         raise StrictJsonError(contract.E_JSON_PARSE, f"第 {exc.lineno} 列 {exc.colno}：{exc.msg}") from exc
 
 
-def loads_bytes(raw: bytes) -> Any:
+def loads_bytes(raw: bytes) -> JsonValue:
     """严格解析字节流，先查 BOM 再按 UTF-8 解码。
 
     输入：文件原始字节。
@@ -94,7 +95,7 @@ def loads_bytes(raw: bytes) -> Any:
     return loads(text)
 
 
-def iter_jsonl(path: str | Path) -> Iterator[tuple[int, Any]]:
+def iter_jsonl(path: str | Path) -> Iterator[tuple[int, JsonValue]]:
     """逐行读取 JSONL，产出 (行号, 对象)；空行跳过。
 
     输入：文件路径。
@@ -114,7 +115,7 @@ def iter_jsonl(path: str | Path) -> Iterator[tuple[int, Any]]:
             raise StrictJsonError(exc.code, f"第 {lineno} 行：{exc.msg}") from exc
 
 
-def dumps_line(obj: Any) -> str:
+def dumps_line(obj: JsonValue) -> str:
     """把一行样本序列化成紧凑单行 JSON。
 
     输入：可序列化对象。
@@ -124,7 +125,7 @@ def dumps_line(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
 
-def write_jsonl(path: str | Path, rows: Iterable[Any]) -> int:
+def write_jsonl(path: str | Path, rows: Iterable[JsonValue]) -> int:
     """写出 JSONL（UTF-8、LF 换行）。
 
     输入：目标路径与可迭代的样本对象。
@@ -142,6 +143,6 @@ def write_jsonl(path: str | Path, rows: Iterable[Any]) -> int:
     return count
 
 
-def dumps_pretty(obj: Any) -> str:
+def dumps_pretty(obj: JsonValue) -> str:
     """格式化输出（只用于报告与调试，不用于数据文件）。"""
     return json.dumps(obj, ensure_ascii=False, indent=2, sort_keys=False)

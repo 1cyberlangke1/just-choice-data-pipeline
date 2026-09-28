@@ -21,13 +21,15 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import hashlib
 import random
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
+from jc.backend.types import GenerationBackend
 from jc.judge import Judge
 from jc.workflow import LabeledQuestion, SplitSpec, register
 
@@ -139,7 +141,7 @@ class SimWorkflow:
         """输入：一个 case。输出：一行可读描述（报告与文件名用）。"""
         return case.describe()
 
-    def stats_dimensions(self, case: SimCase) -> dict[str, Any]:
+    def stats_dimensions(self, case: SimCase) -> dict[str, JsonValue]:
         """输入：一个 case。输出：{维度名: 取值}（三个维度全摊平）。"""
         return case.as_dict()
 
@@ -184,7 +186,7 @@ class SimWorkflow:
         del rng
         return questions.build(spec.rows, spec, locales.load(locale), spec.phrasing)
 
-    def reparse(self, state: Any, *, case: Any = None) -> parse.ParsedBoard:
+    def reparse(self, state: object, *, case: object = None) -> parse.ParsedBoard:
         """输入：渲染后的 state。输出：反解结果。
 
         预期行为：`Workflow.reparse` 没有语言参数，所以用**合并标签表**做语言无关的
@@ -208,7 +210,7 @@ class SimWorkflow:
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, Any], list[str]]:
+    ) -> tuple[dict[str, JsonValue], list[str]]:
         """输入：run 目录、切分、语言。输出：(各切分计数, 缺失项列表)。
 
         预期行为：只看产物本身——题族是否齐全、结构化答案的下标是否越界、以及
@@ -220,7 +222,7 @@ class SimWorkflow:
         """输入：无。输出：支持的语言列表。"""
         return locales.available()
 
-    def bind_backend(self, backend: Any) -> None:
+    def bind_backend(self, backend: GenerationBackend) -> None:
         """空操作：游戏与模拟控制是纯构造式（`needs` 为空），管线不会给后端，也不该给。
 
         输入：生成后端（实际不会收到）。输出：无。

@@ -11,6 +11,7 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import importlib
 import pkgutil
@@ -19,7 +20,7 @@ import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from .judge import Judge
 
@@ -39,7 +40,7 @@ class LabeledQuestion:
     """
 
     family: str
-    question: dict[str, Any]
+    question: dict[str, JsonValue]
     answer: str | int | bool
     shuffle: bool = True
 
@@ -52,7 +53,7 @@ class SplitSpec:
     """
 
     name: str
-    params: dict[str, Any] = field(default_factory=dict)
+    params: dict[str, JsonValue] = field(default_factory=dict)
 
 
 @runtime_checkable
@@ -78,36 +79,36 @@ class Workflow(Protocol):
     def split_names(self) -> tuple[str, ...]:
         """返回该 workflow 支持的切分名（如 train/val/test_iid/test_ood）。"""
 
-    def config_for(self, split: str) -> Any:
+    def config_for(self, split: str) -> object:
         """输入：切分名。输出：该切分的采样参数（workflow 自定义类型）。"""
 
-    def build_cases(self, config: Any) -> list[Any]:
+    def build_cases(self, config: object) -> list[JsonValue]:
         """输入：采样参数。输出：case 矩阵（顺序稳定）。"""
 
-    def case_label(self, case: Any) -> str:
+    def case_label(self, case: object) -> str:
         """输入：一个 case。输出：一行可读描述（用于报告与文件名）。"""
 
-    def stats_dimensions(self, case: Any) -> Mapping[str, Any]:
+    def stats_dimensions(self, case: object) -> Mapping[str, JsonValue]:
         """输入：一个 case。输出：{维度名: 取值}，供统计与均衡报告使用。"""
 
     def dimension_titles(self) -> Mapping[str, str]:
         """返回 {维度名: 中文标题}，用于把统计报告渲染得好读。"""
 
     def plan_sample(
-        self, rng: random.Random, config: Any, case: Any, seq: int
+        self, rng: random.Random, config: object, case: object, seq: int
     ) -> SplitSpec:
         """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。"""
 
-    def sample(self, rng: random.Random, split: SplitSpec) -> Any:
+    def sample(self, rng: random.Random, split: SplitSpec) -> object:
         """输入：独立 RNG + 生成计划。输出：可 JSON 序列化的真值规格 spec。"""
 
-    def render(self, spec: Any, rng: random.Random, locale: str) -> Any:
+    def render(self, spec: object, rng: random.Random, locale: str) -> object:
         """输入：spec、RNG、语言。输出：契约允许的 state。"""
 
-    def ask(self, spec: Any, rng: random.Random, locale: str) -> list[LabeledQuestion]:
+    def ask(self, spec: object, rng: random.Random, locale: str) -> list[LabeledQuestion]:
         """输入：spec、RNG、语言。输出：题目 + 金答案（纯代码推导，禁止调模型）。"""
 
-    def reparse(self, state: Any, *, case: Any = None) -> Any | None:
+    def reparse(self, state: object, *, case: object = None) -> object | None:
         """输入：渲染后的 state。输出：反解结果，或 None（该格式不可反解）。"""
 
     def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
@@ -115,7 +116,7 @@ class Workflow(Protocol):
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, Any], list[str]]:
+    ) -> tuple[dict[str, JsonValue], list[str]]:
         """输入：run 目录、切分、语言。输出：(各切分审计计数, 缺失项列表)。"""
 
     def bind_backend(self, backend: GenerationBackend) -> None:

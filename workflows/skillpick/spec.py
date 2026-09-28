@@ -26,11 +26,13 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import hashlib
+import random
 from dataclasses import dataclass
 from itertools import product
-from typing import Any, Final
+from typing import Final
 
 from jc.knobs import require_pool
 
@@ -215,7 +217,7 @@ class CatalogRow:
     scope: str
     resource: str
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：四格（统计与调试用）。"""
         return {
             "entry": self.entry,
@@ -263,7 +265,7 @@ class SkillCase:
         if self.phrasing not in PHRASINGS:
             raise KeyError(f"没有句面 {self.phrasing!r}（可用：{PHRASINGS}）")
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：五维取值（统计与均衡报告用）。"""
         return {
             "tag": self.tag,
@@ -382,7 +384,7 @@ def request_id_of(case: SkillCase) -> str:
     return f"{REQUEST_PREFIX}{10000 + int(digest[:6], 16) % 90000}"
 
 
-def sample_spec(case: SkillCase, split: str, seq: int, phrasing: int, rng: Any) -> SkillSpec:
+def sample_spec(case: SkillCase, split: str, seq: int, phrasing: int, rng: random.Random) -> SkillSpec:
     """输入：case、切分、序号、句面、RNG。输出：真值规格。
 
     预期行为：技能表、匹配结果与三条判据都由 case 决定（**不掷骰子**）——这个 workflow 的
@@ -416,7 +418,7 @@ def sample_spec(case: SkillCase, split: str, seq: int, phrasing: int, rng: Any) 
     )
 
 
-def spec_to_dict(spec: SkillSpec) -> dict[str, Any]:
+def spec_to_dict(spec: SkillSpec) -> dict[str, JsonValue]:
     """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
     return {
         "case": spec.case.describe(),

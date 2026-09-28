@@ -1,0 +1,85 @@
+# English copy for the evaluation & benchmarking workflow.
+# The invariants locked by test_locales.py: same key set as zh, field names / the gold cell
+# label / the candidate vocabulary must not overlap across languages (reparse uses the merged
+# table), the cell separator and the in-cell separator (cell_sep / pair_sep) must match zh,
+# and the policy text must print the four letters, the six hit-count bands, the bar domain
+# and the two gap bands. The colon is language specific (zh uses `：`, en uses `: `).
+
+[meta]
+title = "Evaluation record"
+colon = ": "
+cell_sep = " · "
+pair_sep = " "
+
+[label]
+request = "Set"
+bar = "Bar"
+
+[cell]
+ref = "Gold"
+
+[cand]
+m0 = "Alpha"
+m1 = "Beta"
+m2 = "Gamma"
+
+[policy]
+text = "Rules: 1. An evaluation record is one screen. The two header cells are Set and Bar; below, one row per item, the first cell being the gold answer and then one cell per candidate, each cell holding the candidate name plus the letter it answered. The candidate column order differs from record to record, so always go by the names written in each row: the 1st candidate is the first candidate column in each row. 2. A candidate is **correct** on an item if and only if the letter it answered is exactly the same as the gold letter of that item; there are only four letters, A, B, C and D. 3. A candidate's **hit count** is the number of items it got right; there are five items, hence six bands: 0 correct, 1 correct, 2 correct, 3 correct, 4 correct, 5 correct. 4. The 1st candidate **passes** if and only if its hit count is not below the Bar cell; the bar is one of 2, 3 and 4. 5. The **best candidate** is the one with the highest hit count; when two are tied, take the one earlier in the column order. 6. **Gap**: how many more items the best candidate got right than the 1st candidate; this difference can only be 2 apart or 4 apart; when the 1st candidate is itself the best there is no gap and this family is not asked."
+
+[fam.hit]
+q = [
+  "On item {n}, did the 1st candidate get it right?",
+  "Per the record, did the 1st candidate answer item {n} correctly?",
+  "Was the 1st candidate's answer on item {n} correct?",
+]
+
+[fam.hit.criteria]
+true = "Correct: the letter it answered is exactly the gold letter of that item"
+false = "Wrong: the letter it answered differs from the gold letter of that item"
+
+[fam.count]
+q = [
+  "How many items did the 1st candidate get right?",
+  "Per the record, what is the 1st candidate's hit count?",
+  "How many items is the 1st candidate's hit count?",
+]
+levels = [
+  "0 correct",
+  "1 correct",
+  "2 correct",
+  "3 correct",
+  "4 correct",
+  "5 correct",
+]
+
+[fam.pass]
+q = [
+  "Does the 1st candidate pass?",
+  "Against the bar, does the 1st candidate pass?",
+  "Is the 1st candidate at or above the bar?",
+]
+
+[fam.pass.criteria]
+true = "Pass: the 1st candidate's hit count is not below the bar"
+false = "Fail: the 1st candidate's hit count is below the bar"
+
+[fam.best]
+q = [
+  "Which candidate got the most items right?",
+  "Per the record, which candidate has the highest hit count?",
+  "Which candidate is the best in this record?",
+]
+
+[fam.gap]
+q = [
+  "How many more items did the best candidate get right than the 1st candidate?",
+  "Per the record, how far apart are the best candidate and the 1st candidate?",
+  "How far behind the best candidate is the 1st candidate?",
+]
+levels = [
+  "2 apart",
+  "4 apart",
+]
+
+[option.cand]
+element = "Candidate {n}: {name}"

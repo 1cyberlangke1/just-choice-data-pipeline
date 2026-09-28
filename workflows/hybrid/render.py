@@ -16,10 +16,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import re
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from jc.backend.types import DraftInvalidError, GenerationTask
 from pydantic import BaseModel, Field
@@ -92,18 +93,18 @@ class ParsedSchedule:
 # ---------- 槽 → 文本（唯一出口） ----------
 
 
-def time_text(hour: int, loc: dict[str, Any]) -> str:
+def time_text(hour: int, loc: dict[str, JsonValue]) -> str:
     """输入：整点小时数、语言字典。输出：时刻文本（如 `08:00`）。"""
     return loc["time"]["tpl"].format(h=hour)
 
 
-def date_text(date: tuple[int, int, int], loc: dict[str, Any]) -> str:
+def date_text(date: tuple[int, int, int], loc: dict[str, JsonValue]) -> str:
     """输入：(年, 月, 日)、语言字典。输出：日期文本（ISO 写法，两种语言一致）。"""
     year, month, day = date
     return loc["date"]["tpl"].format(y=year, m=month, d=day)
 
 
-def duration_text(hours: int, loc: dict[str, Any]) -> str:
+def duration_text(hours: int, loc: dict[str, JsonValue]) -> str:
     """输入：时长（小时）、语言字典。输出：时长文本（如 `2 小时` / `2 hours`）。
 
     预期行为：下标 = 时长 - 1；越界直接报错——时长只能取 `spec.DUR_RANGES` 覆盖的 1~4。
@@ -114,7 +115,7 @@ def duration_text(hours: int, loc: dict[str, Any]) -> str:
     return items[hours - 1]
 
 
-def weekday_text(weekday: int, loc: dict[str, Any]) -> str:
+def weekday_text(weekday: int, loc: dict[str, JsonValue]) -> str:
     """输入：星期几（ISO，1 = 周一）、语言字典。输出：星期文本（如 `星期三`）。"""
     names = loc["word"]["weekday"]["names"]
     if not 1 <= weekday <= len(names):
@@ -122,17 +123,17 @@ def weekday_text(weekday: int, loc: dict[str, Any]) -> str:
     return names[weekday - 1]
 
 
-def room_text(spec: HybridSpec, index: int, loc: dict[str, Any]) -> str:
+def room_text(spec: HybridSpec, index: int, loc: dict[str, JsonValue]) -> str:
     """输入：规格、会议下标、语言字典。输出：那场会的会议室名。"""
     return locales.word_of(loc, "room", spec.meetings[index].room)
 
 
-def lead_text(spec: HybridSpec, index: int, loc: dict[str, Any]) -> str:
+def lead_text(spec: HybridSpec, index: int, loc: dict[str, JsonValue]) -> str:
     """输入：规格、会议下标、语言字典。输出：那场会的主持人姓名。"""
     return locales.word_of(loc, "lead", spec.meetings[index].lead)
 
 
-def meeting_text(spec: HybridSpec, index: int, loc: dict[str, Any]) -> MeetingText:
+def meeting_text(spec: HybridSpec, index: int, loc: dict[str, JsonValue]) -> MeetingText:
     """输入：规格、会议下标、语言字典。输出：后端为那场会写的标题 + 议题。
 
     预期行为：`spec.text_of` 找不到就直接报错——`ask` 之前必须先走 `render`，
@@ -142,7 +143,7 @@ def meeting_text(spec: HybridSpec, index: int, loc: dict[str, Any]) -> MeetingTe
     return spec.text_of(spec.slot_names()[index])
 
 
-def expected_meetings(spec: HybridSpec, loc: dict[str, Any]) -> list[ParsedMeeting]:
+def expected_meetings(spec: HybridSpec, loc: dict[str, JsonValue]) -> list[ParsedMeeting]:
     """输入：规格、语言字典。输出：这份日程**应该**被反解成什么（往返判别器拿它比对）。"""
     return [
         ParsedMeeting(
@@ -160,14 +161,14 @@ def expected_meetings(spec: HybridSpec, loc: dict[str, Any]) -> list[ParsedMeeti
 # ---------- 骨架 → 文本 ----------
 
 
-def _span_text(meeting: Any, loc: dict[str, Any]) -> str:
+def _span_text(meeting: object, loc: dict[str, JsonValue]) -> str:
     """输入：一场会的骨架、语言字典。输出：`08:00–10:00` 这样的时间跨度文本。"""
     return loc["meta"]["span"].format(
         start=time_text(meeting.start, loc), end=time_text(meeting.end, loc)
     )
 
 
-def _bullet_lines(spec: HybridSpec, loc: dict[str, Any]) -> list[str]:
+def _bullet_lines(spec: HybridSpec, loc: dict[str, JsonValue]) -> list[str]:
     """输入：规格、语言字典。输出：`bullet` 版式的若干行（一行一场会 + 两行文本）。"""
     lines: list[str] = []
     for index, meeting in enumerate(spec.meetings):
@@ -186,7 +187,7 @@ def _bullet_lines(spec: HybridSpec, loc: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _table_lines(spec: HybridSpec, loc: dict[str, Any]) -> list[str]:
+def _table_lines(spec: HybridSpec, loc: dict[str, JsonValue]) -> list[str]:
     """输入：规格、语言字典。输出：`table` 版式的若干行（表头 + 分隔行 + 每场一行）。"""
     columns = [
         loc["column"][name]
@@ -214,7 +215,7 @@ def _table_lines(spec: HybridSpec, loc: dict[str, Any]) -> list[str]:
     return lines
 
 
-def build(spec: HybridSpec, loc: dict[str, Any]) -> str:
+def build(spec: HybridSpec, loc: dict[str, JsonValue]) -> str:
     """输入：规格、语言字典。输出：整份日程文本（契约允许的 state）。
 
     预期行为：**纯函数**——同一份 spec + 同一份语言文件必得同一段文本。
@@ -297,7 +298,7 @@ def _parse_bullet(lines: list[str]) -> list[ParsedMeeting]:
     return out
 
 
-def parse_state(state: Any) -> ParsedSchedule:
+def parse_state(state: object) -> ParsedSchedule:
     """输入：state。输出：从日程文本里读回来的结构。
 
     预期行为：**语言无关**——版式靠结构认（竖线 / 行首编号 + 时刻），
@@ -320,7 +321,7 @@ def parse_state(state: Any) -> ParsedSchedule:
 # ---------- 后端交互 ----------
 
 
-def build_prompt(spec: HybridSpec, loc: dict[str, Any]) -> str:
+def build_prompt(spec: HybridSpec, loc: dict[str, JsonValue]) -> str:
     """组装写文本的提示词。
 
     输入：规格、语言字典。输出：提示词字符串。
@@ -340,7 +341,7 @@ def build_prompt(spec: HybridSpec, loc: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_task(spec: HybridSpec, loc: dict[str, Any], task_id: str) -> GenerationTask:
+def build_task(spec: HybridSpec, loc: dict[str, JsonValue], task_id: str) -> GenerationTask:
     """输入：规格、语言字典、任务 id。输出：后端任务。
 
     预期行为：`spec` 里只放**场数**（不是骨架）——后端看不到答案，也没法把答案写进文本。
@@ -399,7 +400,7 @@ def _duplicate_problems(written: dict[str, MeetingText]) -> list[str]:
 
 
 def check_draft(
-    spec: HybridSpec, loc: dict[str, Any], data: dict[str, Any]
+    spec: HybridSpec, loc: dict[str, JsonValue], data: dict[str, JsonValue]
 ) -> dict[str, MeetingText]:
     """输入：规格、语言字典、后端草稿。输出：{槽名: 文本}。
 

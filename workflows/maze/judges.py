@@ -9,10 +9,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Any
+
 
 from jc.judge import Verdict
 
@@ -27,7 +28,7 @@ class RoundtripJudge:
 
     name: str = "roundtrip"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         if not isinstance(spec, maze_spec.MazeSpec):
             return Verdict(True, reason="没有 spec，跳过结构判别", raw={"skipped": True})
         parsed = parse_state(sample["state"], spec.render)
@@ -63,7 +64,7 @@ class LabelJudge:
     max_problems: int = 5
     name: str = "label"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         loc = locales.load(self.locale)
         if not isinstance(spec, maze_spec.MazeSpec):
             return Verdict(True, reason="没有 spec，跳过答案判别", raw={"skipped": True})
@@ -77,7 +78,7 @@ class LabelJudge:
             raw={"problems": problems},
         )
 
-    def _check(self, sample: dict[str, Any], parsed: ParsedMaze, loc: dict[str, Any]) -> list[str]:
+    def _check(self, sample: dict[str, JsonValue], parsed: ParsedMaze, loc: dict[str, JsonValue]) -> list[str]:
         """逐题独立复算，返回不一致说明列表。"""
         problems: list[str] = []
         mask, rows, cols = parsed.mask, parsed.rows, parsed.cols
@@ -115,7 +116,7 @@ class LabelJudge:
         return problems
 
     @staticmethod
-    def _actual(question: dict[str, Any], answer: dict[str, Any]) -> Any:
+    def _actual(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> object:
         """把答案取出成可比较的形态：choice → 选项文案；score/noul → 原值。"""
         if question["type"] == "choice":
             return list(question["criteria"])[answer["choice"]]
@@ -126,17 +127,17 @@ class LabelJudge:
     def _expected(
         self,
         family: str,
-        question: dict[str, Any],
+        question: dict[str, JsonValue],
         text: str,
         parsed: ParsedMaze,
-        loc: dict[str, Any],
+        loc: dict[str, JsonValue],
         path: list[int] | None,
         path_set: set[int],
         dist_exit: list[int],
         current: int,
         start: int,
         exit_cell: int,
-    ) -> Any | None:
+    ) -> object | None:
         """独立复算某题的期望答案；无法判定时返回 None（跳过）。"""
         mask, rows, cols = parsed.mask, parsed.rows, parsed.cols
         letters = [ch for ch in text if ch in "ABCD"]

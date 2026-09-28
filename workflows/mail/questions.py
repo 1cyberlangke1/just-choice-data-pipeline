@@ -11,8 +11,9 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any, Final
+from typing import Final
 
 from jc.workflow import LabeledQuestion
 
@@ -56,7 +57,7 @@ def families_for(tags: TagSet) -> tuple[str, ...]:
     return FAMILIES
 
 
-def build(tags: TagSet, loc: dict[str, Any], phrasing: int) -> list[LabeledQuestion]:
+def build(tags: TagSet, loc: dict[str, JsonValue], phrasing: int) -> list[LabeledQuestion]:
     """输入：注入特征、语言字典、问法编号。输出：题目 + 金答案（顺序按 `FAMILIES`）。
 
     预期行为：题号用题族名；choice 的 `answer` 是**选项名**（编号由组装器最后一步映射），

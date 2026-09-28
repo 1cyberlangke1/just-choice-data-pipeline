@@ -1,4 +1,4 @@
-"""改动审查 workflow：构造式（一屏改动与全部判断都由规则算出来，零 token）。
+"""改动审查（review）workflow：清单行与三张表由代码写，改动正文由后端写。
 
 导入本包即自注册（`jc.workflow.load("review")` 可用）。
 """

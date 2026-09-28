@@ -10,9 +10,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any, Final
+from typing import Final
 
 from jc.workflow import LabeledQuestion
 
@@ -38,7 +39,7 @@ VARIANT_CHOICES: Final[tuple[int, ...]] = tuple(
 )
 
 
-def rules_block(loc: dict[str, Any]) -> str:
+def rules_block(loc: dict[str, JsonValue]) -> str:
     """输入：语言字典。输出：题面末尾那段判据原文。
 
     预期行为：整段从语言文件的 `[rules].lines` 原样取——判据必须让只读 state 与题面的
@@ -47,7 +48,7 @@ def rules_block(loc: dict[str, Any]) -> str:
     return "\n".join(loc["rules"]["lines"])
 
 
-def options_of(family: str, spec: MatchSpec, loc: dict[str, Any]) -> dict[str, str]:
+def options_of(family: str, spec: MatchSpec, loc: dict[str, JsonValue]) -> dict[str, str]:
     """输入：题族、规格、语言字典。输出：{选项名: 选项描述}。
 
     预期行为：`verdict` 三个选项固定（同一个商品 / 不同商品 / 人工复核），
@@ -81,7 +82,7 @@ def _choice(
 
 
 def _noul(
-    family: str, entry: dict[str, Any], instructions: str, fill: dict[str, str], answer: bool
+    family: str, entry: dict[str, JsonValue], instructions: str, fill: dict[str, str], answer: bool
 ) -> LabeledQuestion:
     """输入：题族、词条、题面、填充表、金答案。输出：一道 noul 题。
 
@@ -96,7 +97,7 @@ def _noul(
     return LabeledQuestion(family, question, answer, shuffle=False)
 
 
-def _score(family: str, loc: dict[str, Any], instructions: str, answer: int) -> LabeledQuestion:
+def _score(family: str, loc: dict[str, JsonValue], instructions: str, answer: int) -> LabeledQuestion:
     """输入：题族、语言字典、题面、金答案（档位下标）。输出：一道 score 题。
 
     预期行为：`criteria` 是档位描述数组，下标从 0 起、与 `spec` 算出来的档位一一对应。
@@ -110,7 +111,7 @@ def _score(family: str, loc: dict[str, Any], instructions: str, answer: int) -> 
 
 
 def build(
-    spec: MatchSpec, loc: dict[str, Any], phrasing: int, rng: random.Random
+    spec: MatchSpec, loc: dict[str, JsonValue], phrasing: int, rng: random.Random
 ) -> list[LabeledQuestion]:
     """输入：规格、语言字典、问法编号、RNG。输出：题目 + 金答案（顺序按 `FAMILIES`）。
 

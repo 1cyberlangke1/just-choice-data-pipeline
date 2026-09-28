@@ -7,14 +7,15 @@
 - 采样参数**永不发 `max_tokens`**、也不给开关（3.1.2）；推理字段单独存、不回喂。
 
 输入/输出：本模块只有数据类、协议常量与异常类型；无副作用、不发网络请求。
-**刻意不 import pydantic**：草稿模型是 workflow 提供的，这里只用 `type[Any]` 作注解，
+**刻意不 import pydantic**：草稿模型是 workflow 提供的，这里只用 `type[StructuredModel]` 作注解，
 这样核心层即使没装 `[llm]` extra 也能 import 本模块。
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass, field
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 # ---- 结构化输出的三档（PLAN 3.1.1）------------------------------------------
 
@@ -110,7 +111,7 @@ class Seed:
     """
 
     kind: str
-    payload: dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, JsonValue] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -129,12 +130,12 @@ class GenerationTask:
     kind: str
     domain: str
     prompt: str
-    response_model: type[Any]
+    response_model: type[StructuredModel]
     seeds: tuple[Seed, ...] = ()
-    spec: dict[str, Any] = field(default_factory=dict)
+    spec: dict[str, JsonValue] = field(default_factory=dict)
 
     @property
-    def schema(self) -> dict[str, Any]:
+    def schema(self) -> dict[str, JsonValue]:
         """输入：无。输出：`response_model` 的 JSON Schema（dict）。"""
         return dict(self.response_model.model_json_schema())
 
@@ -148,13 +149,13 @@ class Draft:
     `reasoning` 单独存，**不回喂**；`usage` 服务端用量；`attempts` 实际尝试次数。
     """
 
-    data: dict[str, Any]
+    data: dict[str, JsonValue]
     raw_text: str
     backend: str
     provider: str
     model: str
     mode: str
-    usage: dict[str, Any] = field(default_factory=dict)
+    usage: dict[str, JsonValue] = field(default_factory=dict)
     key_fingerprint: str = ""
     attempts: int = 1
     reasoning: str | None = None
@@ -181,6 +182,19 @@ class BackendCapabilities:
         if self.tools:
             return MODE_TOOLS
         return MODE_MD_JSON
+
+
+@runtime_checkable
+class StructuredModel(Protocol):
+    """结构化输出的模型：后端只用到类方法 `model_json_schema`。
+
+    输入/输出：无（纯协议）。
+    预期行为：让 `GenerationTask.response_model` 不必写成 `type[Any]`——`Any` 在本仓库
+    是被禁的（见 `tests/core/test_no_any.py`）；这里也刻意不 import pydantic。
+    """
+
+    @classmethod
+    def model_json_schema(cls) -> dict[str, JsonValue]: ...
 
 
 @runtime_checkable

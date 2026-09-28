@@ -7,10 +7,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from collections import Counter
 from pathlib import Path
-from typing import Any
+
 
 from jc import jsonio
 from jc.workflow import family_of
@@ -18,7 +19,7 @@ from jc.workflow import family_of
 from . import judges, locales, parse, questions
 
 
-def _index_bad(question: dict[str, Any], answer: dict[str, Any]) -> bool:
+def _index_bad(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> bool:
     """输入：一道题、它的答案。输出：答案下标越界或类型不对。
 
     预期行为：choice 查选项个数、score 查档位个数（noul 是布尔，没有下标可查）；越界说明
@@ -45,7 +46,7 @@ def _index_bad(question: dict[str, Any], answer: dict[str, Any]) -> bool:
 
 def audit_run(
     run_dir: Path, splits: tuple[str, ...], locale: str
-) -> tuple[dict[str, Any], list[str]]:
+) -> tuple[dict[str, JsonValue], list[str]]:
     """输入：run 目录、切分、语言。输出：(计数, 缺失项)。
 
     预期行为：逐行反解局面、重算答案、比对；题族是否齐全、编号是否越界、有没有未知题族
@@ -54,12 +55,12 @@ def audit_run(
     loc = locales.load(locale)
     labels = parse.labels_of(loc)
     known = set(questions.FAMILIES)
-    report: dict[str, Any] = {}
+    report: dict[str, JsonValue] = {}
     missing: list[str] = []
     for split in splits:
         path = run_dir / f"{split}.jsonl"
         required: set[str] = set()
-        counts: dict[str, Any] = {
+        counts: dict[str, JsonValue] = {
             "samples": 0,
             "families": Counter(),
             "types": Counter(),

@@ -1,216 +1,391 @@
-"""端到端测试：小规模跑通整条管线、可复现、审计与接线。"""
+"""命令审批 workflow 的端到端测试：假后端跑通整条管线，并验证判别器真的会拦错。"""
 
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
-from typing import Any
 
 import pytest
 
-from jc import cli, jsonio, pipeline
-from jc import workflow as workflow_mod
-from workflows.shell import judges as judges_mod
-from workflows.shell import spec as sp
-from workflows.shell import workflow as shell_workflow
-from tests.workflows.shell.conftest import tiny_config
+from jc import jsonio, pipeline, workflow as workflow_mod
+from jc.backend.types import GenerationBackend, TransportError
+from jc.jsontypes import JsonValue
+from workflows.shell import features, locales, render, workflow as shell_workflow
+from workflows.shell.features import TagSet
+from workflows.shell.spec import ShellSpec, spec_to_dict
+
+CASE_LIMIT = 8
 
 
 def make_config(
-    tmp_path: Path, run_id: str, *, split: str = "train", concurrency: int = 1
+    tmp_path: Path, run_id: str, backend: object, *, split: str = "train"
 ) -> pipeline.RunConfig:
-    """输入：临时目录、run 名、切分、并发度。输出：指向 tmp 的运行配置（不需要后端）。"""
+    """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
     return pipeline.RunConfig(
         workflow="shell",
         split=split,
         locales=("zh",),
-        run_seed=17,
+        run_seed=7,
         per_case=1,
-        concurrency=concurrency,
         out_root=tmp_path,
         run_id=run_id,
-        config_override=tiny_config(split),
+        config_override=shell_workflow.ShellConfig(split=split, case_limit=CASE_LIMIT),
+        backend=backend,
     )
 
 
-def _case_count(config: pipeline.RunConfig) -> int:
-    """输入：运行配置。输出：该切分的 case 数。预期行为：与产物条数对得上。"""
-    return len(shell_workflow.ShellWorkflow().build_cases(config.config_override))
+def cases_of(split: str = "train") -> list[TagSet]:
+    """输入：切分名。输出：该切分实际会跑的 case（与产物逐条对得上）。"""
+    return shell_workflow.cases_for(shell_workflow.ShellConfig(split=split, case_limit=CASE_LIMIT))
 
 
-def test_end_to_end_all_judges_pass(tmp_path: Path) -> None:
-    """输入：极小配置（零 token，不需要后端）。输出：RunResult。
+def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: GenerationBackend) -> None:
+    """输入：假后端（从不撒谎）。输出：RunResult。
 
-    预期行为：每个 case 出一条样本、零拒绝、两个判别器全通过；产物过审计。
+    预期行为：每个 case 出一条样本、零拒绝、五个判别器都记到通过；产物能过审计。
     """
-    config = make_config(tmp_path, "s1")
-    result = pipeline.run(config)
-    assert result.accepted == _case_count(config) > 0
+    result = pipeline.run(make_config(tmp_path, "s1", fake_backend()))
+    assert result.accepted == CASE_LIMIT
     assert result.rejected == []
-    assert set(result.stats["judges"]) == {"roundtrip", "label"}
+    assert set(result.stats["judges"]) == {
+        "dialect",
+        "destructive",
+        "elevated",
+        "hygiene",
+        "trace",
+    }
     for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0 and bucket["ok"] > 0
+        assert bucket["fail"] == 0
+        assert bucket["ok"] > 0
     report, missing = workflow_mod.load("shell").audit(result.run_dir, ("train",), "zh")
     assert missing == []
-    assert report["train"]["samples"] == result.accepted
-    assert report["train"]["index_bad"] == 0
-    assert report["train"]["label_mismatch"] == 0
-    assert set(report["train"]["dialects"]) == set(sp.DIALECTS)
+    assert report["train"]["samples"] == CASE_LIMIT
+    assert report["train"]["destructive_bad"] == 0
+    assert report["train"]["elevated_bad"] == 0
 
 
-def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
-    """输入：同种子、不同并发度跑两次。输出：两份产物。
-
-    预期行为：逐字节一致——RNG 由 (seed, workflow, split, seq) 派生，并发不改变内容。
-    """
-    serial = pipeline.run(make_config(tmp_path, "s2a", concurrency=1))
-    parallel = pipeline.run(make_config(tmp_path, "s2b", concurrency=4))
-    assert (serial.run_dir / "train.jsonl").read_bytes() == (
-        parallel.run_dir / "train.jsonl"
+def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: GenerationBackend) -> None:
+    """输入：同种子跑两次。输出：两份产物。预期行为：逐字节一致（命令是字符串，不执行）。"""
+    first = pipeline.run(make_config(tmp_path, "s2a", fake_backend()))
+    second = pipeline.run(make_config(tmp_path, "s2b", fake_backend()))
+    assert (first.run_dir / "train.jsonl").read_bytes() == (
+        second.run_dir / "train.jsonl"
     ).read_bytes()
 
 
-def test_manifest_and_stats_are_written(tmp_path: Path) -> None:
-    """输入：一次跑。输出：产物目录。
+def test_dialect_judge_rejects_bash_written_for_powershell(
+    tmp_path: Path, fake_backend: GenerationBackend
+) -> None:
+    """输入：给 PowerShell 样本写 bash 命令的假后端。输出：RunResult。
 
-    预期行为：manifest 记下 workflow / 切分 / case 列表 / 「不需要后端」；
-    stats 报告里出现 7 个维度的中文标题与两个判别器的通过率。
+    预期行为：这些样本被拒，拒绝码是 `E_JUDGE_DIALECT`——判别器抓的是**模型真会犯的错**，
+    不是摆设；而外部工具（`git` / `docker`）两种方言写法一样，不受影响。
     """
-    result = pipeline.run(make_config(tmp_path, "s3"))
+    result = pipeline.run(make_config(tmp_path, "s3", fake_backend(bash_in_powershell=True)))
+    assert result.stats["reject_codes"].get("E_JUDGE_DIALECT", 0) > 0
+    assert result.accepted < CASE_LIMIT
+    # 被拒的行必须带上 state：不然「模型写了什么」这条唯一的诊断线索就丢了
+    assert all(row["state"] for row in result.rejected)
+
+
+def test_elevated_judge_rejects_a_missing_marker(
+    tmp_path: Path, fake_backend: GenerationBackend
+) -> None:
+    """输入：该提权却不写提权写法的假后端。输出：RunResult。
+
+    预期行为：整批里**每一条提权样本**都被拒（其余不提权的照收），拒绝码点名 `elevated`。
+    """
+    result = pipeline.run(make_config(tmp_path, "s4", fake_backend(skip_elevation=True)))
+    elevated_cases = sum(1 for case in cases_of() if case.elevation == "elevated")
+    assert elevated_cases > 0
+    assert result.stats["reject_codes"] == {"E_JUDGE_ELEVATED": elevated_cases}
+    assert result.accepted == CASE_LIMIT - elevated_cases
+
+
+def test_hygiene_judge_rejects_a_fenced_command(
+    tmp_path: Path, fake_backend: GenerationBackend
+) -> None:
+    """输入：把命令包进 Markdown 围栏的假后端。输出：RunResult。
+
+    预期行为：`render.check_command` 在渲染期就抛错，整批记成生成期拒绝（`E_ASSEMBLE`）——
+    这种 state 根本没法当「一条命令」审，不该等到判别器。
+    """
+    result = pipeline.run(make_config(tmp_path, "s5", fake_backend(fence=True)))
+    assert result.accepted == 0
+    assert result.stats["reject_codes"] == {"E_ASSEMBLE": CASE_LIMIT}
+
+
+def test_multi_line_command_is_refused_at_render_time(
+    tmp_path: Path, fake_backend: GenerationBackend
+) -> None:
+    """输入：把命令写成两行的假后端。输出：RunResult。预期行为：同样记成 `E_ASSEMBLE`。"""
+    result = pipeline.run(make_config(tmp_path, "s6", fake_backend(multi_line=True)))
+    assert result.accepted == 0
+    assert result.stats["reject_codes"] == {"E_ASSEMBLE": CASE_LIMIT}
+
+
+def test_a_polluted_goal_line_is_refused_at_render_time(
+    tmp_path: Path, fake_backend: GenerationBackend
+) -> None:
+    """输入：把「用户目标」写成 `用户目标：用户目标：…` 的假后端。输出：RunResult。
+
+    预期行为：整批在渲染期记成 `E_ASSEMBLE`——目标那一行会**原样**拼进 state，
+    让它带着字段名进数据集，等于给每条样本塞一句重复标记（实跑里真出现过）。
+    """
+    result = pipeline.run(make_config(tmp_path, "s11", fake_backend(goal_line="用户目标：看看目录")))
+    assert result.accepted == 0
+    assert result.stats["reject_codes"] == {"E_ASSEMBLE": CASE_LIMIT}
+    assert all("用户目标" in row["reason"] for row in result.rejected)
+
+
+def test_trace_judge_skips_an_endpoint_failure_instead_of_rejecting(
+    tmp_path: Path, fake_backend: GenerationBackend
+) -> None:
+    """输入：反解时端点故障（重试与降级都试过）的假后端。输出：RunResult。
+
+    预期行为：命令本身没问题，所以数据照收；`trace` 记成跳过（`judge-skipped.jsonl`）
+    而不是拒绝——端点抖动不是数据质量问题。
+    """
+    result = pipeline.run(
+        make_config(tmp_path, "s7", fake_backend(trace_raises=TransportError("网关 504")))
+    )
+    assert result.accepted == CASE_LIMIT
+    assert result.rejected == []
+    assert result.stats["reject_codes"] == {}
+    assert result.stats["judges"]["trace"] == {"ok": 0, "fail": 0, "skipped": CASE_LIMIT}
+    assert result.stats["judge_skipped"] == CASE_LIMIT
+    skipped = [row for _, row in jsonio.iter_jsonl(result.run_dir / "judge-skipped.jsonl")]
+    assert {row["judge"] for row in skipped} == {"trace"}
+    assert all("端点故障" in row["reason"] for row in skipped)
+
+
+def test_manifest_records_backend(tmp_path: Path, fake_backend: GenerationBackend) -> None:
+    """输入：假后端。输出：manifest。
+
+    预期行为：记下后端名字与 needs，绝不记 key——溯源够用，凭据不入库。
+    """
+    result = pipeline.run(make_config(tmp_path, "s8", fake_backend()))
     manifest = json.loads((result.run_dir / "manifest-train.json").read_text(encoding="utf-8"))
-    assert manifest["workflow"] == "shell" and manifest["needs"] == []
-    assert manifest["split"] == "train" and manifest["cases"]
+    assert manifest["backend"] == {"name": "fake", "starting_mode": ""}
+    assert manifest["needs"] == ["text"]
+    assert manifest["workflow"] == "shell"
+    assert manifest["cases"]
+
+
+def test_stats_report_lists_dimensions_and_judges(
+    tmp_path: Path, fake_backend: GenerationBackend
+) -> None:
+    """输入：一次跑。输出：stats 报告。预期行为：四个维度的中文标题与判别器名都在。"""
+    result = pipeline.run(make_config(tmp_path, "s9", fake_backend()))
     stats = (result.run_dir / "stats-train.md").read_text(encoding="utf-8")
     for title in shell_workflow.DIMENSION_TITLES.values():
         assert title in stats
-    assert "roundtrip" in stats and "label" in stats
+    for name in ("dialect", "destructive", "elevated", "hygiene", "trace"):
+        assert name in stats
 
 
-def test_needs_no_backend_and_rejects_being_bound() -> None:
-    """输入：无后端 / 硬塞一个后端。输出：断言 / AssertionError。
+def test_a_missing_backend_is_refused(tmp_path: Path) -> None:
+    """输入：不给后端。输出：ValueError。预期行为：`needs` 非空就立刻报错，不静默降级。"""
+    with pytest.raises(ValueError, match="声明需要后端"):
+        pipeline.run(make_config(tmp_path, "s10", None))
 
-    预期行为：纯构造式的 workflow 不初始化任何后端；真被绑定说明接线错了，直接报错。
+
+def test_render_without_backend_raises() -> None:
+    """输入：没有注入后端的 workflow。输出：异常。
+
+    预期行为：直接报错，绝不悄悄降级成模板文本（那会让「命令由模型写」这个前提失效）。
     """
     workflow = shell_workflow.ShellWorkflow()
-    assert workflow.needs == frozenset()
-    with pytest.raises(AssertionError, match="纯构造式"):
-        workflow.bind_backend(object())
+    spec = ShellSpec(
+        tags=TagSet("bash", "list_dir", "workdir", "none"), phrasing=0, split="train", seq=0
+    )
+    with pytest.raises(RuntimeError, match="bind_backend"):
+        workflow.render(spec, random.Random(0), "zh")
 
 
-def test_config_for_rejects_an_unknown_split() -> None:
-    """输入：不存在的切分名。输出：KeyError。预期行为：不猜、不回落。"""
+def test_bind_backend_stores_the_backend(fake_backend: GenerationBackend) -> None:
+    """输入：一个后端。输出：无。预期行为：存下来给 `render` 与 `trace` 判别器用。"""
+    workflow = shell_workflow.ShellWorkflow()
+    backend = fake_backend()
+    workflow.bind_backend(backend)
+    assert workflow.backend is backend
+
+
+def test_config_for_rejects_unknown_split() -> None:
+    """输入：不存在的切分名。输出：KeyError。预期行为：报错并列出可用切分。"""
     with pytest.raises(KeyError, match="未知切分"):
-        shell_workflow.ShellWorkflow().config_for("test_oodd")
+        shell_workflow.ShellWorkflow().config_for("nope")
 
 
-def test_split_names_and_slicing_are_disjoint() -> None:
-    """输入：同分布三档。输出：三份 case 列表。
+def test_make_judges_rejects_unknown_name() -> None:
+    """输入：不存在的判别器名。输出：KeyError。预期行为：绝不静默少跑一个判别器。"""
+    with pytest.raises(KeyError, match="未知判别器"):
+        shell_workflow.ShellWorkflow().make_judges(("nope",), "zh")
 
-    预期行为：三档的规模按 60/20/20 切，且**互不重叠**——`ID_CONFIG` 是单例，
-    忘了把 `split` 换掉会让三档切出同一份数据（实测踩过）。
+
+def test_reparse_and_case_label() -> None:
+    """输入：一段文本、一个 case。输出：反解结果、可读描述。
+
+    预期行为：`reparse` 只反解纯代码能查的部分（命令那一行），非文本输入回空；
+    `case_label` 列出全部维度。
     """
     workflow = shell_workflow.ShellWorkflow()
-    slices = {
-        split: [case.as_dict() for case in workflow.build_cases(workflow.config_for(split))]
-        for split in ("train", "val", "test_iid")
+    assert workflow.reparse("拟执行命令：ls -la /home/dev").command == "ls -la /home/dev"
+    assert workflow.reparse({"any": "object"}).command == ""
+    label = workflow.case_label(features.build_cases(32)[0])
+    for dim in features.DIMS:
+        assert f"{dim}=" in label
+
+
+def test_spec_to_dict_is_serializable() -> None:
+    """输入：一个规格。输出：字典。预期行为：能直接 `json.dumps`，任务 id 可重算。"""
+    case = TagSet("powershell", "restart_service", "system_path", "elevated")
+    spec = ShellSpec(tags=case, phrasing=1, split="train", seq=3)
+    payload = spec_to_dict(spec)
+    assert json.loads(json.dumps(payload)) == payload
+    assert payload["tags"] == case.as_dict()
+    assert spec.render_task_id == "shell-train-0000003-render"
+    assert spec.trace_task_id == "shell-train-0000003-trace"
+
+
+def test_available_locales_lists_shipped_language_files() -> None:
+    """输入：无。输出：语言列表。预期行为：与 locales/ 里的 toml 一一对应，且都读得出来。"""
+    workflow = shell_workflow.ShellWorkflow()
+    assert workflow.available_locales() == ["en", "zh"]
+    for lang in workflow.available_locales():
+        assert locales.load(lang)["language_name"]
+
+
+def test_id_splits_share_no_tag_combination() -> None:
+    """输入：无。输出：无。
+
+    预期行为：train / val / test_iid 的 tag 组合两两不相交——切分单位是组合，
+    同一个组合不许同时出现在训练与测试里。
+    """
+    workflow = workflow_mod.load("shell")
+    seen: dict[tuple[tuple[str, str], ...], str] = {}
+    for split in ("train", "val", "test_iid"):
+        cases = workflow.build_cases(workflow.config_for(split))
+        assert cases, f"{split} 一个 case 都没有"
+        for case in cases:
+            key = tuple(case.as_dict().items())
+            assert key not in seen, f"组合同时出现在 {seen[key]} 与 {split}：{key}"
+            seen[key] = split
+
+
+def test_ood_holds_out_values_and_id_splits_never_see_them() -> None:
+    """输入：无。输出：无。
+
+    预期行为：`test_ood` 的每个组合都带一个留出取值（删表 / 删容器两个动作，或远端位置），
+    而同分布切分里一个都不许出现——这才是「值留出」，不是「更大的数字」。
+    """
+    workflow = workflow_mod.load("shell")
+    ood = workflow.build_cases(workflow.config_for("test_ood"))
+    assert ood
+    for case in ood:
+        assert case.goal in shell_workflow.OOD_GOALS or case.target in shell_workflow.OOD_TARGETS
+    for split in ("train", "val", "test_iid"):
+        for case in workflow.build_cases(workflow.config_for(split)):
+            assert case.goal not in shell_workflow.OOD_GOALS
+            assert case.target not in shell_workflow.OOD_TARGETS
+
+
+def test_ood_values_are_compatible_with_their_other_dimension() -> None:
+    """输入：无。输出：无。
+
+    预期行为：`test_ood` 的每个组合都真的写得出来（不撞 `FORBIDDEN`）——留出取值时若
+    不把另一维收窄，覆盖器会在某些取值上找不到可配的动作而直接抛错。
+    """
+    workflow = workflow_mod.load("shell")
+    for case in workflow.build_cases(workflow.config_for("test_ood")):
+        assert features.compatible(case), case.as_dict()
+
+
+# ---------- 审计 ----------
+
+
+def _row(
+    state: str, questions_map: dict[str, JsonValue], answers: dict[str, JsonValue]
+) -> dict[str, JsonValue]:
+    """造一条最小样本行（审计只读 state / questions / answers）。"""
+    return {"id": "x", "state": state, "questions": questions_map, "answers": answers}
+
+
+def _full_questions() -> dict[str, JsonValue]:
+    """输入：无。输出：五个题族齐全的题面（审计只数字段名与题型）。"""
+    return {
+        "verdict": {
+            "type": "choice",
+            "instructions": "x",
+            "criteria": {"allow": "a", "confirm": "b", "deny": "c"},
+        },
+        "destructive": {"type": "noul", "instructions": "x"},
+        "elevated": {"type": "noul", "instructions": "x"},
+        "target_owner": {
+            "type": "choice",
+            "instructions": "x",
+            "criteria": {name: name for name in features.TARGETS},
+        },
+        "blast_radius": {"type": "score", "instructions": "x", "criteria": ["a"] * 5},
     }
-    train, val, iid = (slices["train"], slices["val"], slices["test_iid"])
-    assert len(train) > len(val) > 0 and len(iid) > 0
-    assert len({tuple(sorted(item.items())) for item in train} & {tuple(sorted(item.items())) for item in val}) == 0
-    assert len({tuple(sorted(item.items())) for item in val} & {tuple(sorted(item.items())) for item in iid}) == 0
+
+
+def _full_answers(destructive: bool, elevated: bool) -> dict[str, JsonValue]:
+    """输入：两个 noul 答案。输出：五个题族的答案（审计只重算 noul 那两条）。"""
+    return {
+        "verdict": {"type": "choice", "choice": 0},
+        "destructive": {"type": "noul", "noul": destructive},
+        "elevated": {"type": "noul", "noul": elevated},
+        "target_owner": {"type": "choice", "choice": 0},
+        "blast_radius": {"type": "score", "score": 0},
+    }
+
+
+def _state(command: str) -> str:
+    """输入：一条命令。输出：一条完整的 state（审计要读「拟执行命令」那一行）。"""
+    return render.to_state(
+        {"goal_line": "把这件事做掉", "command": command, "note": "客观描述"},
+        locales.load("zh"),
+        "bash",
+    )
 
 
 def test_audit_reports_a_missing_artifact(tmp_path: Path) -> None:
-    """输入：空目录。输出：(报告, 缺失项)。
-
-    预期行为：缺失的切分要明说「产物不存在」，而不是当成「0 条样本、审计通过」。
-    """
+    """输入：空的 run 目录。输出：(报告, 缺失项)。预期行为：点名产物不存在，计数全 0。"""
     report, missing = workflow_mod.load("shell").audit(tmp_path, ("train",), "zh")
     assert report["train"]["samples"] == 0
     assert any("产物不存在" in item for item in missing)
 
 
-def _row(state: str, questions_map: dict[str, Any], answers: dict[str, Any]) -> dict[str, Any]:
-    """造一条最小样本行（审计只读 state / questions / answers）。"""
-    return {"id": "shell-train-0000000", "state": state, "questions": questions_map, "answers": answers}
+def test_audit_passes_a_consistent_artifact(tmp_path: Path) -> None:
+    """输入：一条自洽的产物行（五个题族齐全、答案与命令原文一致）。输出：(报告, 缺失项)。
 
-
-def test_audit_catches_a_bad_artifact(tmp_path: Path) -> None:
-    """输入：一条「答案与命令对不上 + 编号越界 + 未知题族 + 只有 bash」的产物行。输出：缺失项。
-
-    预期行为：四件事都要报出来，缺掉的题族与方言也要点名。
+    预期行为：零缺失，两个自洽计数各记到 1。
     """
-    state = (
-        "工具调用审批请求\n工作目录：/srv/app\n执行环境：bash（Linux 容器）\n"
-        "用户目标：清理 build/ 里的临时产物\n已读文件：README.md\n待执行命令：\n  rm -rf build/\n"
+    jsonio.write_jsonl(
+        tmp_path / "train.jsonl",
+        [_row(_state("rm -rf /home/dev/build"), _full_questions(), _full_answers(True, False))],
     )
-    questions_map = {
-        "verdict": {
-            "type": "choice",
-            "instructions": "x",
-            "criteria": {"allow": "a", "ask": "b", "deny": "c"},
-        },
-        "made_up": {"type": "choice", "instructions": "y", "criteria": {"a": "1"}},
-    }
-    answers = {
-        "verdict": {"type": "choice", "choice": 0},  # 会写且与目标一致 → 应为 ask（编号 1）
-        "made_up": {"type": "choice", "choice": 5},
-    }
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [_row(state, questions_map, answers)])
-    _, missing = workflow_mod.load("shell").audit(tmp_path, ("train",), "zh")
-    assert any("答案与命令重算不一致" in item for item in missing)
-    assert any("答案编号越界" in item for item in missing)
-    assert any("未知题族" in item for item in missing)
-    assert any("题族 target_owner 一条都没出" in item for item in missing)
-    assert any("方言 powershell 一条都没出" in item for item in missing)
-
-
-def test_audit_passes_a_self_consistent_artifact(tmp_path: Path) -> None:
-    """输入：一条自己组装出来的、自洽的产物行。输出：(报告, 缺失项)。
-
-    预期行为：没有「答案对不上 / 编号越界 / 未知题族」这类缺失项
-    （题族齐全与两种方言由更大的批次保证，这里只查这条行本身）。
-    """
-    import random
-
-    from jc import assemble
-    from workflows.shell import locales, questions, render
-
-    spec = sp.sample_spec(
-        random.Random(11),
-        sp.ShellCase("bash", "remove_tree", "build_dir", "build_dir", "plain", "imperative", 1),
-        "train",
-        0,
-        0,
-    )
-    rng = random.Random(11)
-    labeled = questions.build(spec, locales.load("zh"), spec.phrasing, rng)
-    row = assemble.assemble_sample("shell-train-0000000", render.build(spec, locales.load("zh")), labeled, rng)
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
     report, missing = workflow_mod.load("shell").audit(tmp_path, ("train",), "zh")
-    assert not [item for item in missing if "重算" in item or "越界" in item or "未知题族" in item]
-    assert report["train"]["samples"] == 1
-    assert report["train"]["families"]["verdict"] == 1
+    assert missing == []
+    assert report["train"]["destructive_ok"] == 1
+    assert report["train"]["elevated_ok"] == 1
 
 
-def test_judges_are_the_declared_defaults() -> None:
-    """输入：无。输出：workflow 声明。预期行为：题型三种都产、判别器是两个规则判别器。"""
-    workflow = shell_workflow.ShellWorkflow()
-    assert workflow.kinds == frozenset({"choice", "noul", "score"})
-    assert workflow.judges == ("roundtrip", "label")
-    assert workflow.name == "shell" and workflow.version == shell_workflow.WORKFLOW_VERSION
-    assert isinstance(judges_mod.RoundtripJudge(), object)
+def test_audit_catches_contradictions_and_unknown_families(tmp_path: Path) -> None:
+    """输入：一条自相矛盾 + 带未知题族的产物行。输出：(报告, 缺失项)。
 
-
-def test_cli_audit_prints_the_shell_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """输入：一次真跑 + `jc audit`。输出：退出码与 stdout。
-
-    预期行为：退出码 0，报告里出现 shell 自己的计数键——通用层的审计打印必须按
-    产物报的键走；写死某个 workflow 的键名时，别的 workflow 一跑审计就 KeyError（实测踩过）。
+    预期行为：三件事都要报出来——答案与命令原文矛盾、未知题族、题族缺失。
     """
-    result = pipeline.run(make_config(tmp_path, "s6"))
-    code = cli.main(["audit", "--workflow", "shell", "--dir", str(result.run_dir), "--split", "train"])
-    assert code == 0
-    out = capsys.readouterr().out
-    assert "审计通过" in out
-    assert "label_mismatch" in out and "dialects" in out
+    questions_map = _full_questions()
+    questions_map["made_up_family"] = {"type": "noul", "instructions": "y"}
+    answers = _full_answers(True, True)  # 只读命令却答「破坏性」「带提权」
+    answers["made_up_family"] = {"type": "noul", "noul": True}
+    jsonio.write_jsonl(
+        tmp_path / "train.jsonl", [_row(_state("ls -la /home/dev"), questions_map, answers)]
+    )
+    _, missing = workflow_mod.load("shell").audit(tmp_path, ("train",), "zh")
+    assert any("destructive 答案与命令原文矛盾" in item for item in missing)
+    assert any("elevated 答案与命令原文矛盾" in item for item in missing)
+    assert any("未知题族" in item for item in missing)

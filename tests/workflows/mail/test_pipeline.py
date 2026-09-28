@@ -1,16 +1,17 @@
 """邮件 workflow 的端到端测试：假后端跑通整条管线，并验证判别器真的会拦错。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import json
 from pathlib import Path
-from typing import Any
+
 
 import pytest
 
 from jc import jsonio
 from jc import pipeline, workflow as workflow_mod
-from jc.backend.types import AllProvidersDown, TransportError
+from jc.backend.types import AllProvidersDown, GenerationBackend, TransportError
 from workflows.mail import features, judges as judges_mod, locales, workflow as mail_workflow
 from workflows.mail.spec import MailSpec
 
@@ -18,7 +19,7 @@ CASE_LIMIT = 8
 
 
 def make_config(
-    tmp_path: Path, run_id: str, backend: Any, *, split: str = "train"
+    tmp_path: Path, run_id: str, backend: object, *, split: str = "train"
 ) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
     return pipeline.RunConfig(
@@ -34,7 +35,7 @@ def make_config(
     )
 
 
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: Any) -> None:
+def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: GenerationBackend) -> None:
     """输入：假后端（从不撒谎）。输出：RunResult。
 
     预期行为：每个 case 出一条样本、零拒绝、五个判别器都记到通过；产物能过审计。
@@ -58,7 +59,7 @@ def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: Any) -> None:
     assert report["train"]["link_bad"] == 0
 
 
-def test_trace_judge_rejects_when_reverse_parse_disagrees(tmp_path: Path, fake_backend: Any) -> None:
+def test_trace_judge_rejects_when_reverse_parse_disagrees(tmp_path: Path, fake_backend: GenerationBackend) -> None:
     """输入：反解时故意说反话的假后端。输出：RunResult。
 
     预期行为：整批被拒，拒绝码是 E_JUDGE_TRACE——「文本对不上注入特征」绝不允许混进数据集。
@@ -303,7 +304,7 @@ def _attachment_spec() -> MailSpec:
     )
 
 
-def test_trace_judge_flags_smuggled_requests(fake_backend: Any) -> None:
+def test_trace_judge_flags_smuggled_requests(fake_backend: GenerationBackend) -> None:
     """夹带检测：反解出的「额外索取」里有清单之外的档位就判不通过。
 
     输入：一份只要求附件的规格 + 一个「还夹带了索取凭据」的假后端。输出：Verdict。
@@ -316,7 +317,7 @@ def test_trace_judge_flags_smuggled_requests(fake_backend: Any) -> None:
     assert "夹带了清单之外的索取" in verdict.reason
 
 
-def test_trace_judge_tolerates_the_same_request_repeated(fake_backend: Any) -> None:
+def test_trace_judge_tolerates_the_same_request_repeated(fake_backend: GenerationBackend) -> None:
     """反解把本来就该有的那一档又列一遍不算夹带——宁可少拒几条好数据。"""
     judge = judges_mod.TraceJudge(backend=fake_backend(smuggles="attachment"), locale="zh")
     assert judge.judge({"state": "x"}, _attachment_spec()).ok is True
@@ -398,7 +399,7 @@ def test_trace_judge_without_backend_is_skipped() -> None:
 
 
 def test_trace_judge_skips_endpoint_failure_instead_of_rejecting(
-    tmp_path: Path, fake_backend: Any
+    tmp_path: Path, fake_backend: GenerationBackend
 ) -> None:
     """输入：反解时端点故障（重试与降级都试过）的假后端。输出：RunResult。
 
@@ -419,7 +420,7 @@ def test_trace_judge_skips_endpoint_failure_instead_of_rejecting(
     assert all("端点故障" in row["reason"] for row in skipped)
 
 
-def test_trace_judge_reraises_when_every_provider_is_down(fake_backend: Any) -> None:
+def test_trace_judge_reraises_when_every_provider_is_down(fake_backend: GenerationBackend) -> None:
     """输入：反解时后端报「所有 provider 都挂了」。输出：异常冒泡。
 
     预期行为：整批停下是唯一的停机条件（PLAN 3.1.4），判别器不许把它吞成「跳过」——
@@ -432,7 +433,7 @@ def test_trace_judge_reraises_when_every_provider_is_down(fake_backend: Any) -> 
         judge.judge({"state": "x"}, _attachment_spec())
 
 
-def test_trace_judge_skips_when_draft_misses_fields(fake_backend: Any) -> None:
+def test_trace_judge_skips_when_draft_misses_fields(fake_backend: GenerationBackend) -> None:
     """输入：后端返回的草稿只有 `requested` 一个字段。输出：Verdict。
 
     预期行为：缺字段等于「判不了」，记成跳过并点名缺了哪些字段——绝不拿半份草稿去比对。
@@ -446,7 +447,7 @@ def test_trace_judge_skips_when_draft_misses_fields(fake_backend: Any) -> None:
     assert "pressure" in verdict.reason
 
 
-def test_trace_judge_skips_when_extra_requests_is_not_a_list(fake_backend: Any) -> None:
+def test_trace_judge_skips_when_extra_requests_is_not_a_list(fake_backend: GenerationBackend) -> None:
     """输入：草稿字段齐全，但 `extra_requests` 写成了字符串。输出：Verdict。
 
     预期行为：跳过并说清是「不是列表」——字符串会被逐字符迭代，那样夹带检测会静默失灵。
@@ -501,7 +502,7 @@ def test_ood_holds_out_values_and_id_splits_never_see_them() -> None:
             assert case.link_target not in mail_workflow.OOD_LINK_TARGETS
 
 
-def test_manifest_records_backend(tmp_path: Path, fake_backend: Any) -> None:
+def test_manifest_records_backend(tmp_path: Path, fake_backend: GenerationBackend) -> None:
     """输入：假后端。输出：manifest。
 
     预期行为：记下后端名字与 needs，绝不记 key——溯源够用，凭据不入库。
@@ -535,7 +536,7 @@ def test_render_without_backend_raises() -> None:
         raise AssertionError("没有后端时 render 必须报错")
 
 
-def _row(state: str, questions: dict[str, Any], answers: dict[str, Any]) -> dict[str, Any]:
+def _row(state: str, questions: dict[str, JsonValue], answers: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """造一条最小样本行（审计只读 state / questions / answers）。"""
     return {"id": "mail-train-0000000", "state": state, "questions": questions, "answers": answers}
 
@@ -589,11 +590,11 @@ def test_audit_passes_a_consistent_artifact(tmp_path: Path) -> None:
         "sender_identity": {"matches": "a", "forged": "b"},
         "action": {"deliver": "a", "block": "b"},
     }
-    questions: dict[str, Any] = {
+    questions: dict[str, JsonValue] = {
         name: {"type": "choice", "instructions": "x", "criteria": criteria}
         for name, criteria in choices.items()
     }
-    answers: dict[str, Any] = {
+    answers: dict[str, JsonValue] = {
         name: {"type": "choice", "choice": 0} for name in choices
     }
     for name in ("is_phishing", "is_spam"):

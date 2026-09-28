@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+
 
 from jc import jsonio, pipeline
 from jc import workflow as workflow_mod
@@ -105,7 +105,7 @@ def test_no_family_falls_back_to_a_constant_answer(tmp_path: Path) -> None:
     keys = {item["key"] for item in result.stats["balance"]}
     for key in BALANCE_KEYS:
         assert key in keys, f"均衡报告里没有 {key}"
-    seen: dict[str, set[Any]] = defaultdict(set)
+    seen: dict[str, set[object]] = defaultdict(set)
     for _, row in jsonio.iter_jsonl(result.run_dir / "train.jsonl"):
         for qid, question in row["questions"].items():
             answer = row["answers"][qid]

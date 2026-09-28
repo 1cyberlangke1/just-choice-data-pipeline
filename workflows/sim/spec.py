@@ -23,12 +23,14 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import hashlib
+import random
 from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import product
-from typing import Any, Final, Protocol
+from typing import Final, Protocol
 
 from jc.knobs import require_pool
 
@@ -123,7 +125,7 @@ LAYOUTS: Final[tuple[str, ...]] = ("l0", "l1", "l2", "l3", "l4", "l5")
 PHRASINGS: Final[tuple[int, ...]] = (0, 1)
 
 
-def _require(field: str, value: Any, pool: Sequence[Any]) -> None:
+def _require(field: str, value: object, pool: Sequence[JsonValue]) -> None:
     """输入：字段名、取值、取值域。输出：无。
 
     预期行为：认不出的键直接报错——静默落到某个默认分支会把「表改了、读法忘了改」
@@ -245,7 +247,7 @@ class SimRow:
     gain: str
     cooldown: str
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：四格（统计与调试用）。"""
         return {
             "action": self.action,
@@ -387,7 +389,7 @@ class SimCase:
             out.append("phrasing")
         return tuple(sorted(out))
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：{维度名: 取值}（三个维度全摊平）。"""
         return {"board": self.board, "layout": self.layout, "phrasing": self.phrasing}
 
@@ -468,7 +470,7 @@ def request_id_of(case: SimCase) -> str:
     return f"{REQUEST_PREFIX}{10000 + int(digest[:6], 16) % 90000}"
 
 
-def sample_spec(case: SimCase, split: str, seq: int, phrasing: int, rng: Any) -> SimSpec:
+def sample_spec(case: SimCase, split: str, seq: int, phrasing: int, rng: random.Random) -> SimSpec:
     """输入：case、切分、序号、句面、RNG。输出：真值规格。
 
     预期行为：局面、合法表与答案都由 case 决定（**不掷骰子**）——这个 workflow 的每个
@@ -497,7 +499,7 @@ def sample_spec(case: SimCase, split: str, seq: int, phrasing: int, rng: Any) ->
     )
 
 
-def spec_to_dict(spec: SimSpec) -> dict[str, Any]:
+def spec_to_dict(spec: SimSpec) -> dict[str, JsonValue]:
     """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
     return {
         "case": spec.case.describe(),

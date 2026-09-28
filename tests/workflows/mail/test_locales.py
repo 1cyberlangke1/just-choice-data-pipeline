@@ -5,8 +5,9 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any, get_args
+from typing import get_args
 
 import pytest
 
@@ -110,7 +111,7 @@ def test_trace_draft_literals_match_the_contract() -> None:
         "pressure": set(features.LURE),
     }
     for lang in LOCALES:
-        loc: dict[str, Any] = locales.load(lang)
+        loc: dict[str, JsonValue] = locales.load(lang)
         assert set(judges.TraceDraft.model_fields) == {*expected, "extra_requests"}
         for field, values in expected.items():
             assert set(get_args(judges.TraceDraft.model_fields[field].annotation)) == values

@@ -5,11 +5,12 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")
 
@@ -20,7 +21,7 @@ def available() -> list[str]:
 
 
 @lru_cache(maxsize=8)
-def load(lang: str) -> dict[str, Any]:
+def load(lang: str) -> dict[str, JsonValue]:
     """读取并缓存一个语言文件。
 
     输入：语言代码。输出：字典。预期行为：文件不存在时抛 FileNotFoundError 并列出可用语言。
@@ -37,7 +38,7 @@ def pick(seq: list[str], index: int) -> str:
     return seq[index % len(seq)]
 
 
-def label_of(loc: dict[str, Any], slot: str, style: str) -> str:
+def label_of(loc: dict[str, JsonValue], slot: str, style: str) -> str:
     """输入：语言字典、槽名、标签风格。输出：这个槽在本次渲染里用的标签文本。
 
     预期行为：`canonical` 用第一个标签，其余风格用最后一个（别名）。
@@ -50,7 +51,7 @@ def label_of(loc: dict[str, Any], slot: str, style: str) -> str:
     return labels[0] if style == "canonical" else labels[-1]
 
 
-def word_of(loc: dict[str, Any], group: str, index: int) -> str:
+def word_of(loc: dict[str, JsonValue], group: str, index: int) -> str:
     """输入：语言字典、词表名、下标。输出：词条。
 
     预期行为：下标越界直接报错——spec 存的是下标，词表短了就是数据错位，不能静默回绕。

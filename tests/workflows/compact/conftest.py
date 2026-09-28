@@ -1,0 +1,167 @@
+"""会话上下文压缩测试的公共夹具：一个**不发网络请求**的假后端。
+
+假后端按 `task.spec["tags"]` 造草稿，所以它天然「知道」注入特征：
+- 渲染任务 → 按（这一块是什么 × 有没有承载持久事实）挑一段与之相称的正文；
+- 反解任务 → 直接把注入的两维当成反解结果（也就是「模型完全答对」）。
+
+要验「判别器能抓错」时，用 `FakeBackend(trace_lies_kind=True)` / `FakeBackend(fence_body=True)`
+之类的开关故意说反话；要验「端点故障不算数据问题」时，用
+`FakeBackend(trace_raises=TransportError(...))`。
+
+夹具里那些正文**刻意不提位置、钉住与预算**：那三格归「本块位置」那一行管，
+正文里再写一遍就会跟它打架——这也是 `render.check_draft` 会拦的写法。
+"""
+
+from __future__ import annotations
+
+from typing import Final
+
+import pytest
+
+from jc.backend.types import Draft
+from jc.jsontypes import JsonValue
+from workflows.compact import features
+
+#: 每一类的底稿（`chatter` 那一格：只是闲聊 / 过渡，读完记不下可复用的东西）。
+BASE: Final[dict[str, str]] = {
+    "system": "你是一个负责整理构建日志的助手，回答要短，不要编造没见过的错误码。",
+    "user": "刚才那个构建脚本又超时了，帮我看看到底卡在哪一步。",
+    "assistant": "我看了日志，卡在依赖下载那一步，网络抖一下就重来。",
+    "tool_output": "日志尾部二十行：下载 a1 失败重试三次，下载 a2 失败重试三次，退出码 1。",
+    "note": "顺手记一下：周五下午这台机器会重启。",
+}
+
+#: 每一类承载**持久事实**时的写法：里面必须有一个明确的决定、配置值或结论。
+#: 工具输出那一格不存在——数据不是一条持久事实（见 `features.FORBIDDEN`）。
+FACTUAL: Final[dict[str, str]] = {
+    "system": "你是一个负责整理构建日志的助手；默认输出简体中文，单次回答不超过一百二十字。",
+    "user": "定一下：构建超时统一改成九百秒，以后别再问我这件事。",
+    "assistant": "已记下：构建超时阈值定为九百秒，写进 config.yaml 的 build.timeout 这一项。",
+    "note": "记一下：构建超时阈值九百秒，改在 config.yaml 的 build.timeout 这一项。",
+}
+
+
+def body_for(tags: dict[str, str]) -> str:
+    """输入：注入特征。输出：与之相称的正文。
+
+    预期行为：夹具里没有这一格时直接抛 KeyError——静默兜底会让「文本承载两维」这条
+    前提在测试里悄悄失效。
+    """
+    kind, fact = tags["kind"], tags["fact"]
+    if fact == "fact":
+        return FACTUAL[kind]
+    return BASE[kind]
+
+
+class FakeBackend:
+    """脚本化假后端：草稿由 `task.spec["tags"]` 推出，不联网。
+
+    字段（都是「故意说反话」的开关，默认全关）：
+    - `trace_lies_kind` 反解时把「这一块是什么」说成另一个取值（验 `trace` 判别器）；
+    - `trace_lies_fact` 反解时把「有没有承载持久事实」说成另一个取值（验同一判别器的第二维）；
+    - `multi_line_body` 把正文写成两行（验 `check_draft` 与 `hygiene` 判别器）；
+    - `fence_body` 把正文包进 Markdown 围栏（验 `check_draft` 与 `hygiene` 判别器）；
+    - `empty_body` 把正文写成空白（验 `check_draft` 与 `hygiene` 判别器）；
+    - `label_body` 在正文开头再写一遍「本块内容：」（验渲染期的段落名残留检查）；
+    - `where_body` 把位置词写进正文（验渲染期的「正文不许提位置」检查）；
+    - `trace_raises` 反解时直接抛异常（验端点故障被记成跳过而不是拒绝）；
+    - `trace_data` 反解时原样吐这份草稿（验缺字段 / 字段类型不对也记成跳过）。
+    """
+
+    name = "fake"
+    capabilities = None
+
+    def __init__(
+        self,
+        *,
+        trace_lies_kind: bool = False,
+        trace_lies_fact: bool = False,
+        multi_line_body: bool = False,
+        fence_body: bool = False,
+        empty_body: bool = False,
+        label_body: bool = False,
+        where_body: bool = False,
+        trace_raises: Exception | None = None,
+        trace_data: dict[str, JsonValue] | None = None,
+    ) -> None:
+        """输入：九个作弊开关。输出：假后端实例。"""
+        self.trace_lies_kind = trace_lies_kind
+        self.trace_lies_fact = trace_lies_fact
+        self.multi_line_body = multi_line_body
+        self.fence_body = fence_body
+        self.empty_body = empty_body
+        self.label_body = label_body
+        self.where_body = where_body
+        self.trace_raises = trace_raises
+        self.trace_data = trace_data
+        self.calls: list[str] = []
+
+    def generate(self, task: object) -> Draft:
+        """输入：一个任务。输出：草稿。
+
+        预期行为：按任务 id 后缀区分「渲染」与「反解」；任务里没带 tags 就报错，
+        免得测试因为夹具写错而静默通过。
+        """
+        self.calls.append(task.task_id)
+        tags = task.spec.get("tags")
+        assert tags, f"假后端要求任务带上 tags：{task.task_id}"
+        if task.task_id.endswith("-trace"):
+            if self.trace_raises is not None:
+                raise self.trace_raises
+            if self.trace_data is not None:
+                return self._draft(dict(self.trace_data))
+            return self._draft(self._trace(tags))
+        return self._draft(self._render(tags))
+
+    def generate_many(self, tasks: list[object]) -> list[Draft]:
+        """输入：任务列表。输出：与入参顺序一致的草稿列表。"""
+        return [self.generate(task) for task in tasks]
+
+    def _render(self, tags: dict[str, str]) -> dict[str, JsonValue]:
+        """输入：注入特征。输出：`CompactDraft` 形态的字典。
+
+        预期行为：正文必须与「这一块是什么」和「有没有承载持久事实」都对得上
+        （`trace` 判别器就靠这个得出答案）；默认写法单行、无围栏、不提位置。
+        """
+        body = body_for(tags)
+        if self.where_body:
+            # 只收高精度禁用语，所以这里必须写**清单里那条**说法（`钉住`），
+            # 写「就在这一轮里」这种不在清单里的说法，渲染期本来就不会拦。
+            body = f"{body}（这一块已经被钉住了）"
+        if self.label_body:
+            body = f"本块内容：{body}"
+        if self.fence_body:
+            body = f"```{body}```"
+        if self.multi_line_body:
+            body = f"{body}\n（后面还有一句）"
+        if self.empty_body:
+            body = "   "
+        return {"content": body}
+
+    def _trace(self, tags: dict[str, str]) -> dict[str, JsonValue]:
+        """输入：注入特征。输出：`TraceDraft` 形态的字典（默认完全答对）。"""
+        out: dict[str, JsonValue] = {"kind": tags["kind"], "fact": tags["fact"]}
+        if self.trace_lies_kind:
+            out["kind"] = next(value for value in features.KINDS if value != tags["kind"])
+        if self.trace_lies_fact:
+            out["fact"] = next(value for value in features.FACTS if value != tags["fact"])
+        return out
+
+    @staticmethod
+    def _draft(data: dict[str, JsonValue]) -> Draft:
+        """输入：草稿数据。输出：`Draft`。预期行为：填满必填的记账字段。"""
+        return Draft(
+            data=data,
+            raw_text="<fake>",
+            backend="fake",
+            provider="fake",
+            model="fake-model",
+            mode="json_schema",
+            usage={},
+        )
+
+
+@pytest.fixture
+def fake_backend() -> type[FakeBackend]:
+    """工厂夹具：`fake_backend(trace_lies_kind=True)` 造一个假后端。"""
+    return FakeBackend

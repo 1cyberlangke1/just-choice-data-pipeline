@@ -17,13 +17,15 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import hashlib
 import random
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
+from jc.backend.types import GenerationBackend
 from jc.judge import Judge
 from jc.workflow import LabeledQuestion, SplitSpec, register
 
@@ -139,7 +141,7 @@ class FunctionsWorkflow:
         """输入：一个 case。输出：一行可读描述（报告与文件名用）。"""
         return case.describe()
 
-    def stats_dimensions(self, case: CallCase) -> dict[str, Any]:
+    def stats_dimensions(self, case: CallCase) -> dict[str, JsonValue]:
         """输入：一个 case。输出：{维度名: 取值}（五个维度全摊平）。"""
         return case.as_dict()
 
@@ -177,7 +179,7 @@ class FunctionsWorkflow:
         """输入：规格、RNG、语言。输出：题目 + 金答案（纯代码推导，不碰模型）。"""
         return questions.build(spec.plan, locales.load(locale), spec.plan.phrasing, rng)
 
-    def reparse(self, state: Any, *, case: Any = None) -> parse.CallPlan:
+    def reparse(self, state: object, *, case: object = None) -> parse.CallPlan:
         """输入：渲染后的 state。输出：反解结果。
 
         预期行为：`Workflow.reparse` 没有语言参数，所以用 `locales.merged()` 的合并表
@@ -202,7 +204,7 @@ class FunctionsWorkflow:
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, Any], list[str]]:
+    ) -> tuple[dict[str, JsonValue], list[str]]:
         """输入：run 目录、切分、语言。输出：(各切分计数, 缺失项列表)。"""
         from . import audit as audit_mod  # 延迟导入：避免与 audit 互相 import 成环
 
@@ -212,7 +214,7 @@ class FunctionsWorkflow:
         """输入：无。输出：支持的语言列表。"""
         return locales.available()
 
-    def bind_backend(self, backend: Any) -> None:
+    def bind_backend(self, backend: GenerationBackend) -> None:
         """空操作：函数调用是纯构造式（`needs` 为空），管线不会给后端，也不该给。
 
         输入：生成后端（实际不会收到）。输出：无。

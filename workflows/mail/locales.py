@@ -6,11 +6,12 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")
 
@@ -21,7 +22,7 @@ def available() -> list[str]:
 
 
 @lru_cache(maxsize=8)
-def load(lang: str) -> dict[str, Any]:
+def load(lang: str) -> dict[str, JsonValue]:
     """读取并缓存一个语言文件。
 
     输入：语言代码。输出：字典。
@@ -39,7 +40,7 @@ def pick(seq: list[str], index: int) -> str:
     return seq[index % len(seq)]
 
 
-def feature_line(loc: dict[str, Any], dim: str, value: str) -> str:
+def feature_line(loc: dict[str, JsonValue], dim: str, value: str) -> str:
     """把一条注入特征渲染成提示词里的一行。
 
     输入：语言字典、维度名、取值。

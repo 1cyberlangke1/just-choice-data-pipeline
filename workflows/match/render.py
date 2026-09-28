@@ -9,15 +9,16 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from collections.abc import Sequence
-from typing import Any
+
 
 from . import spec as spec_mod
 from .spec import MatchCase, MatchSpec
 
 
-def cell(field: str, value: Any, spelling: int, loc: dict[str, Any]) -> str:
+def cell(field: str, value: object, spelling: int, loc: dict[str, JsonValue]) -> str:
     """输入：栏名、归一化后的值、写法下标、语言字典。输出：这一格写出来的原文。
 
     预期行为：名称与品牌用商品键查表；规格 / 度数 / 包装的键是数值或包装键，
@@ -28,7 +29,7 @@ def cell(field: str, value: Any, spelling: int, loc: dict[str, Any]) -> str:
     return loc[field][str(value)][spelling]
 
 
-def cells_of(case: MatchCase, pool: Sequence[str]) -> tuple[tuple[Any, ...], tuple[Any, ...]]:
+def cells_of(case: MatchCase, pool: Sequence[str]) -> tuple[tuple[object, ...], tuple[object, ...]]:
     """输入：case、`diff` 取值池。输出：(记录 A 的每栏值, 记录 B 的每栏值)，顺序同 `spec.FIELDS`。
 
     预期行为：`diff` 那一栏给 B 换成**池子里另一个商品**在这一栏上的值；换过去的值得确实不同，
@@ -54,7 +55,7 @@ def spelling_of(case: MatchCase, side: int, kind: str) -> int:
 
 
 def record_lines(
-    case: MatchCase, side: int, loc: dict[str, Any], pool: Sequence[str]
+    case: MatchCase, side: int, loc: dict[str, JsonValue], pool: Sequence[str]
 ) -> tuple[str, ...]:
     """输入：case、哪条记录、语言字典、`diff` 取值池。输出：这一条记录的行（不含侧标题）。
 
@@ -75,7 +76,7 @@ def record_lines(
     return tuple(lines)
 
 
-def build(spec: MatchSpec, loc: dict[str, Any]) -> str:
+def build(spec: MatchSpec, loc: dict[str, JsonValue]) -> str:
     """输入：规格、语言字典。输出：`state` 全文。
 
     预期行为：抬头一行（标签 + 空格 + 请求号），随后两条记录各一块；每条记录的行缩进两格

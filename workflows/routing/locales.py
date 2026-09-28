@@ -1,6 +1,7 @@
-"""工单分诊 workflow 的多语言文案。
+"""工单分诊的多语言文案。
 
-输入：语言代码（zh / en）。输出：解析后的 TOML 字典（标签 + 词表 + 正文模板 + 题面 + 选项）。
+输入：语言代码（zh / en）。
+输出：解析后的 TOML 字典（提示词 + 题族文案 + 三张表 + 反解提示词）。
 预期行为：结果带缓存；缺语言直接报错并列出可用语言。
 """
 
@@ -9,9 +10,14 @@ from __future__ import annotations
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
+
+from jc.jsontypes import JsonValue
 
 LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")
+
+#: 格子之间的分隔符。选竖线是因为它在中英里写法相同，反解不用跨语言试。
+CELL_SEP: Final[str] = "|"
 
 
 def available() -> list[str]:
@@ -20,10 +26,11 @@ def available() -> list[str]:
 
 
 @lru_cache(maxsize=8)
-def load(lang: str) -> dict[str, Any]:
+def load(lang: str) -> dict[str, JsonValue]:
     """读取并缓存一个语言文件。
 
-    输入：语言代码。输出：字典。预期行为：文件不存在时抛 FileNotFoundError 并列出可用语言。
+    输入：语言代码。输出：字典。
+    预期行为：文件不存在时抛 FileNotFoundError 并列出可用语言。
     """
     path = LOCALE_DIR / f"{lang}.toml"
     if not path.exists():
@@ -33,9 +40,33 @@ def load(lang: str) -> dict[str, Any]:
 
 
 def pick(seq: list[str], index: int) -> str:
-    """输入：候选列表、编号。输出：第 index 个（越界回绕）。
-
-    预期行为：问法池比题族数量少时也照常工作——回绕而不是报错（题面措辞不是判据）。
-    """
+    """输入：候选列表、编号。输出：第 index 个（越界回绕）。"""
     return seq[index % len(seq)]
 
+
+def header(loc: dict[str, JsonValue], title: str) -> str:
+    """输入：语言字典、段落标题。输出：形如「【工单正文】」的段落头。"""
+    return str(loc["meta"]["header"]).format(title=title)
+
+
+def row_line(loc: dict[str, JsonValue], cells: tuple[str, ...]) -> str:
+    """输入：语言字典、一行格子。输出：形如 `- outage | 故障 | ...` 的一行。
+
+    预期行为：渲染与解析共用同一个前缀与分隔符，改一处两处都变——不然「写出来的行
+    解不回来」这种错会两边各写一份才暴露。
+    """
+    return f"{loc['meta']['row_prefix']}{f' {CELL_SEP} '.join(cells)}"
+
+
+def feature_line(loc: dict[str, JsonValue], dim: str, value: str) -> str:
+    """把一条注入特征渲染成提示词里的一行。
+
+    输入：语言字典、维度名、取值。
+    输出：形如「- 这条工单是什么问题：故障（写成「这条线现在完全用不了」那种话）」的一行。
+    预期行为：短语缺失直接抛 KeyError——静默给空字符串会让模型自由发挥，
+    那就等于标签不再由特征决定。
+    """
+    spec = loc["feature"][dim][value]
+    return str(loc["prompt"]["bullet"]).format(
+        dim=loc["dims"][dim], brief=spec["brief"], hint=spec["hint"]
+    )

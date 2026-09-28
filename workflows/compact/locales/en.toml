@@ -1,0 +1,187 @@
+lang = "en"
+language_name = "English"
+
+# Phrases banned from the block body: the turn position, the pin flag and the remaining budget all
+# belong to the "block position" row, and repeating them here makes the two rows fight. Kept to
+# high-precision phrases only — a false positive rejects an otherwise usable sample at render time.
+# `pinned` / `unpinned` are the row's own value tokens, so echoing them leaks the answer; plain
+# `current` / `recent` / `old` / `tight` / `critical` are far too common in ordinary text to ban.
+banned_intent_phrases = [
+  "content block",
+  "block position",
+  "rule table",
+  "turn position",
+  "remaining budget",
+  "budget left",
+  "pinned",
+  "unpinned",
+]
+
+[meta]
+content_label = "Block content"
+where_label = "Block position"
+rules_label = "Rules"
+header = "[{title}]"
+row_prefix = "- "
+paren = " ({text})"
+colon = ": "
+where_columns = "turn position | pin | remaining budget"
+rules_columns = "rule | condition | verdict"
+
+[rules.pinned_keep]
+condition = "this block is pinned"
+verdict = "keep"
+
+[rules.system_keep]
+condition = "this block is the system prompt"
+verdict = "keep"
+
+[rules.fact_keep]
+condition = "this block carries a durable fact"
+verdict = "keep"
+
+[rules.budget_tool]
+condition = "the budget is not ample, and this block is a tool output"
+verdict = "summarize"
+
+[rules.critical_old]
+condition = "the budget is almost full, and this block is from long ago"
+verdict = "drop"
+
+[rules.tight_old]
+condition = "the budget is tight, and this block is from long ago"
+verdict = "summarize"
+
+[rules.old_truncate]
+condition = "this block is from long ago"
+verdict = "truncate"
+
+[rules.none]
+condition = "none of the above"
+verdict = "keep"
+
+[dims]
+kind = "what this block is"
+fact = "whether it carries a durable fact"
+
+[prompt]
+intro = "Below is a **feature list for one block of conversation context**. Write the body of that block."
+bullet = "- {dim}: {brief} ({hint})"
+rules = [
+  "The body must be **single line** (one line or one paragraph, but no line breaks); no Markdown fences, no comments",
+  "Never state where this block sits in the conversation, whether it is pinned, or how much budget is left — those three belong to the \"block position\" row, and repeating them makes the two rows fight",
+  "Concretely: do not write \"this turn / a few turns ago / long ago / pinned / remaining budget\", and do not use the words pinned or unpinned",
+  "Write the way a real conversation reads: \"bump the timeout in config.yaml to 30 seconds\" is fine, a field name like \"type: user\" is not",
+  "What this block is must be **unmistakable**: system prompt / a user turn / an assistant turn / a tool output / a side note — exactly one",
+  "Whether it carries a durable fact must be **unmistakable**: a decision, config value or conclusion worth remembering long-term, or just small talk / a transition / a one-off process record (a log, an error, a retry, a scan result)",
+  "Do not name real companies, products, or code repositories; use invented names",
+  "Write everything in {language}; keep file names and identifiers in ASCII",
+]
+
+[feature.kind.system]
+brief = "this block is the system prompt"
+hint = "write a passage that sets the role and the rules"
+
+[feature.kind.user]
+brief = "this block is a user turn"
+hint = "write it the way a user types it in"
+
+[feature.kind.assistant]
+brief = "this block is an assistant turn"
+hint = "write it the way the assistant answers"
+
+[feature.kind.tool_output]
+brief = "this block is a tool output"
+hint = "write a data- or log-flavoured passage (still prose, not real JSON structure)"
+
+[feature.kind.note]
+brief = "this block is a side note"
+hint = "write it like a small line jotted down on the side"
+
+[feature.fact.fact]
+brief = "this block carries a durable fact"
+hint = "it must contain a decision, config value or conclusion **worth remembering long-term** (not a one-off process record)"
+
+[feature.fact.chatter]
+brief = "this block carries no durable fact"
+hint = "just small talk, pleasantries or a transition, or a one-off process record (a log, an error, a retry, a scan result); nothing worth remembering comes out of it"
+
+[verify]
+intro = "Below is one block of conversation context. Infer its features using the given options."
+state_header = "[Full context]"
+questions_header = "[Questions]"
+option_line = "   - {name}: {desc}"
+
+[fam.kind]
+q = [
+  "What is this block?",
+  "Which kind of block is this?",
+  "Pick one for what this block is.",
+]
+[fam.kind.criteria]
+system = "the system prompt"
+user = "a user turn"
+assistant = "an assistant turn"
+tool_output = "a tool output"
+note = "a side note"
+
+[fam.fact]
+q = [
+  "Does this block carry a durable fact?",
+  "Does this passage hold a decision, config value or conclusion worth keeping?",
+  "Pick one for whether it carries a durable fact.",
+]
+[fam.fact.criteria]
+fact = "yes: it holds a decision / config value / conclusion worth remembering long-term"
+chatter = "no: just small talk, a transition, or a one-off process record (a log, an error, a retry, a scan result)"
+
+[fam.rule]
+q = [
+  "Which rule does this block hit?",
+  "Reading the rules top to bottom, which one hits first?",
+  "Pick the rule this block hits.",
+]
+[fam.rule.criteria]
+pinned_keep = "this block is pinned"
+system_keep = "this block is the system prompt"
+fact_keep = "this block carries a durable fact"
+budget_tool = "the budget is not ample, and this block is a tool output"
+critical_old = "the budget is almost full, and this block is from long ago"
+tight_old = "the budget is tight, and this block is from long ago"
+old_truncate = "this block is from long ago"
+none = "none of the above"
+
+[fam.disposition]
+q = [
+  "What should be done with this block?",
+  "Should this block be kept, truncated, summarized, or dropped?",
+  "Pick one for the disposition.",
+]
+[fam.disposition.criteria]
+keep = "keep it as is"
+truncate = "truncate it, keeping one stretch"
+summarize = "compress it into a summary"
+drop = "drop the whole block"
+
+[fam.pin_overrode]
+q = [
+  "Did the pin change what would otherwise happen?",
+  "Without the pin, would this block have been downgraded?",
+  "Pick one for whether the pin made a difference.",
+]
+[fam.pin_overrode.criteria]
+true = "yes: without the pin it would have been downgraded"
+false = "no: it would have been kept anyway, or it was not pinned"
+
+[fam.priority]
+q = [
+  "Which priority level does this block deserve?",
+  "Score this block's priority.",
+  "Where does this block rank?",
+]
+levels = [
+  "level 0: dropped first",
+  "level 1: low",
+  "level 2: medium",
+  "level 3: kept first",
+]

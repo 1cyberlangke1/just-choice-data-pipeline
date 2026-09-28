@@ -1,25 +1,21 @@
-"""检索 workflow：**构造式**（检索页与全部判断都由表格算出来，`needs` 为空、零 token）。
+"""检索结果判读 workflow：**特征注入式**（规则表与来源行由代码写，查询与结果条目由后端写）。
 
-它在 PLAN 3.2 的分类里属于「抽取式」的近亲——素材（一页检索结果）由构造器造好，
-答案是从素材**按规则推**出来的，所以判别器能把文本反解回来独立重算。
+流程与工具调用门控（`workflows/toolgate`）同构（`plan → sample → render → ask`），区别在
+「判什么」：
 
-覆盖的决策形状（官方 use-case map）：
-- **Ranking / Routing**：`best_result`（哪条最该先看）、`next_action`（回答 / 再检 / 换源）；
-- **Scoring**：`relevance`（相关度 0~3 级）、`covered_points`（覆盖了几个要点）；
-- **Detection**：`answerable` / `conflict` / `same_source` / `probe_fresh`；
-- **Verification**：题面点名的编号由判别器**从题面自己读**，不回头问生成器。
+- **规则表与「来源与时效」那一行是结构化事实**，由代码渲染进 state——让模型去写只会写歪；
+- 后端只写**一句查询 + 一个结果条目的标题与摘要**（真实结果页的措辞是长尾的，模板拼的
+  脱离现实）；
+- 标签由**注入特征**经纯函数算出，模型碰不到。六个题族里三个由那三段文本承载
+  （查询意图 / 是否切题 / 是不是垃圾），交给 `judges.TraceJudge` 反解校验——答不回来就
+  说明文本与标签脱节了。
 
-切分按 PLAN 3.3：
-- train / val / test_iid：**素材留出**——按素材（除 `probe` 外的 7 维）的哈希分桶，
-  同一页整组不跨切分。`probe` 只改题面点名的编号、不改页面，按整个组合分桶会让 77% 的页
-  横跨两档（实测 1363/1764，见 PLAN 10.48）；
-- test_ood：**值留出**——`billing` / `webhook` 两个主题、`empty` 一档最佳结果角色、
-  没有同权威竞争者的那条配方、`3-4@5` 一种版式、`both` 一种两条关系、第三种问法，
-  在训练侧一个都不出现。
+与记录匹配（`workflows/match`）的分工：那个 workflow 判**两条记录是不是同一条**，两侧
+文本都由代码渲染；这里判**一条搜索结果该不该信**，文本是模型写的、来源元数据是代码写的。
 
-**关于 `best_result` 的选项**：它**不打乱**——选项名是 `result_<编号>`，有自然顺序，
-而「答案落在第几个选项」正是被点名的位置本身（由 case 决定，分布均匀），
-打乱只会让题面难读（范式 §5.8 的例外：有自然顺序的集合不打乱）。`next_action` 照打乱。
+切分按 PLAN 3.3 的泛化留出：
+- train / val / test_iid：**组合留出**——按 tag 组合的哈希分桶，同组合不跨切分；
+- test_ood：**值留出**——「半年内」这一档时效，训练侧一次都不出现。
 
 导入本模块即自注册（`jc.workflow.load("search")` 可用）。
 """
@@ -28,285 +24,263 @@ from __future__ import annotations
 
 import hashlib
 import random
-from collections import Counter
-from dataclasses import replace
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
-from jc import jsonio
+from jc.backend.types import GenerationBackend
 from jc.judge import Judge
-from jc.workflow import LabeledQuestion, SplitSpec, family_of, register
+from jc.jsontypes import JsonValue
+from jc.knobs import require_pool
+from jc.workflow import LabeledQuestion, SplitSpec, register
 
-from . import judges as judges_mod
-from . import locales, parse, questions, render
-from . import spec as spec_mod
-from .spec import SearchCase, SearchConfig, SearchSpec
+from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
+from .features import TagSet
+from .spec import SearchSpec
 
 WORKFLOW_NAME = "search"
 WORKFLOW_VERSION = "0.1.0"
 
-#: 同分布切分的哈希分桶边界（素材留出：桶按**素材**算，同一页永远同切分）。
-SPLIT_SEED: Final[int] = 20260926
+# 只在 test_ood 出现的取值（值留出）。
+#
+# 为什么是 `freshness=recent`：它是唯一一个留出后**不杀任何档**的取值。都拿枚举逐档
+# 验过（见 `tests/workflows/search/test_pipeline.py` 的不变量测试）：
+# - 留出 `authority=unknown` → 可信度 0 档（只有 unknown × stale 到得了）与
+#   `unverified_source` 那条规则一起消失；
+# - 留出 `authority=community` → `community_source` 那条规则消失；
+# - 留出 `spam=spam` → `spam_result` 那条规则与「可信度 0 档」的垃圾那条路一起消失；
+# - 留出 `topicality=off_topic` → `off_topic` 那条规则消失；
+# - 留出 `query_kind=navigational` → `navigational_non_official` 那条规则消失；
+# - 留出 `freshness=fresh` → 可信度 3 档消失；
+# - `freshness=recent` 与 `fresh` 在**每一张表里都同档**（`BASE_TRUST` 里 official 的
+#   fresh 与 recent 都是 3、community 都是 2、unknown 都是 1；规则表里两者都不出现），
+#   所以留出它最干净。
+OOD_FRESHNESSES: Final[frozenset[str]] = frozenset({"recent"})
+
+# 同分布切分的哈希分桶边界（组合留出：桶按 tag 组合算，同组合永远同切分）。
+SPLIT_SEED: Final[int] = 20260928
 SPLIT_BUCKETS: Final[dict[str, tuple[int, int]]] = {
     "train": (0, 60),
     "val": (60, 80),
     "test_iid": (80, 100),
 }
 
-#: 训练侧取值：各维度只留 spec 里标了「见过」的那几档。
-#: 排序是为了顺序稳定（frozenset 的迭代顺序随进程变化，不能直接拿来枚举）。
-ID_CONFIG: Final[SearchConfig] = SearchConfig(
-    split="train",
-    topics=tuple(sorted(spec_mod.SEEN_TOPICS)),
-    best_flavors=tuple(sorted(spec_mod.SEEN_BEST_FLAVORS)),
-    mixes=tuple(spec_mod.MIX_BY_KEY[key] for key in sorted(spec_mod.SEEN_MIXES)),
-    layouts=tuple(spec_mod.LAYOUT_BY_KEY[key] for key in sorted(spec_mod.SEEN_LAYOUTS)),
-    pair_kinds=tuple(sorted(spec_mod.SEEN_PAIR_KINDS)),
-    query_styles=tuple(sorted(spec_mod.SEEN_QUERY_STYLES)),
-)
-#: 留出档：取值表全开，靠 `ood_only` 只留「至少含一个没见过的取值」的 case。
-OOD_CONFIG: Final[SearchConfig] = SearchConfig(split="test_ood", ood_only=True)
-
 DIMENSION_TITLES: Final[dict[str, str]] = {
-    "topic": "检索主题",
-    "best_flavor": "最相关那条的角色",
-    "mix": "干扰项配方",
-    "pair": "题面点名的那两条",
-    "best_at": "最相关那条的位置",
-    "pair_kind": "被点名两条的关系",
-    "probe": "题面点名的单条",
-    "query_style": "问法",
+    "query_kind": "查询意图",
+    "topicality": "是否切题",
+    "spam": "内容性质",
+    "authority": "来源类型",
+    "freshness": "时效",
 }
 
 
-def bucket_of(material: str, seed: int = SPLIT_SEED) -> int:
-    """输入：素材指纹（`spec.material_of`）、种子。输出：0~99 的桶号。
+@dataclass(frozen=True)
+class SearchConfig:
+    """一个切分的采样参数。
 
-    预期行为：同一素材必得同一桶，不同素材近似均匀；不用内置 `hash()`
-    （它对字符串每进程随机化），否则切分会随进程漂移。
+    字段：
+    - `split` 切分名（决定 case 怎么分桶）；
+    - `cover_limit` 全枚举上限——同分布空间 3×2×2×3×2 = 72 组、剔除禁用对后 64 组，
+      128 让枚举器稳稳走**全枚举**（成对覆盖在这里只会白扔组合）；不带维度限制的全空间
+      108 组 < 128，也走全枚举（`tests/workflows/search/test_features.py` 用它验覆盖器）；
+    - `case_limit` >0 时每个切分只取前 N 个组合（小规模试跑用，**会牺牲成对覆盖**）；
+    - `phrasing_pool` 问法编号池。
     """
-    return int(hashlib.sha256(f"{seed}|{material}".encode("utf-8")).hexdigest()[:8], 16) % 100
+
+    split: str = "train"
+    cover_limit: int = 128
+    case_limit: int = 0
+    phrasing_pool: tuple[int, ...] = (0, 1, 2)
+
+    def __post_init__(self) -> None:
+        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。"""
+        require_pool("phrasing_pool", self.phrasing_pool)
+        if self.case_limit < 0:
+            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
 
 
-def _slice(cases: list[SearchCase], split: str) -> list[SearchCase]:
-    """输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
+def _restricted(**overrides: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
+    dims = dict(features.DIMS)
+    dims.update(overrides)
+    return dims
 
-    预期行为：**先按素材分组，再按位置切**——同一页（`material_of` 相同）整组落在同一档，
-    否则同分布侧的页会漏进验证 / OOD 侧。切片用**位置**而不是桶号过滤：只按桶号过滤时
-    哈希方差会让 val 只剩个位数。
+
+def id_dims() -> dict[str, tuple[str, ...]]:
+    """输入：无。输出：剔除 OOD 取值后的维度表（同分布切分用）。"""
+    return _restricted(
+        freshness=tuple(v for v in features.FRESHNESSES if v not in OOD_FRESHNESSES)
+    )
+
+
+def ood_dims() -> list[dict[str, tuple[str, ...]]]:
+    """输入：无。输出：一组只含 OOD 取值的维度表（时效留出）。
+
+    预期行为：返回列表而不是单个表，是为了与其它 workflow 的形状一致（将来加第二个留出
+    维度时只改这里，`cases_for` 会自动并集去重）。
     """
-    groups: dict[str, list[SearchCase]] = {}
-    for case in cases:
-        groups.setdefault(spec_mod.material_of(case), []).append(case)
-    ordered = sorted(groups, key=lambda material: (bucket_of(material), material))
+    return [_restricted(freshness=tuple(sorted(OOD_FRESHNESSES)))]
+
+
+def bucket_of(case: TagSet, seed: int = SPLIT_SEED) -> int:
+    """输入：tag 组合、种子。输出：0~99 的桶号。
+
+    预期行为：同一组合必得同一桶，不同组合近似均匀——切分单位是**组合**，不是样本。
+    """
+    payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
+    return int(hashlib.sha256(f"{seed}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100
+
+
+def _slice(cases: list[TagSet], split: str) -> list[TagSet]:
+    """按桶号排序后按比例切片。
+
+    输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
+    预期行为：先按 (桶号, 组合) 排序再切片，比例才是**精确**的。
+    """
+    ordered = sorted(cases, key=lambda case: (bucket_of(case), tuple(case.as_dict().items())))
     low, high = SPLIT_BUCKETS[split]
     total = len(ordered)
-    return [
-        case
-        for material in ordered[low * total // 100 : high * total // 100]
-        for case in groups[material]
-    ]
+    return ordered[low * total // 100 : high * total // 100]
 
 
-def cases_for(config: SearchConfig) -> list[SearchCase]:
-    """输入：采样参数。输出：该切分的 case 列表（顺序稳定）。
+def cases_for(config: SearchConfig) -> list[TagSet]:
+    """输入：采样参数。输出：该切分的 tag 组合列表（顺序稳定）。
 
-    预期行为：`test_ood` 直接收 `build_cases` 按 `ood_only` 筛出来的组合；
-    其余切分按素材的哈希桶分组后切片，同一页不跨切分。
+    预期行为：`test_ood` 收值留出的组合（并集去重）；其余切分先剔除留出取值，再按哈希桶分。
     """
-    cases = spec_mod.build_cases(config)
     if config.split == "test_ood":
-        return cases
-    return _slice(cases, config.split)
+        seen: dict[tuple[tuple[str, str], ...], TagSet] = {}
+        for dims in ood_dims():
+            for case in features.build_cases(config.cover_limit, dims=dims):
+                seen.setdefault(tuple(case.as_dict().items()), case)
+        cases = list(seen.values())
+    else:
+        cases = _slice(features.build_cases(config.cover_limit, dims=id_dims()), config.split)
+    return cases[: config.case_limit] if config.case_limit else cases
 
 
-@register(WORKFLOW_NAME)
 class SearchWorkflow:
-    """检索：声明、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
+    """检索结果判读：查询与结果、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
     name = WORKFLOW_NAME
     version = WORKFLOW_VERSION
     kinds = frozenset({"choice", "noul", "score"})
-    needs: frozenset[str] = frozenset()  # 构造式：检索页与答案都由表格算出来，不需要后端
-    judges: tuple[str, ...] = ("roundtrip", "label")
+    needs = frozenset({"text"})  # 查询与结果条目由后端写：本 workflow 不是纯构造式
+    judges: tuple[str, ...] = ("hygiene", "frame", "trace")
+
+    def __init__(self) -> None:
+        """输入：无。输出：实例。预期行为：后端要等 `bind_backend` 才注入。"""
+        self.backend: GenerationBackend | None = None
+
+    def bind_backend(self, backend: GenerationBackend) -> None:
+        """输入：生成后端。输出：无。预期行为：存下后端，`render` 与 `trace` 判别器要用。"""
+        self.backend = backend
 
     def split_names(self) -> tuple[str, ...]:
         """输入：无。输出：支持的切分名。"""
-        return tuple(SPLIT_BUCKETS) + ("test_ood",)
+        return ("train", "val", "test_iid", "test_ood")
 
     def config_for(self, split: str) -> SearchConfig:
-        """输入：切分名。输出：该切分的采样参数。
+        """输入：切分名。输出：该切分的采样参数。预期行为：未知切分直接报错。"""
+        if split not in self.split_names():
+            raise KeyError(f"未知切分 {split!r}（可用：{', '.join(self.split_names())}）")
+        return SearchConfig(split=split)
 
-        预期行为：`test_ood` 用全取值表 + `ood_only`；其余切分用训练侧取值表，
-        **并且把 `split` 换成调用方要的那一档**——`ID_CONFIG` 是个单例，直接返回它会让
-        train/val/test_iid 三次都按同一档切片（切出来三份一模一样的数据，shell 上实测踩过）。
-        """
-        if split == "test_ood":
-            return OOD_CONFIG
-        if split in SPLIT_BUCKETS:
-            return replace(ID_CONFIG, split=split)
-        raise KeyError(f"未知切分：{split!r}（可用：{self.split_names()}）")
-
-    def build_cases(self, config: SearchConfig) -> list[SearchCase]:
-        """输入：采样参数。输出：case 矩阵（顺序稳定）。"""
+    def build_cases(self, config: SearchConfig) -> list[TagSet]:
+        """输入：采样参数。输出：tag 组合列表。"""
         return cases_for(config)
 
-    def case_label(self, case: SearchCase) -> str:
-        """输入：一个 case。输出：一行可读描述（报告与文件名用）。"""
-        return case.describe()
+    def case_label(self, case: TagSet) -> str:
+        """输入：一个 case。输出：一行可读描述。"""
+        return " ".join(f"{key}={value}" for key, value in case.as_dict().items())
 
-    def stats_dimensions(self, case: SearchCase) -> dict[str, Any]:
-        """输入：一个 case。输出：{维度名: 取值}（8 个维度全摊平）。"""
-        return case.as_dict()
+    def stats_dimensions(self, case: TagSet) -> dict[str, JsonValue]:
+        """输入：一个 case。输出：统计维度（一维一栏）。"""
+        return {
+            "query_kind": case.query_kind,
+            "topicality": case.topicality,
+            "spam": case.spam,
+            "authority": case.authority,
+            "freshness": case.freshness,
+        }
 
     def dimension_titles(self) -> dict[str, str]:
         """输入：无。输出：{维度名: 中文标题}。"""
         return dict(DIMENSION_TITLES)
 
     def plan_sample(
-        self, rng: random.Random, config: SearchConfig, case: SearchCase, seq: int
+        self, rng: random.Random, config: SearchConfig, case: TagSet, seq: int
     ) -> SplitSpec:
-        """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。
-
-        预期行为：问法在这里抽（同一 case 的多条样本会用不同问法）；
-        case 与序号一起放进 params，`sample` 阶段不再做任何随机决策。
-        """
+        """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。"""
         return SplitSpec(
             name=config.split,
-            params={"case": case, "phrasing": rng.choice(config.phrasings), "seq": seq},
+            params={
+                "tags": case,
+                "phrasing": rng.choice(config.phrasing_pool),
+                "seq": seq,
+            },
         )
 
     def sample(self, rng: random.Random, split: SplitSpec) -> SearchSpec:
-        """输入：独立 RNG、生成计划。输出：真值规格（整页结果与日期都在这里定死）。"""
-        return spec_mod.sample_spec(
-            rng, split.params["case"], split.name, split.params["seq"], split.params["phrasing"]
+        """输入：独立 RNG、生成计划。输出：真值规格。"""
+        return SearchSpec(
+            tags=split.params["tags"],
+            phrasing=split.params["phrasing"],
+            split=split.name,
+            seq=split.params["seq"],
         )
 
     def render(self, spec: SearchSpec, rng: random.Random, locale: str) -> str:
-        """输入：规格、RNG、语言。输出：契约允许的 state（纯字符串）。
+        """输入：规格、RNG、语言。输出：契约允许的 state（字符串）。
 
-        预期行为：**纯函数**，不用 RNG、不碰后端——同一份 spec + 同一份语言文件
-        必得同一段文本，所以「两次生成逐字节一致」这条能直接查。
+        预期行为：向后端要一句查询与一个结果条目，再与代码渲染的规则表 / 来源行拼起来；
+        后端没注入就报错——`needs` 非空时管线一定会注入，这里没有后端说明接线错了，
+        绝不能悄悄降级成模板（那会让「文本由模型写」这个前提失效）。
         """
-        return render.build(spec, locales.load(locale))
+        del rng
+        if self.backend is None:
+            raise RuntimeError("search workflow 需要生成后端，但还没被 bind_backend 注入")
+        loc = locales.load(locale)
+        draft = self.backend.generate(render.build_task(spec.tags, loc, spec.render_task_id))
+        render.check_draft(draft.data, loc)
+        return render.to_state(draft.data, spec.tags, loc)
 
-    def ask(
-        self, spec: SearchSpec, rng: random.Random, locale: str
-    ) -> list[LabeledQuestion]:
+    def ask(self, spec: SearchSpec, rng: random.Random, locale: str) -> list[LabeledQuestion]:
         """输入：规格、RNG、语言。输出：题目 + 金答案（纯代码推导，不碰模型）。"""
-        return questions.build(spec, locales.load(locale), spec.phrasing, rng)
+        del rng
+        return questions.build(spec.tags, locales.load(locale), spec.phrasing)
 
-    def reparse(self, state: Any, *, case: Any = None) -> parse.ParsedPage:
-        """输入：渲染后的 state。输出：反解结果。
-
-        预期行为：`Workflow.reparse` 没有语言参数，所以用**合并标签表**做语言无关的
-        结构反解（各语言的标签互不重叠，由 `tests/workflows/search/test_locales.py` 锁住）。
-        「原文 → 键」的翻译留给判别器，它手上有语言文件。
-        """
-        return parse.parse_page(state, parse.merged_labels(), parse.merged_seps())
+    def reparse(self, state: object, *, case: object = None) -> render.ParsedFrame:
+        """输入：渲染后的 state。输出：纯代码能反解的部分（三段文本 / 来源行 / 规则表）。"""
+        del case
+        return render.parse_state(state)
 
     def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
         """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
         out: list[Judge] = []
         for name in names:
-            if name == "roundtrip":
-                out.append(judges_mod.RoundtripJudge(locale=locale))
-            elif name == "label":
-                out.append(judges_mod.LabelJudge(locale=locale))
+            if name == "hygiene":
+                out.append(judges_mod.HygieneJudge(locale))
+            elif name == "frame":
+                out.append(judges_mod.FrameJudge(locale))
+            elif name == "trace":
+                out.append(judges_mod.TraceJudge(self.backend, locale))
             else:
-                raise KeyError(f"未知判别器：{name!r}（可用：roundtrip / label）")
+                raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, Any], list[str]]:
-        """输入：run 目录、切分、语言。输出：(各切分计数, 缺失项列表)。
-
-        预期行为：只看产物本身——题族是否齐全、choice 的答案编号是否越界、
-        每条的编号是否从 1 连续排到条数，以及**答案能不能由页面重算出来**
-        （把 `LabelJudge` 的判据搬到产物级，这样「老产物」也能事后查）。
-        重算要语言文件（要点词、指标名按语言走），所以这里用调用方给的 `locale`。
-        """
-        loc = locales.load(locale)
-        labels = parse.label_index(loc)
-        seps = (loc["meta"]["field_sep"],)
-        known = set(questions.FAMILIES)
-        report: dict[str, Any] = {}
-        missing: list[str] = []
-        for split in splits:
-            path = run_dir / f"{split}.jsonl"
-            counts: dict[str, Any] = {
-                "samples": 0,
-                "families": Counter(),
-                "types": Counter(),
-                "best_flavors": Counter(),
-                "pair_relations": Counter(),
-                "index_bad": 0,
-                "label_mismatch": 0,
-                "unknown_families": Counter(),
-            }
-            if not path.exists():
-                missing.append(f"{split}: 产物不存在（{path.name}）")
-                report[split] = counts
-                continue
-            for _, row in jsonio.iter_jsonl(path):
-                counts["samples"] += 1
-                try:
-                    page = parse.parse_page(row["state"], labels, seps)
-                    probe, pair = judges_mod.question_indices(row)
-                    expected = judges_mod.recompute(page, loc, probe, pair)
-                except ValueError as exc:
-                    counts["label_mismatch"] += 1
-                    missing.append(f"{split}: 有一页反解不出来（{exc}）")
-                    continue
-                counts["best_flavors"][expected["best_result"]] += 1
-                counts["pair_relations"][
-                    f"矛盾={expected['conflict']},同源={expected['same_source']}"
-                ] += 1
-                indexes = [item.index for item in page.results]
-                if indexes != list(range(1, len(indexes) + 1)):
-                    counts["index_bad"] += 1
-                for qid, question in row["questions"].items():
-                    family = family_of(qid)  # 去掉同族后缀（`relevance_2` -> `relevance`）
-                    counts["families"][family] += 1
-                    counts["types"][question["type"]] += 1
-                    if family not in known:
-                        counts["unknown_families"][family] += 1
-                    answer = row["answers"][qid]
-                    if question["type"] == "choice":
-                        options = list(question["criteria"])
-                        index = answer["choice"]
-                        if not 0 <= index < len(options):
-                            counts["index_bad"] += 1
-                            continue
-                        got: Any = options[index]
-                    elif question["type"] == "noul":
-                        got = answer["noul"]
-                    else:
-                        got = answer["score"]
-                    want = expected.get(family)
-                    if want is not None and got != want:
-                        counts["label_mismatch"] += 1
-            for family in questions.FAMILIES:
-                if counts["families"][family] == 0:
-                    missing.append(f"{split}: 题族 {family} 一条都没出")
-            if counts["index_bad"]:
-                missing.append(f"{split}: {counts['index_bad']} 处编号异常")
-            if counts["label_mismatch"]:
-                missing.append(f"{split}: {counts['label_mismatch']} 条答案与页面重算不一致")
-            if counts["unknown_families"]:
-                missing.append(f"{split}: 出现未知题族 {dict(counts['unknown_families'])}")
-            report[split] = counts
-        return report, missing
+    ) -> tuple[dict[str, JsonValue], list[str]]:
+        """输入：run 目录、切分、语言。输出：(各切分审计计数, 缺失项列表)。"""
+        return audit_mod.audit_run(run_dir, splits, locale)
 
     def available_locales(self) -> list[str]:
-        """输入：无。输出：支持的语言列表。"""
+        """输入：无。输出：该 workflow 支持的语言标签列表。"""
         return locales.available()
 
-    def bind_backend(self, backend: Any) -> None:
-        """空操作：检索是纯构造式（`needs` 为空），管线不会给后端，也不该给。
 
-        输入：生成后端（实际不会收到）。输出：无。
-        预期行为：留着这个方法只为满足 `Workflow` 协议；收到后端说明接线错了，直接报错。
-        """
-        raise AssertionError("检索 workflow 是纯构造式的，不该被绑定生成后端")
+@register(WORKFLOW_NAME)
+def _factory() -> SearchWorkflow:
+    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
+    return SearchWorkflow()

@@ -1,8 +1,9 @@
 """能力探测测试：四项独立、失败不连坐、不发 max_tokens（客户端 mock）。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 import pytest
 
@@ -13,11 +14,11 @@ from jc.backend.probe import probe_capabilities
 class FakeCompletions:
     """假的 chat.completions：按参数决定成功还是抛错。"""
 
-    def __init__(self, broken: set[str], box: dict[str, Any]):
+    def __init__(self, broken: set[str], box: dict[str, JsonValue]) -> None:
         self.broken = broken
         self.box = box
 
-    def create(self, **kwargs: Any) -> Any:
+    def create(self, **kwargs: object) -> object:
         """输入：请求参数。输出：占位响应或抛错。预期行为：记下参数供断言。"""
         self.box["calls"].append(kwargs)
         label = _label(kwargs)
@@ -26,7 +27,7 @@ class FakeCompletions:
         return object()
 
 
-def _label(kwargs: dict[str, Any]) -> str:
+def _label(kwargs: dict[str, JsonValue]) -> str:
     """输入：请求参数。输出：这一项探针的名字。"""
     if "tools" in kwargs:
         return "tools"
@@ -37,12 +38,12 @@ def _label(kwargs: dict[str, Any]) -> str:
 
 
 @pytest.fixture
-def patch_openai(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def patch_openai(monkeypatch: pytest.MonkeyPatch) -> dict[str, JsonValue]:
     """把 probe 里的 openai.OpenAI 换成假客户端。"""
-    box: dict[str, Any] = {"calls": [], "broken": set(), "init": {}}
+    box: dict[str, JsonValue] = {"calls": [], "broken": set(), "init": {}}
 
     class FakeClient:
-        def __init__(self, **kwargs: Any) -> None:
+        def __init__(self, **kwargs: object) -> None:
             box["init"] = kwargs
             self.chat = type("Chat", (), {})()
             self.chat.completions = FakeCompletions(box["broken"], box)
@@ -51,14 +52,14 @@ def patch_openai(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return box
 
 
-def test_all_four_probes_pass(patch_openai: dict[str, Any]) -> None:
+def test_all_four_probes_pass(patch_openai: dict[str, JsonValue]) -> None:
     caps = probe_capabilities(base_url="u", api_key="k", model="m")
     assert (caps.plain, caps.json_object, caps.json_schema, caps.tools) == (True, True, True, True)
     assert caps.starting_mode() == "json_schema"
     assert len(caps.notes) == 4
 
 
-def test_probe_failures_are_independent(patch_openai: dict[str, Any]) -> None:
+def test_probe_failures_are_independent(patch_openai: dict[str, JsonValue]) -> None:
     patch_openai["broken"] = {"json_schema"}
     caps = probe_capabilities(base_url="u", api_key="k", model="m")
     assert caps.json_schema is False
@@ -66,19 +67,19 @@ def test_probe_failures_are_independent(patch_openai: dict[str, Any]) -> None:
     assert caps.starting_mode() == "tools"
 
 
-def test_probe_never_sends_max_tokens(patch_openai: dict[str, Any]) -> None:
+def test_probe_never_sends_max_tokens(patch_openai: dict[str, JsonValue]) -> None:
     probe_capabilities(base_url="u", api_key="k", model="m")
     for call in patch_openai["calls"]:
         assert "max_tokens" not in call
 
 
-def test_probe_disables_sdk_retries(patch_openai: dict[str, Any]) -> None:
+def test_probe_disables_sdk_retries(patch_openai: dict[str, JsonValue]) -> None:
     """探测要快要干脆：SDK 层的重试必须关掉，不然一个坏端点要等好几轮。"""
     probe_capabilities(base_url="u", api_key="k", model="m")
     assert patch_openai["init"]["max_retries"] == 0
 
 
-def test_probe_notes_never_contain_the_key(patch_openai: dict[str, Any]) -> None:
+def test_probe_notes_never_contain_the_key(patch_openai: dict[str, JsonValue]) -> None:
     patch_openai["broken"] = {"plain", "tools"}
     caps = probe_capabilities(base_url="u", api_key="nvapi-topsecret", model="m")
     assert "nvapi-topsecret" not in " ".join(caps.notes)

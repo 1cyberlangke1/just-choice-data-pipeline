@@ -1,263 +1,186 @@
-# 检索 workflow 的中文文案：标签、文档类型、来源权威、主题词表、标题与摘要模板、问法与选项。
-#
-# 约定（由 tests/workflows/search/test_locales.py 锁住）：
-# - 各语言的标签互不重叠（`reparse` 用合并表做语言无关的反解）；
-# - 主题名之间、要点词之间都互不包含——判别器靠「问题里出现了哪个主题名」认主题、
-#   靠「摘要里出现了几个要点词」算覆盖度，包含关系会同时污染这两条判据；
-# - 只有 `conflict_a` / `conflict_b` 两条摘要提到指标名，所以整页里唯一的矛盾源
-#   就是被点名的那一对；
-# - 问「结果 {n}」/「结果 {i} 与结果 {j}」的那几族题面里，数字**只允许**是编号本身
-#   （判别器从题面读编号重算）。
+lang = "zh"
+language_name = "简体中文"
+
+# 标题与摘要里不许出现的话术：来源类型 / 时效都归「来源与时效」那一行管，文本里再写一遍
+# 就可能与那一行打架。只收高精度短语——宁可漏检也不误判，误判会在渲染期白拒一条本来
+# 能用的数据。`official` / `unknown` / `stale` 是那一行的**取值词元本身**，照抄等于泄底。
+banned_intent_phrases = [
+  "官方",
+  "官网",
+  "权威",
+  "来源类型",
+  "时效",
+  "已废弃",
+  "过时",
+  "official",
+  "authoritative",
+  "unknown",
+  "stale",
+]
 
 [meta]
-title = "检索请求"
-query_label = "用户问题"
-kind_label = "要求的文档类型"
-since_label = "更新日期不早于"
-points_label = "问题要点"
-results_label = "检索结果"
+query_label = "查询"
+source_label = "来源与时效"
+title_label = "标题"
 snippet_label = "摘要"
-updated_label = "更新"
+rules_label = "规则表"
+header = "【{title}】"
+row_prefix = "- "
+paren = "（{text}）"
 colon = "："
-list_sep = "、"
-field_sep = " · "
+source_columns = "来源类型 | 时效"
+rules_columns = "规则名 | 条件 | 处置"
 
-[doc_kind]
-guide = "操作手册"
-policy = "政策规定"
-api = "接口文档"
-incident = "故障复盘"
-release = "版本说明"
-faq = "常见问题"
+[rules.spam_result]
+condition = "摘要是垃圾内容：关键词堆砌、导流软文、纯广告"
+verdict = "drop"
 
-[authority]
-official = "官方文档"
-team = "团队内部"
-community = "社区问答"
-blog = "个人博客"
+[rules.off_topic]
+condition = "结果与查询不切题"
+verdict = "drop"
 
-[query]
-# 三种问法：都嵌了主题名与两个要点词（判别器靠这两样认出主题、算覆盖度）。
-tpl = [
-  "{label}这件事，{p1}和{p2}分别是怎么规定的？",
-  "关于{label}，我想了解{p1}与{p2}。",
-  "{label}：{p1}、{p2} 有什么要求？",
+[rules.navigational_non_official]
+condition = "查询是找某个具体页面，而来源类型不是官方"
+verdict = "drop"
+
+[rules.unverified_source]
+condition = "来源类型是看不出出处的转载站"
+verdict = "cite_with_caveat"
+
+[rules.stale_source]
+condition = "时效是好几年没动过的"
+verdict = "cite_with_caveat"
+
+[rules.community_source]
+condition = "来源类型是社区来源：论坛、博客、个人站"
+verdict = "cite_with_caveat"
+
+[rules.none]
+condition = "以上都不命中"
+verdict = "cite"
+
+[dims]
+query_kind = "查询意图"
+topicality = "是否切题"
+spam = "内容性质"
+
+[prompt]
+intro = "下面是一条**搜索结果**的特征清单。请按清单写出一句查询，再写出这条结果的标题与摘要。"
+bullet = "- {dim}：{brief}（{hint}）"
+rules = [
+  "三段文本都必须是**单行**：查询一行、标题一行、摘要一到两句；不要换行，不要用 Markdown 围栏",
+  "查询、标题、摘要里**不要**写这条结果是从哪儿来的，也不要写它有多新——来源类型与时效归「来源与时效」那一行管，写进文本就会跟它打架",
+  "具体说：不要出现「官方 / 官网 / 权威 / 来源 / 时效 / 已废弃 / 过时」这类词，也不要写 official / unknown / stale 这几个词",
+  "标题要像真实网页标题（一行，别写成一整句话）；摘要要像搜索引擎抓下来的那段正文",
+  "查询意图那一档要一眼看得出来：找某个具体页面、想弄懂一件事、想办成一件事，三种之一",
+  "「找某个具体页面」那一档：查询要写成**在找那个页面本身**（站点名或页面名），别写成「登录 / 下载 / 下单」这类动作——带动作词就变成「想办成一件事」了",
+  "是否切题那一档要一眼看得出来：摘要要能看出跟查询是同一个话题，还是岔到别处去了",
+  "**跑题**那一条：标题与摘要的**主体**必须是别的话题，整段读下来明显不是在回答那句查询——只在末尾顺带提一句不算跑题",
+  "内容性质那一档要一眼看得出来：是正常网页，还是关键词堆砌 / 导流软文 / 纯广告",
+  "不要写真实存在的公司、产品或代码库名字，一律用虚构的名字",
+  "全部用{language}写；文件名与域名片段保持 ASCII",
 ]
 
-[topic.refund]
-label = "退款"
-points = ["审批", "时限"]
-metric = "金额上限"
-values = ["5000 元", "20000 元"]
+[feature.query_kind.navigational]
+brief = "这句查询是要找某个具体的页面或站点"
+hint = "写成真人在搜索框里敲的那种找站点的问法：写站点名或页面名，不要写「登录 / 下载 / 下单」这类动作"
 
-[topic.login]
-label = "双因素登录"
-points = ["恢复码", "重置"]
-metric = "有效期"
-values = ["7 天", "30 天"]
+[feature.query_kind.informational]
+brief = "这句查询是想弄懂一件事"
+hint = "写成像是在问「为什么会这样」"
 
-[topic.ratelimit]
-label = "接口限流"
-points = ["配额", "重试"]
-metric = "每分钟上限"
-values = ["600 次", "1200 次"]
+[feature.query_kind.transactional]
+brief = "这句查询是想办成一件事"
+hint = "写成像是要下单、下载或登录"
 
-[topic.retention]
-label = "数据留存"
-points = ["期限", "归档"]
-metric = "保留月数"
-values = ["18 个月", "36 个月"]
+[feature.topicality.on_topic]
+brief = "这条结果与查询是切题的"
+hint = "标题与摘要要正面回答那句查询"
 
-[topic.outage]
-label = "线上故障"
-points = ["根因", "改进"]
-metric = "影响时长"
-values = ["42 分钟", "95 分钟"]
+[feature.topicality.off_topic]
+brief = "这条结果与查询是跑题的"
+hint = "标题与摘要的主体都要岔到别的话题上去（不能只是顺带提一句），但仍要像同一领域里能搜到的东西"
 
-[topic.rollout]
-label = "版本发布"
-points = ["变更", "兼容"]
-metric = "灰度比例"
-values = ["5%", "20%"]
+[feature.spam.clean]
+brief = "这条结果是干净内容"
+hint = "像一篇正常网页的标题与摘要"
 
-[topic.billing]
-label = "账单对账"
-points = ["差异", "申诉"]
-metric = "对账周期"
-values = ["T+1", "T+7"]
+[feature.spam.spam]
+brief = "这条结果是垃圾内容"
+hint = "摘要仍要与查询是同一个话题，但满屏关键词堆砌、导流话术或纯广告"
 
-[topic.webhook]
-label = "回调通知"
-points = ["签名", "投递"]
-metric = "重试次数"
-values = ["3 次", "8 次"]
+[verify]
+intro = "下面是一条搜索结果页。请按给定的选项反解它的特征。"
+state_header = "【结果页全文】"
+questions_header = "【问题】"
+option_line = "   - {name}：{desc}"
 
-[title.full]
-text = "{label}流程说明"
-
-[title.partial]
-text = "{label}流程说明"
-
-[title.empty]
-text = "{label}规范说明"
-
-[title.twin]
-text = "{label}操作手册"
-
-[title.old_hit]
-text = "{label}常见问题"
-
-[title.stale]
-text = "{label}流程说明（旧版）"
-
-[title.weak_hit]
-text = "{label}历史文档"
-
-[title.wrong_kind]
-text = "{label}管理规定"
-
-[title.other_topic]
-text = "{other}说明"
-
-[title.conflict]
-text = "{label}：{p1}与{p2}要求"
-
-[title.plain_a]
-text = "{label}：{p1}说明"
-
-[title.plain_b]
-text = "{label}：{p2}说明"
-
-[title.other_a]
-text = "{other}：{op1}说明"
-
-[title.other_b]
-text = "{other}：{op2}说明"
-
-[snippet.full]
-text = "{label}：{p1}需要二级确认，{p2}以工单记录为准。"
-
-[snippet.partial]
-text = "{label}：{p1}需要二级确认。"
-
-[snippet.empty]
-text = "（未提供摘要）"
-
-[snippet.twin]
-text = "{label}操作手册：{p1}与{p2}的完整流程。"
-
-[snippet.old_hit]
-text = "{label}：{p1}与{p2}的常见问题解答。"
-
-[snippet.stale]
-text = "{label}（旧版）：{p1}与{p2}的规定。"
-
-[snippet.weak_hit]
-text = "{label}（历史归档）：{p1}与{p2}的旧口径。"
-
-[snippet.wrong_kind]
-text = "{label}的{p1}相关规定。"
-
-[snippet.other_topic]
-text = "{other}：{op1}与{op2}说明。"
-
-[snippet.conflict_a]
-text = "{label}：{p1}与{p2}要求，{metric}为 {v1}。"
-
-[snippet.conflict_b]
-text = "{label}：{p1}与{p2}要求，{metric}为 {v2}。"
-
-[snippet.plain_a]
-text = "{label}：{p1}的说明。"
-
-[snippet.plain_b]
-text = "{label}：{p2}的说明。"
-
-[snippet.other_a]
-text = "{other}：{op1}说明。"
-
-[snippet.other_b]
-text = "{other}：{op2}操作要点。"
-
-[fam.best_result]
-# 判据写在题面里：排序规则四档，读者只看 state 与题面就能算出唯一答案。
+[fam.query_kind]
 q = [
-  "按排序规则，引擎应当把哪一条结果排在第一？排序规则：① 相关度高的在前；② 相关度相同时，来源权威高的在前（官方文档 > 团队内部 > 社区问答 > 个人博客）；③ 权威相同时，更新日期晚的在前；④ 再相同则编号小的在前。相关度的定义见相关度那一道题的量表。",
-  "这几条结果里，最该先看的是哪一条？排序规则：① 相关度高的在前；② 相关度相同时，来源权威高的在前（官方文档 > 团队内部 > 社区问答 > 个人博客）；③ 权威相同时，更新日期晚的在前；④ 再相同则编号小的在前。",
-  "哪一条结果该排在第一位？排序规则：① 相关度高的在前；② 相关度相同时，来源权威高的在前（官方文档 > 团队内部 > 社区问答 > 个人博客）；③ 权威相同时，更新日期晚的在前；④ 再相同则编号小的在前。",
+  "这句查询想干什么？",
+  "这句查询属于哪一类意图？",
+  "按查询的意图选一项。",
 ]
+[fam.query_kind.criteria]
+navigational = "找某个具体的页面或站点"
+informational = "想弄懂一件事"
+transactional = "想办成一件事（下单 / 下载 / 登录）"
 
-[fam.next_action]
-# 判据写在题面里：三档由「最相关那条」的相关度与要点覆盖决定，选项描述就是那三行。
+[fam.topicality]
 q = [
-  "下一步该做什么？",
-  "拿到这页结果之后，下一步该采取哪个动作？",
-  "接下来该走哪条路？",
+  "这条结果与查询切题吗？",
+  "这条结果是切题的还是跑题的？",
+  "按「是否切题」选一项。",
 ]
+[fam.topicality.criteria]
+on_topic = "切题：摘要正面回应了那句查询"
+off_topic = "跑题：摘要岔到别的话题去了"
 
-[fam.answerable]
+[fam.spam]
 q = [
-  "最相关的那条结果，摘要是否覆盖了问题的全部要点（要点词原样出现在摘要里才算覆盖）？",
-  "排在第一的那条，摘要把问题的要点都提到了吗（要点词原样出现在摘要里才算覆盖）？",
-  "最该先看的那条，摘要有没有覆盖问题的每一个要点（要点词原样出现在摘要里才算覆盖）？",
+  "这条结果是垃圾内容吗？",
+  "这条结果的摘要是正常网页，还是垃圾内容？",
+  "按「内容性质」选一项。",
 ]
-criteria = { "true" = "是，问题的要点在摘要里都出现了", "false" = "否，至少有一个要点没在摘要里出现" }
+[fam.spam.criteria]
+true = "是垃圾内容：关键词堆砌 / 导流软文 / 纯广告"
+false = "不是垃圾内容：正常网页的标题与摘要"
 
-[fam.conflict]
+[fam.rule]
 q = [
-  "结果 {i} 与结果 {j} 的摘要是否互相矛盾？",
-  "结果 {i} 和结果 {j} 是不是对同一个指标给出了不同的取值？",
-  "结果 {i} 与结果 {j} 有没有互相打架？",
+  "这条结果会命中规则表里的哪一条？",
+  "规则表从上往下看，第一条命中的是哪一条？",
+  "按规则表选一条命中的规则。",
 ]
-criteria = { "true" = "是，两条对同一个指标给出了不同的取值", "false" = "否，两条没有互相矛盾的说法" }
+[fam.rule.criteria]
+spam_result = "摘要是垃圾内容"
+off_topic = "结果与查询不切题"
+navigational_non_official = "查询是找某个具体页面，而来源不是官方"
+unverified_source = "来源是看不出出处的转载站"
+stale_source = "时效是好几年没动过的"
+community_source = "来源是社区来源"
+none = "以上都不命中"
 
-[fam.same_source]
+[fam.verdict]
 q = [
-  "结果 {i} 与结果 {j} 是否来自同一份文档？",
-  "结果 {i} 和结果 {j} 是同一份文档的两次命中吗？",
-  "结果 {i} 与结果 {j} 的文档号相同吗？",
+  "最终该怎么处置这条结果？",
+  "这条结果该直接引用、带保留地引用，还是弃用？",
+  "按处置选一项。",
 ]
-criteria = { "true" = "是，两条的文档号相同", "false" = "否，两条的文档号不同" }
+[fam.verdict.criteria]
+cite = "直接引用"
+cite_with_caveat = "引用，但要标注不确定性"
+drop = "弃用，换别的结果"
 
-[fam.probe_fresh]
+[fam.trust]
 q = [
-  "结果 {n} 的更新日期是否不早于问题要求的日期？",
-  "结果 {n} 够新吗（更新日期不早于要求的日期）？",
-  "结果 {n} 的时效达标吗？",
-]
-criteria = { "true" = "达标，更新日期不早于要求的日期", "false" = "不达标，更新日期早于要求的日期" }
-
-[fam.relevance]
-q = [
-  "结果 {n} 的相关度是几级？",
-  "按下面的量表，给结果 {n} 的相关度定级。",
-  "结果 {n} 属于哪一级相关度？",
+  "这条结果的可信度是第几档？",
+  "按可信度给这条结果定一档。",
+  "这条结果可信到第几档？",
 ]
 levels = [
-  "0 级：标题讲的不是问题问的主题",
-  "1 级：主题对，但文档类型不是问题要求的类型",
-  "2 级：主题与类型都对，但更新日期早于问题要求的日期",
-  "3 级：主题、类型、更新日期都满足问题要求",
+  "0 档：完全不可信",
+  "1 档：偏低",
+  "2 档：中等",
+  "3 档：高",
 ]
-
-[fam.covered_points]
-q = [
-  "结果 {n} 的摘要覆盖了问题里的几个要点（要点词原样出现在摘要里才算覆盖）？",
-  "数一下结果 {n} 的摘要里出现了几个问题要点（原样出现才算）。",
-  "结果 {n} 的摘要提到了问题要点中的几个？",
-]
-levels = [
-  "一个要点都没提到",
-  "提到了 1 个要点",
-  "提到了 2 个要点",
-]
-
-[option.result]
-# 选项名是 `result_<编号>`，描述带文档号 / 标题 / 更新日期——三者一起才唯一
-# （「又矛盾又同源」那一档里，被点名的两条是同一份文档、同一个标题）。
-text = "{doc_id}｜{title}｜更新 {updated}"
-
-[option.next_action]
-answer = "直接回答——最相关那条相关度 3 级，且摘要覆盖了问题的全部要点，可以据此作答"
-search_more = "再检一轮——最相关那条相关度 3 级，但摘要没覆盖全部要点，换个关键词再来一次"
-switch_source = "换数据源——最相关那条连类型或时效都不对（相关度 ≤ 2），这页结果指望不上"

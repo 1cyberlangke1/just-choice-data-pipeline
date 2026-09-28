@@ -5,8 +5,9 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 import pytest
 from pydantic import BaseModel
@@ -23,12 +24,12 @@ class DummyAnswer(BaseModel):
     answer: str
 
 
-def make_task(task_id: str = "t1", **overrides: Any) -> GenerationTask:
+def make_task(task_id: str = "t1", **overrides: object) -> GenerationTask:
     """输入：任务 id 与字段覆盖项。输出：一个最小的 GenerationTask。
 
     预期行为：不依赖任何 workflow，任何后端测试都能直接拿来用。
     """
-    base: dict[str, Any] = {
+    base: dict[str, JsonValue] = {
         "task_id": task_id,
         "kind": "choice",
         "domain": "test",
@@ -40,7 +41,7 @@ def make_task(task_id: str = "t1", **overrides: Any) -> GenerationTask:
 
 
 @pytest.fixture
-def task_factory() -> Any:
+def task_factory() -> object:
     """工厂夹具：`task_factory("t2")` 造一个最小任务。"""
     return make_task
 
@@ -55,9 +56,9 @@ class FakeEngine:
 
     name = "fake"
 
-    def __init__(self, script: Any = (), default: Any = None) -> None:
+    def __init__(self, script: object = (), default: object = None) -> None:
         """输入：脚本序列与兜底结果。输出：FakeEngine 实例。"""
-        self.script: list[Any] = list(script)
+        self.script: list[JsonValue] = list(script)
         self.default = default
         self.calls: list[EngineRequest] = []
 
@@ -76,7 +77,7 @@ class FakeEngine:
         raise AssertionError("FakeEngine 的脚本用完了")
 
 
-def ok_result(data: dict[str, Any] | None = None, mode: str = "json_schema") -> EngineResult:
+def ok_result(data: dict[str, JsonValue] | None = None, mode: str = "json_schema") -> EngineResult:
     """造一个成功的引擎结果。输入：可选数据与档位。输出：EngineResult。"""
     return EngineResult(
         data=data if data is not None else {"answer": "x"},
@@ -94,19 +95,19 @@ def fake_engine() -> type[FakeEngine]:
 
 
 @pytest.fixture
-def result_factory() -> Any:
+def result_factory() -> object:
     """工厂夹具：`result_factory({"answer": "a"})` 造成功结果。"""
     return ok_result
 
 
 @pytest.fixture
-def no_sleep() -> Any:
+def no_sleep() -> object:
     """退避用的空睡眠函数：测试里不真等。"""
     return lambda _seconds: None
 
 
 def make_provider(
-    engine: Any,
+    engine: object,
     *,
     name: str = "fake",
     keys: tuple[str, ...] = ("k1",),
@@ -114,7 +115,7 @@ def make_provider(
     mode: str = "auto",
     limits: Limits | None = None,
     capabilities: BackendCapabilities | None = None,
-    sleep: Any = None,
+    sleep: object = None,
 ) -> Provider:
     """造一个 provider，默认关掉限速与真实睡眠。
 
@@ -139,6 +140,6 @@ def make_provider(
 
 
 @pytest.fixture
-def provider_factory() -> Any:
+def provider_factory() -> object:
     """工厂夹具：`provider_factory(fake_engine(script=[...]))` 造一个 provider。"""
     return make_provider

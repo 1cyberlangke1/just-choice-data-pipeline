@@ -12,16 +12,17 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import re
-from typing import Any, Final
+from typing import Final
 
 from .spec import KIND_FLAG, SUBJECT_ARGS, Binding, CallPlan, CallSpec, phrase_key_of
 
 _LEFTOVER: Final[re.Pattern[str]] = re.compile(r"\{\w+\}")
 
 
-def is_aliased(table: dict[str, Any]) -> bool:
+def is_aliased(table: dict[str, JsonValue]) -> bool:
     """输入：`[val.<键>]` 那张表。输出：它是不是「按别名分两张」的表。
 
     预期行为：股票 / 基准这类参数按别名分 `ticker` / `name` 两张子表，其余参数只有一张表。
@@ -29,7 +30,7 @@ def is_aliased(table: dict[str, Any]) -> bool:
     return "ticker" in table or "name" in table
 
 
-def as_phrases(value: Any) -> tuple[str, ...]:
+def as_phrases(value: object) -> tuple[str, ...]:
     """输入：语言文件里的一格。输出：它的短语。
 
     预期行为：单语言表里一格是字符串；`locales.merged()` 的合并表里一格是列表（各语言的写法），
@@ -40,7 +41,7 @@ def as_phrases(value: Any) -> tuple[str, ...]:
     return tuple(str(item) for item in value)
 
 
-def value_phrases(loc: dict[str, Any], key: str, value: str) -> tuple[str, ...]:
+def value_phrases(loc: dict[str, JsonValue], key: str, value: str) -> tuple[str, ...]:
     """输入：语言字典（单语言或合并表）、短语表键、取值。输出：该取值**全部写法**的短语。
 
     预期行为：单语言表里股票 / 基准按别名分两张子表（两种写法都要认）；合并表里每格已经是
@@ -56,12 +57,12 @@ def value_phrases(loc: dict[str, Any], key: str, value: str) -> tuple[str, ...]:
     return as_phrases(table[value])
 
 
-def flag_phrases(loc: dict[str, Any], name: str) -> tuple[str, ...]:
+def flag_phrases(loc: dict[str, JsonValue], name: str) -> tuple[str, ...]:
     """输入：语言字典（单语言或合并表）、参数名。输出：该 `flag` 参数的出现短语（全部写法）。"""
     return as_phrases(loc["flag"][name])
 
 
-def value_phrase(loc: dict[str, Any], key: str, value: str, alias: str) -> str:
+def value_phrase(loc: dict[str, JsonValue], key: str, value: str, alias: str) -> str:
     """输入：单语言字典、短语表键、取值、别名写法。输出：该取值在请求里要用的那条短语。
 
     预期行为：**渲染只接受单语言表**——合并表里一格是多种语言的写法，渲染出来会中英混排，
@@ -85,7 +86,7 @@ def _fill(text: str, **slots: str) -> str:
     return out
 
 
-def join_items(parts: list[str], loc: dict[str, Any]) -> str:
+def join_items(parts: list[str], loc: dict[str, JsonValue]) -> str:
     """输入：若干短语、语言字典。输出：列举形态（中文顿号 + 「和」，英文逗号 + and）。"""
     marks = loc["mark"]
     if not parts:
@@ -95,7 +96,7 @@ def join_items(parts: list[str], loc: dict[str, Any]) -> str:
     return str(marks["list_sep"]).join(parts[:-1]) + str(marks["list_last"]) + parts[-1]
 
 
-def subject_of(plan: CallPlan, loc: dict[str, Any]) -> str:
+def subject_of(plan: CallPlan, loc: dict[str, JsonValue]) -> str:
     """输入：计划、语言字典。输出：`lead` 的 `{subject}` 槽取值。
 
     预期行为：单主体直接写；一对主体用连接词；一组主体列举。`top_movers` 没有主体槽
@@ -122,7 +123,7 @@ def subject_of(plan: CallPlan, loc: dict[str, Any]) -> str:
     return ""
 
 
-def segment_slots(binding: Binding, alias: str, loc: dict[str, Any]) -> dict[str, str]:
+def segment_slots(binding: Binding, alias: str, loc: dict[str, JsonValue]) -> dict[str, str]:
     """输入：一个绑定、别名写法、语言字典。输出：该参数分段模板要填的槽。
 
     预期行为：`flag` 参数没有取值，填的是它自己的出现短语（`[flag]` 表）。
@@ -132,8 +133,7 @@ def segment_slots(binding: Binding, alias: str, loc: dict[str, Any]) -> dict[str
     return {binding.name: value_phrase(loc, phrase_key_of(binding.name), binding.value, alias)}
 
 
-
-def render_request(spec: CallSpec, loc: dict[str, Any]) -> str:
+def render_request(spec: CallSpec, loc: dict[str, JsonValue]) -> str:
     """输入：规格、语言字典。输出：请求文本（一句话）。
 
     预期行为：主体参数（`SUBJECT_ARGS`）的内容写在 `lead` 里，其余被提到的参数按
@@ -154,6 +154,6 @@ def render_request(spec: CallSpec, loc: dict[str, Any]) -> str:
     return "".join(pieces) + str(loc["mark"]["close"])
 
 
-def render_state(spec: CallSpec, loc: dict[str, Any]) -> str:
+def render_state(spec: CallSpec, loc: dict[str, JsonValue]) -> str:
     """输入：规格、语言字典。输出：state 字符串。预期行为：就是那句请求。"""
     return render_request(spec, loc)

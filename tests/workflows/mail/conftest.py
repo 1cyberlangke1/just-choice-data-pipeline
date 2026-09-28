@@ -10,8 +10,9 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 import pytest
 
@@ -39,7 +40,7 @@ class FakeBackend:
         trace_lies: bool = False,
         smuggles: str | None = None,
         trace_raises: Exception | None = None,
-        trace_data: dict[str, Any] | None = None,
+        trace_data: dict[str, JsonValue] | None = None,
     ) -> None:
         """输入：四个作弊开关 + 一个原样吐草稿的口子。输出：假后端实例。"""
         self.force_url = force_url
@@ -49,7 +50,7 @@ class FakeBackend:
         self.trace_data = trace_data
         self.calls: list[str] = []
 
-    def generate(self, task: Any) -> Draft:
+    def generate(self, task: object) -> Draft:
         """输入：一个任务。输出：草稿。
 
         预期行为：按任务 id 后缀区分「渲染」与「反解」；任务里没带 tags 就报错，
@@ -64,11 +65,11 @@ class FakeBackend:
             return self._draft(task, self._trace(tags))
         return self._draft(task, self._render(tags))
 
-    def generate_many(self, tasks: list[Any]) -> list[Draft]:
+    def generate_many(self, tasks: list[JsonValue]) -> list[Draft]:
         """输入：任务列表。输出：与入参顺序一致的草稿列表。"""
         return [self.generate(task) for task in tasks]
 
-    def _render(self, tags: dict[str, str]) -> dict[str, Any]:
+    def _render(self, tags: dict[str, str]) -> dict[str, JsonValue]:
         """输入：注入特征。输出：`MailDraft` 形态的字典。
 
         预期行为：链接行按渲染规则写——文字与目标一致时只写一个地址、不一致时**两个都写**
@@ -101,7 +102,7 @@ class FakeBackend:
             "link_line": link_line,
         }
 
-    def _trace(self, tags: dict[str, str]) -> dict[str, Any]:
+    def _trace(self, tags: dict[str, str]) -> dict[str, JsonValue]:
         """输入：注入特征。输出：`TraceDraft` 形态的字典（默认完全答对）。"""
         if self.trace_data is not None:
             return dict(self.trace_data)
@@ -119,7 +120,7 @@ class FakeBackend:
         return traced
 
     @staticmethod
-    def _draft(task: Any, data: dict[str, Any]) -> Draft:
+    def _draft(task: object, data: dict[str, JsonValue]) -> Draft:
         """输入：任务、草稿数据。输出：`Draft`。预期行为：填满必填的记账字段。"""
         return Draft(
             data=data,

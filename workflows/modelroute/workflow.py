@@ -1,20 +1,16 @@
-"""模型路由与降级 workflow：**构造式**（画像与全部判断都由规则表算出来，`needs` 为空、零 token）。
+"""模型路由与降级 workflow：**特征注入式**（候选表与门槛由代码写，用户请求由后端写）。
 
-它在 PLAN 3.2 的分类里属于「规则引擎式」的近亲——素材（一屏请求画像）由构造器造好，
-答案是从素材**按规则推**出来的，所以判别器能把文本反解回来独立重算。
+流程与命令审批（`workflows/shell`）同构（`plan → sample → render → ask`），区别在
+「谁写文本、谁定标签」：
 
-覆盖的决策形状（社区用例地图里最大的缺口：模型路由与降级，86 条第三方项目）：
-- **选档**：`tier`（首选档位，四个档）；
-- **链**：`next`（升级链的下一站，`max` 之上没有档就不出这题）；
-- **定档**：`effort`（推理深度三档，复杂度档按延迟预算挪一档）；
-- **检测**：`is_first`（是不是首次请求）；
-- **门控**：`degrade`（成本敏感时允许降一档能力）/ `cache`（私有数据不进缓存）。
+- **候选目录与筛选门槛是结构化事实**，由代码渲染进 state——让模型去写只会写歪；
+- 后端只写一句**用户请求**（真实请求的语气与材料是长尾的，模板拼的脱离现实）；
+- 标签由**注入特征**经纯函数算出，模型碰不到。五个题族里只有 `kind`（任务类型）由那句
+  请求承载，交给 `judges.TraceJudge` 反解校验——答不回来就说明文本与标签脱节了。
 
-切分按 PLAN 3.3：
-- train / val / test_iid：**素材留出**——按素材（七维指纹）的哈希分桶切片，
-  同一条请求整组不跨切分；
-- test_ood：**值留出**——`reason`（多步推理）在训练侧一个都不出现（连带「首选档 = max」
-  与「max 之上没有升级链」整条分支没见过）。
+切分按 PLAN 3.3 的泛化留出：
+- train / val / test_iid：**组合留出**——按 tag 组合的哈希分桶，同组合不跨切分；
+- test_ood：**值留出**——「看图」这个任务类型在训练侧一次都不出现。
 
 导入本模块即自注册（`jc.workflow.load("modelroute")` 可用）。
 """
@@ -23,196 +19,258 @@ from __future__ import annotations
 
 import hashlib
 import random
-from dataclasses import replace
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
+from jc.backend.types import GenerationBackend
 from jc.judge import Judge
+from jc.jsontypes import JsonValue
+from jc.knobs import require_pool
 from jc.workflow import LabeledQuestion, SplitSpec, register
 
-from . import audit as audit_mod
-from . import judges as judges_mod
-from . import locales, parse, questions, render
-from . import spec as spec_mod
-from .spec import RouteCase, RouteConfig, RouteSpec
+from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
+from .features import TagSet
+from .spec import RouteSpec
 
 WORKFLOW_NAME = "modelroute"
 WORKFLOW_VERSION = "0.1.0"
 
-#: 同分布切分的哈希分桶边界（素材留出：桶按**素材**算，同一条请求永远同切分）。
-SPLIT_SEED: Final[int] = 20260927
+# 只在 test_ood 出现的取值（值留出）。本 workflow 没有禁用对，所以留出某一维时不必像
+# shell 那样把另一维收窄（对比 `workflows/shell` 的 OOD 收窄）。
+#
+# 为什么只留出这一个值：留出别的取值要么把同分布侧弄出**死选项**、要么把某一族压偏，
+# 都拿枚举验过（见 `tests/workflows/modelroute/test_pipeline.py` 的两条不变量测试）：
+# - 留出 `interactive` → `atlas-lite` 再也选不上（它只在「交互式 + borealis 挂了」下赢）；
+# - 留出 `atlas_down` → 第一行的 `blocked` 永远是 `latency` / `budget` / `usable`，
+#   `provider_down` 一次都不出现（只有 atlas 挂了才算它）；
+# - 留出 `tight` → `blocked` 的 `budget` 同理消失；
+# - 留出 `huge` → 窗口需求永远 ≤ 32k，`slack`（窗口有没有两倍富余）在同分布侧塌成
+#   73% True；
+# - 留出 `math_reason` → 唯一需要 3 档能力的任务没了，`slack` 同样塌成 63% True。
+OOD_TASK_KINDS: Final[frozenset[str]] = frozenset({"vision"})
+
+# 同分布切分的哈希分桶边界（组合留出：桶按 tag 组合算，同组合永远同切分）。
+SPLIT_SEED: Final[int] = 20260928
 SPLIT_BUCKETS: Final[dict[str, tuple[int, int]]] = {
     "train": (0, 60),
     "val": (60, 80),
     "test_iid": (80, 100),
 }
 
-#: 训练侧取值：只留 spec 里标了「见过」的那几档。
-#: 排序是为了顺序稳定（frozenset 的迭代顺序随进程变化，不能直接拿来枚举）。
-ID_CONFIG: Final[RouteConfig] = RouteConfig(
-    split="train",
-    tasks=tuple(sorted(spec_mod.SEEN_TASKS)),
-    phrasings=tuple(sorted(spec_mod.SEEN_PHRASINGS)),
-)
-#: 留出档：取值表全开，靠 `ood_only` 只留「至少含一个没见过的取值」的 case。
-OOD_CONFIG: Final[RouteConfig] = RouteConfig(split="test_ood", ood_only=True)
-
 DIMENSION_TITLES: Final[dict[str, str]] = {
-    "task": "任务类型",
-    "complexity": "复杂度",
-    "latency": "延迟预算",
-    "cost": "成本敏感",
-    "retry": "尝试记录",
-    "data": "数据分级",
-    "phrasing": "句面",
+    "task_kind": "任务类型",
+    "size": "材料规模",
+    "latency": "时延要求",
+    "budget": "预算档",
+    "health": "提供方健康",
 }
 
 
-def bucket_of(material: str, seed: int = SPLIT_SEED) -> int:
-    """输入：素材指纹（`spec.material_of`）、种子。输出：0~99 的桶号。
+@dataclass(frozen=True)
+class RouteConfig:
+    """一个切分的采样参数。
 
-    预期行为：同一素材必得同一桶，不同素材近似均匀；不用内置 `hash()`
-    （它对字符串每进程随机化），否则切分会随进程漂移。
+    字段：
+    - `split` 切分名（决定 case 怎么分桶）；
+    - `cover_limit` 全枚举上限——同分布空间只有 5×3×2×2×3 = 180 组，180 <= 192 所以
+      走**全枚举**（这里成对覆盖只会白扔组合）；不带维度限制的全空间 216 组 > 192，
+      仍走成对覆盖（`tests/workflows/modelroute/test_features.py` 用它验覆盖器）；
+    - `case_limit` >0 时每个切分只取前 N 个组合（小规模试跑用，**会牺牲成对覆盖**）；
+    - `phrasing_pool` 问法编号池。
     """
-    return int(hashlib.sha256(f"{seed}|{material}".encode("utf-8")).hexdigest()[:8], 16) % 100
+
+    split: str = "train"
+    cover_limit: int = 192
+    case_limit: int = 0
+    phrasing_pool: tuple[int, ...] = (0, 1, 2)
+
+    def __post_init__(self) -> None:
+        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。"""
+        require_pool("phrasing_pool", self.phrasing_pool)
+        if self.case_limit < 0:
+            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
 
 
-def _slice(cases: list[RouteCase], split: str) -> list[RouteCase]:
-    """输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
+def _restricted(**overrides: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
+    dims = dict(features.DIMS)
+    dims.update(overrides)
+    return dims
 
-    预期行为：**先按素材分组，再按位置切**——同一条请求整组落在同一档。
-    切片用**位置**而不是桶号过滤：只按桶号过滤时哈希方差会让 val 只剩个位数。
+
+def id_dims() -> dict[str, tuple[str, ...]]:
+    """输入：无。输出：剔除 OOD 取值后的维度表（同分布切分用）。"""
+    return _restricted(
+        task_kind=tuple(v for v in features.TASK_KINDS if v not in OOD_TASK_KINDS),
+    )
+
+
+def ood_dims() -> list[dict[str, tuple[str, ...]]]:
+    """输入：无。输出：一组只含 OOD 取值的维度表（任务类型）。
+
+    预期行为：本 workflow 的维度之间**没有禁用对**，所以留出某一维时不需要像 shell 那样
+    把另一维收窄；返回列表而不是单个表，是为了与其它 workflow 的形状一致（将来加第二个
+    留出维度时只改这里，`cases_for` 会自动并集去重）。
     """
-    groups: dict[str, list[RouteCase]] = {}
-    for case in cases:
-        groups.setdefault(spec_mod.material_of(case), []).append(case)
-    ordered = sorted(groups, key=lambda material: (bucket_of(material), material))
+    return [_restricted(task_kind=tuple(sorted(OOD_TASK_KINDS)))]
+
+
+def bucket_of(case: TagSet, seed: int = SPLIT_SEED) -> int:
+    """输入：tag 组合、种子。输出：0~99 的桶号。
+
+    预期行为：同一组合必得同一桶，不同组合近似均匀——切分单位是**组合**，不是样本。
+    """
+    payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
+    return int(hashlib.sha256(f"{seed}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100
+
+
+def _slice(cases: list[TagSet], split: str) -> list[TagSet]:
+    """按桶号排序后按比例切片。
+
+    输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
+    预期行为：先按 (桶号, 组合) 排序再切片，比例才是**精确**的。
+    """
+    ordered = sorted(cases, key=lambda case: (bucket_of(case), tuple(case.as_dict().items())))
     low, high = SPLIT_BUCKETS[split]
     total = len(ordered)
-    return [
-        case
-        for material in ordered[low * total // 100 : high * total // 100]
-        for case in groups[material]
-    ]
+    return ordered[low * total // 100 : high * total // 100]
 
 
-def cases_for(config: RouteConfig) -> list[RouteCase]:
-    """输入：采样参数。输出：该切分的 case 列表（顺序稳定）。
+def cases_for(config: RouteConfig) -> list[TagSet]:
+    """输入：采样参数。输出：该切分的 tag 组合列表（顺序稳定）。
 
-    预期行为：`test_ood` 直接收 `build_cases` 按 `ood_only` 筛出来的组合；
-    其余切分按素材的哈希桶分组后切片，同一条请求不跨切分。
+    预期行为：`test_ood` 收值留出的两组组合（并集去重）；其余切分先剔除留出取值，
+    再按哈希桶分。
     """
-    cases = spec_mod.build_cases(config)
     if config.split == "test_ood":
-        return cases
-    return _slice(cases, config.split)
+        seen: dict[tuple[tuple[str, str], ...], TagSet] = {}
+        for dims in ood_dims():
+            for case in features.build_cases(config.cover_limit, dims=dims):
+                seen.setdefault(tuple(case.as_dict().items()), case)
+        cases = list(seen.values())
+    else:
+        cases = _slice(features.build_cases(config.cover_limit, dims=id_dims()), config.split)
+    return cases[: config.case_limit] if config.case_limit else cases
 
 
-@register(WORKFLOW_NAME)
 class ModelRouteWorkflow:
     """模型路由与降级：声明、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
     name = WORKFLOW_NAME
     version = WORKFLOW_VERSION
-    kinds = frozenset({"choice", "noul"})
-    needs: frozenset[str] = frozenset()  # 构造式：画像与答案都由规则表算出来，不需要后端
-    judges: tuple[str, ...] = ("roundtrip", "label")
+    kinds = frozenset({"choice", "noul", "score"})
+    needs = frozenset({"text"})  # 用户请求由后端写：本 workflow 不是纯构造式
+    judges: tuple[str, ...] = ("hygiene", "frame", "trace")
+
+    def __init__(self) -> None:
+        """输入：无。输出：实例。预期行为：后端要等 `bind_backend` 才注入。"""
+        self.backend: GenerationBackend | None = None
+
+    def bind_backend(self, backend: GenerationBackend) -> None:
+        """输入：生成后端。输出：无。预期行为：存下后端，`render` 与 `trace` 判别器要用。"""
+        self.backend = backend
 
     def split_names(self) -> tuple[str, ...]:
         """输入：无。输出：支持的切分名。"""
-        return tuple(SPLIT_BUCKETS) + ("test_ood",)
+        return ("train", "val", "test_iid", "test_ood")
 
     def config_for(self, split: str) -> RouteConfig:
-        """输入：切分名。输出：该切分的采样参数。
+        """输入：切分名。输出：该切分的采样参数。预期行为：未知切分直接报错。"""
+        if split not in self.split_names():
+            raise KeyError(f"未知切分 {split!r}（可用：{', '.join(self.split_names())}）")
+        return RouteConfig(split=split)
 
-        预期行为：`test_ood` 用全取值表 + `ood_only`；其余切分用训练侧取值表，
-        **并且把 `split` 换成调用方要的那一档**——`ID_CONFIG` 是个单例，直接返回它会让
-        train/val/test_iid 三次都按同一档切片（切出来三份一模一样的数据，shell 上实测踩过）。
-        """
-        if split == "test_ood":
-            return OOD_CONFIG
-        if split in SPLIT_BUCKETS:
-            return replace(ID_CONFIG, split=split)
-        raise KeyError(f"未知切分：{split!r}（可用：{self.split_names()}）")
-
-    def build_cases(self, config: RouteConfig) -> list[RouteCase]:
-        """输入：采样参数。输出：case 矩阵（顺序稳定）。"""
+    def build_cases(self, config: RouteConfig) -> list[TagSet]:
+        """输入：采样参数。输出：tag 组合列表。"""
         return cases_for(config)
 
-    def case_label(self, case: RouteCase) -> str:
-        """输入：一个 case。输出：一行可读描述（报告与文件名用）。"""
-        return case.describe()
+    def case_label(self, case: TagSet) -> str:
+        """输入：一个 case。输出：一行可读描述。"""
+        return " ".join(f"{key}={value}" for key, value in case.as_dict().items())
 
-    def stats_dimensions(self, case: RouteCase) -> dict[str, Any]:
-        """输入：一个 case。输出：{维度名: 取值}（七个维度全摊平）。"""
-        return case.as_dict()
+    def stats_dimensions(self, case: TagSet) -> dict[str, JsonValue]:
+        """输入：一个 case。输出：统计维度（一维一栏）。"""
+        return {
+            "task_kind": case.task_kind,
+            "size": case.size,
+            "latency": case.latency,
+            "budget": case.budget,
+            "health": case.health,
+        }
 
     def dimension_titles(self) -> dict[str, str]:
         """输入：无。输出：{维度名: 中文标题}。"""
         return dict(DIMENSION_TITLES)
 
     def plan_sample(
-        self, rng: random.Random, config: RouteConfig, case: RouteCase, seq: int
+        self, rng: random.Random, config: RouteConfig, case: TagSet, seq: int
     ) -> SplitSpec:
-        """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。
-
-        预期行为：问法在这里抽（同一 case 的多条样本会用不同问法）；case 与序号一起放进
-        params，`sample` 阶段不再做任何随机决策。
-        """
+        """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。"""
         return SplitSpec(
             name=config.split,
-            params={"case": case, "phrasing": rng.choice(config.phrasings), "seq": seq},
+            params={
+                "tags": case,
+                "phrasing": rng.choice(config.phrasing_pool),
+                "seq": seq,
+            },
         )
 
     def sample(self, rng: random.Random, split: SplitSpec) -> RouteSpec:
-        """输入：独立 RNG、生成计划。输出：真值规格（请求号与全部判断都在这里定死）。"""
-        del rng  # 规格完全由 case 决定；签名里的 RNG 只为与协议一致
-        return spec_mod.sample_spec(
-            split.params["case"], split.name, split.params["seq"], split.params["phrasing"]
+        """输入：独立 RNG、生成计划。输出：真值规格。"""
+        return RouteSpec(
+            tags=split.params["tags"],
+            phrasing=split.params["phrasing"],
+            split=split.name,
+            seq=split.params["seq"],
         )
 
     def render(self, spec: RouteSpec, rng: random.Random, locale: str) -> str:
-        """输入：规格、RNG、语言。输出：契约允许的 state（纯字符串）。
+        """输入：规格、RNG、语言。输出：契约允许的 state（字符串）。
 
-        预期行为：**纯函数**，不用 RNG、不碰后端——同一份 spec + 同一份语言文件必得同一段
-        文本，所以「两次生成逐字节一致」这条能直接查。
+        预期行为：向后端要一句用户请求，再与代码渲染的候选表 / 门槛行拼起来；后端没注入
+        就报错——`needs` 非空时管线一定会注入，这里没有后端说明接线错了，绝不能悄悄
+        降级成模板（那会让「请求由模型写」这个前提失效）。
         """
         del rng
-        return render.build(spec, locales.load(locale))
+        if self.backend is None:
+            raise RuntimeError("modelroute workflow 需要生成后端，但还没被 bind_backend 注入")
+        loc = locales.load(locale)
+        draft = self.backend.generate(render.build_task(spec.tags, loc, spec.render_task_id))
+        render.check_draft(draft.data, loc)
+        return render.to_state(draft.data, spec.tags, loc)
 
     def ask(self, spec: RouteSpec, rng: random.Random, locale: str) -> list[LabeledQuestion]:
         """输入：规格、RNG、语言。输出：题目 + 金答案（纯代码推导，不碰模型）。"""
-        return questions.build(spec, locales.load(locale), spec.phrasing, rng)
+        del rng
+        return questions.build(spec.tags, locales.load(locale), spec.phrasing)
 
-    def reparse(self, state: Any, *, case: Any = None) -> parse.ParsedRequest:
-        """输入：渲染后的 state。输出：反解结果。
-
-        预期行为：`Workflow.reparse` 没有语言参数，所以用**合并标签表**做语言无关的
-        结构反解（各语言的标签互不重叠，由 `tests/workflows/modelroute/test_locales.py` 锁住）。
-        「原文 → 键」的翻译留给判别器，它手上有语言文件。
-        """
+    def reparse(self, state: object, *, case: object = None) -> render.ParsedFrame:
+        """输入：渲染后的 state。输出：纯代码能反解的部分（请求 / 候选表 / 门槛行）。"""
         del case
-        return parse.parse_request(state, parse.merged_labels())
+        return render.parse_state(state)
 
     def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
         """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
         out: list[Judge] = []
         for name in names:
-            if name == "roundtrip":
-                out.append(judges_mod.RoundtripJudge(locale=locale))
-            elif name == "label":
-                out.append(judges_mod.LabelJudge(locale=locale))
+            if name == "hygiene":
+                out.append(judges_mod.HygieneJudge(locale))
+            elif name == "frame":
+                out.append(judges_mod.FrameJudge(locale))
+            elif name == "trace":
+                out.append(judges_mod.TraceJudge(self.backend, locale))
             else:
-                raise KeyError(f"未知判别器：{name!r}（可用：roundtrip / label）")
+                raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, Any], list[str]]:
+    ) -> tuple[dict[str, JsonValue], list[str]]:
         """输入：run 目录、切分、语言。输出：(各切分计数, 缺失项列表)。
 
-        预期行为：只看产物本身——题族是否齐全、choice 的答案编号是否越界、以及
-        **答案能不能由画像重算出来**（把判别器的判据搬到产物级，这样「老产物」也能事后查）。
+        预期行为：只读产物本身能查的东西——题族是否齐全、题型分布，以及 `route` /
+        `blocked` / `cost` / `slack` 四族能否从 state 里那张表与门槛行重算出来。
         """
         return audit_mod.audit_run(run_dir, splits, locale)
 
@@ -220,10 +278,5 @@ class ModelRouteWorkflow:
         """输入：无。输出：支持的语言列表。"""
         return locales.available()
 
-    def bind_backend(self, backend: Any) -> None:
-        """空操作：模型路由是纯构造式（`needs` 为空），管线不会给后端，也不该给。
 
-        输入：生成后端（实际不会收到）。输出：无。
-        预期行为：留着这个方法只为满足 `Workflow` 协议；收到后端说明接线错了，直接报错。
-        """
-        raise AssertionError("模型路由 workflow 是纯构造式的，不该被绑定生成后端")
+register(WORKFLOW_NAME)(ModelRouteWorkflow)

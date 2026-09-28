@@ -1,89 +1,180 @@
-# 改动审查 workflow 的中文文案。
-# test_locales.py 锁住的不变量：与 en 的键集合一致、各语言的标签与三张词表互不重叠、
-# 抬头三格的分隔符（cell_sep）**必须一致**（`reparse` 用的合并表只按一个分隔符切行）、
-# 并且每一条正文模板真的**只**命中它标注的那一条规则（题面判据是文本匹配，
-# 构造侧用的是键，两边不一致时产出的答案就是错的）。
+lang = "zh"
+language_name = "简体中文"
 
-[meta]
-title = "改动审查单"
-change_label = "改动"
-colon = "："
-cell_sep = " · "
-body_indent = "    "
-
-[file]
-src = "源码"
-test = "测试"
-doc = "文档"
-config = "配置"
-
-[change]
-add = "新增"
-edit = "修改"
-remove = "删除"
-
-[size]
-small = "小"
-big = "大"
-
-[body]
-# 正文模板：键是 `{规则}_{槽}`（干净槽是 `clean_{槽}`）。模板里的字面量正是规则判据
-# 要抓的东西——凭据槽里必须有「凭据名 = 带引号的字面量」，调试槽里必须有 `print(` 这类
-# 调用，规模槽靠抬头里的规模格（正文一个字都不许踩另外两条规则）。
-secret_heavy = "把数据库口令写死成 password = \"hunter2\" 就提交了"
-secret_noise0 = "示例里抄了 password = \"example\" 这种写法"
-debug_medium = "加了一行 print(中间结果) 用来排查"
-debug_noise0 = "说明里贴了一段 print(调试输出) 的用法"
-debug_noise1 = "测试里加了一行 console.log(结果)"
-bulk_light = "这一处一口气改了几十行"
-bulk_noise1 = "这一处整段重排了一遍"
-clean_clean = "把这里的注释补全了"
-
-[policy]
-# 判据原文：整段拼在每道题的问句后面（范式 §9.8）。
-text = "判据：一、三条审查规则——凭据规则：正文里出现「凭据名 = 带引号的字面量」这种硬编码，凭据名是含 password、passwd、pwd、secret、token、api_key、access_key、private_key、credential 的词，严重度是重；调试规则：正文里出现 print( 、console.log( 、debugger 、var_dump 、logger.debug( 、fmt.Print( 这类调试输出，严重度是中；规模规则：抬头里的规模格是『大』，严重度是轻。二、该不该提——命中规则不等于该提：凭据规则只在源码、测试、配置里该提，文档里不该提；调试规则只在源码、配置里该提，测试与文档里不该提；规模规则只有源码该提。三、严重度档——凭据是重、调试是中、规模是轻。四、门控——重的一律拦下；中的在新增与修改时请求修改、在删除时拦下；轻的在修改时请求修改、在新增与删除时放行。五、最严重的一处——严重度档最高的那一处该提改动；两处并列最高时不出这个题。"
-
-[fam.flag]
-q = [
-  "第 {n} 处该提审查意见吗？",
-  "按规则，第 {n} 处要不要提出来？",
-  "第 {n} 处算不算问题？",
+# 正文里不许出现的话术：只收**表名**。这份清单刻意短——正文是一段代码，`test` / `size` /
+# `config` 这类标识符在代码里到处都是，收进来会大面积误伤；而表名在代码里几乎不可能自然出现，
+# 命中就是模型把段落结构抄进去了。只收高精度短语，宁可漏检也不误判。
+banned_intent_phrases = [
+  "改动内容",
+  "改动清单",
+  "审查规则",
+  "严重度表",
+  "门控表",
 ]
 
-[fam.flag.criteria]
-true = "该提：这一处命中了某条规则，而且它所在的文件在该规则的适用范围内"
-false = "不该提：这一处没命中任何规则，或者命中了但文件不在该规则的适用范围内"
+[meta]
+body_label = "改动内容"
+manifest_label = "改动清单"
+rules_label = "审查规则"
+severity_label = "严重度表"
+gate_label = "门控表"
+header = "【{title}】"
+row_prefix = "- "
+paren = "（{text}）"
+colon = "："
+manifest_columns = "文件类型 | 变更类型 | 规模"
+rules_columns = "规则名 | 条件"
+severity_columns = "规则名 | 源码 | 测试 | 配置 | 文档；档位：0 不提 / 1 轻 / 2 中 / 3 重"
+gate_columns = "档位 | 新增 | 修改 | 删除；动作：allow 放行 / request_changes 请求修改 / block 拦下"
+
+[dims]
+secret = "改动的新增行里有没有出现「凭据名 = 带引号的值」这种写法"
+debug = "改动的新增行里有没有出现调试输出调用"
+file_kind = "文件类型"
+change_kind = "变更类型"
+size = "改动规模"
+
+[prompt]
+intro = "下面是一处**代码改动**的特征清单。请按清单写出这处改动的正文——也就是 diff 里那几行，**每行开头都要有前缀**：`+` 是新增、`-` 是删除、空格是上下文，例如 `+ timeout = 60`。"
+bullet = "- {dim}：{brief}（{hint}）"
+rules = [
+  "正文只写改动的那几行，**每行一个前缀**：`+` 是新增行、`-` 是删除行、空格是上下文行（前缀后面跟一个空格）",
+  "行数要落在「改动规模」说的区间里：小 1~4 行、中 3~8 行、大 6~12 行",
+  "行前缀要跟「变更类型」对得上：新增不许有 `-` 行、删除不许有 `+` 行",
+  "不要写 Markdown 围栏，不要写行号，不要写 `@@` 那种 hunk 头，也不要写「改动内容 / 改动清单 / 审查规则 / 严重度表 / 门控表」这些表名",
+  "要像真的代码：标识符保持 ASCII，注释与字符串用{language}写",
+  "「凭据字面量」那一档要一眼看得出来：有就在**新增行**上写成 `db_password = \"…\"` 这种**带引号的值**（写在代码里最自然，写在说明文字里也算）；没有就一个都别写（读环境变量、读配置不算）。只在删除行上出现的字面量不算「有」——那是把这行删掉",
+  "「调试输出」那一档也要一眼看得出来：有就在**新增行**上写成 print( / console.log( / logger.debug( 这类调用；没有就一个都别写",
+  "不要写真实存在的公司、产品或代码库名字，一律用虚构的名字",
+  "文档改动也要带前缀：`+ ## 安装指南` 是对的，光写 `## 安装指南` 不行（前缀是第一位的，文件类型只决定写什么内容）",
+]
+
+[feature.secret.no]
+brief = "新增行里没有「凭据名 = 带引号的值」"
+hint = "一个带引号的密码 / 令牌 / 密钥都别写，要用就去读环境变量"
+
+[feature.secret.yes]
+brief = "新增行里有「凭据名 = 带引号的值」"
+hint = "在**新增行**上写成 `db_password = \"hunter2\"` 这种带引号的值（写在代码里最自然，写在说明文字里也算）"
+
+[feature.debug.no]
+brief = "新增行里没有调试输出"
+hint = "别写 print( / console.log( / logger.debug( 这类调试输出"
+
+[feature.debug.yes]
+brief = "新增行里有调试输出"
+hint = "在**新增行**上写成像 print( 或 logger.debug( 那样把中间状态打出来"
+
+[feature.file_kind.source]
+brief = "源码文件"
+hint = "写业务代码的**改动行**：带前缀的函数、分支、取值，例如 `+ def total(x):`"
+
+[feature.file_kind.test]
+brief = "测试文件"
+hint = "写测试代码的**改动行**：带前缀的用例名、断言、夹具，例如 `+ def test_total():`"
+
+[feature.file_kind.config]
+brief = "配置文件"
+hint = "写配置的**改动行**：带前缀的键值对，例如 `+ timeout: 60`（YAML / TOML / JSON 风格都行），光写 `timeout: 60` 不行"
+
+[feature.file_kind.docs]
+brief = "文档文件"
+hint = "写说明文字（Markdown 那种）的**改动行**，不要写代码：`+ ## 安装指南` 是对的，光写 `## 安装指南` 不行"
+
+[feature.change_kind.added]
+brief = "新增"
+hint = "整块都是新加的行，每行都以 `+` 开头"
+
+[feature.change_kind.modified]
+brief = "修改"
+hint = "既有新加的行也有删掉的行，两种前缀都要有"
+
+[feature.change_kind.deleted]
+brief = "删除"
+hint = "整块都是删掉的行，每行都以 `-` 开头"
+
+[feature.size.small]
+brief = "小改动"
+hint = "1~4 行"
+
+[feature.size.medium]
+brief = "中等改动"
+hint = "3~8 行"
+
+[feature.size.large]
+brief = "大改动"
+hint = "6~12 行"
+
+[rules.credential]
+condition = "改动的新增行里有「凭据名 = 带引号的值」，而且文件类型是源码 / 测试 / 配置"
+
+[rules.debug]
+condition = "改动的新增行里有调试输出（print( / console.log( / logger.debug( 之类），而且文件类型是源码 / 配置"
+
+[rules.size]
+condition = "改动规模是「大」，而且文件类型是源码"
+
+[rules.none]
+condition = "以上都不命中"
+
+[verify]
+intro = "下面是一处代码改动。请按给定的选项反解它的特征。"
+state_header = "【改动全文】"
+questions_header = "【问题】"
+option_line = "   - {name}：{desc}"
+
+[fam.secret]
+q = [
+  "改动的新增行里有没有出现「凭据名 = 带引号的值」这种写法？",
+  "按「新增行里有没有这种写法」选一项。",
+  "这处改动的新增行里有没有凭据字面量？",
+]
+[fam.secret.criteria]
+true = "有：**新增行**里出现了形如 `db_password = \"…\"` 的写法（写在代码里或说明文字里都算）"
+false = "没有：新增行里没有这种写法（只在删除行上出现不算）"
+
+[fam.debug]
+q = [
+  "改动的新增行里有没有出现调试输出调用？",
+  "按「新增行里有没有调试输出」选一项。",
+  "这处改动的新增行里有没有留下调试输出？",
+]
+[fam.debug.criteria]
+true = "有：**新增行**里出现了 print( / console.log( / logger.debug( 这类调用"
+false = "没有：新增行里一处这种调用都没有（只在删除行上出现不算）"
+
+[fam.rule]
+q = [
+  "这处改动会命中审查规则表里的哪一条？",
+  "审查规则表从上往下看，第一条命中的是哪一条？",
+  "按审查规则表选一条命中的规则。",
+]
+[fam.rule.criteria]
+credential = "改动的新增行里有「凭据名 = 带引号的值」，而且文件类型是源码 / 测试 / 配置"
+debug = "改动的新增行里有调试输出，而且文件类型是源码 / 配置"
+size = "改动规模是「大」，而且文件类型是源码"
+none = "以上都不命中"
 
 [fam.severity]
 q = [
-  "第 {n} 处的严重度是第几档？",
-  "按严重度表，第 {n} 处属于第几档？",
-  "第 {n} 处有多严重？",
+  "这处改动的严重度是第几档？",
+  "按严重度表给这处改动定一档。",
+  "这处改动该记在第几档？",
 ]
 levels = [
-  "第 1 档（轻）：只是提醒，不挡合入",
-  "第 2 档（中）：要作者回应之后才能合",
-  "第 3 档（重）：必须拦下",
+  "0 档：不提（不构成发现）",
+  "1 档：轻",
+  "2 档：中",
+  "3 档：重",
 ]
 
 [fam.gate]
 q = [
-  "第 {n} 处该怎么处置？",
-  "按门控表，第 {n} 处走哪一条？",
-  "第 {n} 处应当放行、退回还是拦下？",
+  "这处改动该放行、请求修改，还是拦下？",
+  "按门控表，这处改动该怎么处置？",
+  "这处改动的门控动作是哪一档？",
 ]
-
-[fam.top]
-q = [
-  "最严重的是第几处？",
-  "这几处里最严重的是哪一处？",
-  "按严重度档，最该拦下的是第几处？",
-]
-
-[option.gate]
-pass = "放行：这处改动可以直接进主干"
-request = "请求修改：这处改动退回作者改完再说"
-block = "拦下：这处改动不能进主干"
-
-[option.position]
-element = "第 {n} 处：{file} · {change} · {size}"
+[fam.gate.criteria]
+allow = "放行"
+request_changes = "请求修改"
+block = "拦下"

@@ -1,16 +1,17 @@
 """技能选择 workflow 测试的公共夹具：小规格构造器（不联网、不落盘）。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 import pytest
 
 from workflows.skillpick import spec as sp
 
 #: 默认 case：请求标签 `read_code` / 排布 `l0` / 授权 `read` / 占用配对 `above` / 第一套句面。
-CASE_DEFAULTS: dict[str, Any] = {
+CASE_DEFAULTS: dict[str, JsonValue] = {
     "tag": "read_code",
     "layout": "l0",
     "grant": "read",
@@ -31,14 +32,14 @@ TINY_TAGS: tuple[str, ...] = (
 )
 
 
-def _make_case(**overrides: Any) -> sp.SkillCase:
+def _make_case(**overrides: object) -> sp.SkillCase:
     """输入：维度覆盖项。输出：一个 case。预期行为：未覆盖的维度取 `CASE_DEFAULTS`。"""
     fields = dict(CASE_DEFAULTS)
     fields.update(overrides)
     return sp.SkillCase(**fields)
 
 
-def _make_spec(**overrides: Any) -> sp.SkillSpec:
+def _make_spec(**overrides: object) -> sp.SkillSpec:
     """输入：case 覆盖项。输出：真值规格。预期行为：同种子必得同一份规格。"""
     return sp.sample_spec(_make_case(**overrides), "train", 0, 0, random.Random(3))
 
@@ -69,12 +70,12 @@ def tiny_config(split: str = "train", *, ood_only: bool = False) -> sp.SkillConf
 
 
 @pytest.fixture
-def make_case() -> Any:
+def make_case() -> object:
     """工厂夹具：`make_case(layout="l3")` 造一个 case。"""
     return _make_case
 
 
 @pytest.fixture
-def make_spec() -> Any:
+def make_spec() -> object:
     """工厂夹具：`make_spec(tag="deploy")` 造一条真值规格。"""
     return _make_spec

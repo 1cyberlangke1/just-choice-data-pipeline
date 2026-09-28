@@ -4,9 +4,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import json
-from typing import Any
+
 
 import pytest
 
@@ -27,7 +28,7 @@ from jc.backend.types import (
 
 
 def test_starting_mode_reports_the_configured_mode_not_the_probe(
-    fake_engine: Any, provider_factory: Any
+    fake_engine: object, provider_factory: object
 ) -> None:
     """后端自报的起始档位必须是**真正**要试的第一档，而不是探测结论。
 
@@ -42,7 +43,7 @@ def test_starting_mode_reports_the_configured_mode_not_the_probe(
 
 
 def test_generate_returns_draft_with_full_provenance(
-    fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """草稿必须带够来源信息，事后才能按 provider / model / key 切片查脏数据。"""
     provider = provider_factory(
@@ -60,7 +61,7 @@ def test_generate_returns_draft_with_full_provenance(
 
 
 def test_mode_degrades_when_the_server_rejects_the_schema(
-    fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """服务端不吃 json_schema 就降到 tools，同一个 provider 内部解决。"""
     engine = fake_engine(script=[SchemaUnsupportedError("400"), result_factory(mode="tools")])
@@ -73,7 +74,7 @@ def test_mode_degrades_when_the_server_rejects_the_schema(
 
 
 def test_mode_degrades_all_the_way_to_prompt_json(
-    fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """三档全试一遍：前两档都被拒，最后落到 md_json。"""
     engine = fake_engine(
@@ -88,7 +89,7 @@ def test_mode_degrades_all_the_way_to_prompt_json(
 
 
 def test_provider_is_dropped_when_every_mode_is_rejected(
-    fake_engine: Any, provider_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object
 ) -> None:
     """三档全被服务端拒掉 = 这家没戏；只有一家时就是「全部 provider 都不可用」。"""
     engine = fake_engine(script=[SchemaUnsupportedError("400")] * 3)
@@ -99,7 +100,7 @@ def test_provider_is_dropped_when_every_mode_is_rejected(
 
 
 def test_provider_degrades_to_the_next_one(
-    fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """前一家真挂了就顺延下一家，并在草稿里记下究竟是谁出的。"""
     first = provider_factory(fake_engine(script=[TransportError("500")]), name="a", model="m1")
@@ -111,7 +112,7 @@ def test_provider_degrades_to_the_next_one(
 
 
 def test_model_misbehaviour_moves_to_the_next_provider(
-    fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """模型答非所问属于「草稿不合格」，不算 provider 故障，但这家这题救不回来了。"""
     first = provider_factory(fake_engine(script=[DraftInvalidError("答非所问")]), name="a")
@@ -122,7 +123,7 @@ def test_model_misbehaviour_moves_to_the_next_provider(
 
 
 def test_all_providers_down_when_no_key_is_left(
-    fake_engine: Any, provider_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object
 ) -> None:
     """key 全废 → 这家不可用 → 整批停下的唯一条件。"""
     provider = provider_factory(fake_engine(script=[AuthError("401")]), name="a", keys=("k1",))
@@ -135,7 +136,7 @@ def test_all_providers_down_when_no_key_is_left(
 
 
 def test_every_provider_giving_junk_is_a_reject_not_a_batch_stop(
-    fake_engine: Any, provider_factory: Any, task_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object
 ) -> None:
     """两家都活着、但都给不出合格草稿 → 这一条不合格，**不是**「全部 provider 都挂了」。
 
@@ -151,7 +152,7 @@ def test_every_provider_giving_junk_is_a_reject_not_a_batch_stop(
 
 
 def test_generate_many_skips_finished_tasks(
-    tmp_path: Any, fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    tmp_path: object, fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """重启续跑：进度里已有的 task_id 直接跳过，不再花配额。"""
     sink = RunSink(tmp_path / "data.jsonl", tmp_path / "progress.jsonl")
@@ -164,7 +165,7 @@ def test_generate_many_skips_finished_tasks(
 
 
 def test_generate_many_writes_sample_then_progress(
-    tmp_path: Any, fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    tmp_path: object, fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """顺序铁律：产物先落盘，进度后落盘；进度里的 row 回填成产物行号。"""
     sink = RunSink(tmp_path / "data.jsonl", tmp_path / "progress.jsonl")
@@ -185,7 +186,7 @@ def test_generate_many_writes_sample_then_progress(
 
 
 def test_generate_many_without_assemble_uses_a_plain_sample(
-    tmp_path: Any, fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    tmp_path: object, fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """没给 assemble 时就写「task_id + 草稿数据」，够调试用。"""
     sink = RunSink(tmp_path / "data.jsonl", tmp_path / "progress.jsonl")
@@ -199,7 +200,7 @@ def test_generate_many_without_assemble_uses_a_plain_sample(
 
 
 def test_generate_many_keeps_progress_when_a_task_fails(
-    tmp_path: Any, fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    tmp_path: object, fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """中途炸掉时已写下的进度必须保留，下次重启从断点接着跑。"""
     sink = RunSink(tmp_path / "data.jsonl", tmp_path / "progress.jsonl")
@@ -212,7 +213,7 @@ def test_generate_many_keeps_progress_when_a_task_fails(
 
 
 def test_backend_without_sink_just_returns_drafts(
-    fake_engine: Any, provider_factory: Any, task_factory: Any, result_factory: Any
+    fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:
     """不落盘时 generate_many 只负责逐条生成，不产生任何文件副作用。"""
     engine = fake_engine(script=[result_factory(), result_factory()])
@@ -242,12 +243,12 @@ class DispatchEngine:
 
     name = "dispatch"
 
-    def __init__(self, by_model: dict[str, Any]) -> None:
+    def __init__(self, by_model: dict[str, JsonValue]) -> None:
         """输入：{模型名: 结果或异常实例}。输出：DispatchEngine 实例。"""
         self.by_model = by_model
         self.models: list[str] = []
 
-    def extract(self, request: Any) -> Any:
+    def extract(self, request: object) -> object:
         """输入：一次请求。输出：该模型对应的结果（或抛对应的异常）。"""
         self.models.append(request.model)
         item = self.by_model[request.model]
@@ -284,19 +285,19 @@ def test_build_backend_never_echoes_the_key_in_errors() -> None:
 
 
 def test_build_backend_probe_only_shapes_the_starting_mode(
-    monkeypatch: pytest.MonkeyPatch, result_factory: Any, task_factory: Any
+    monkeypatch: pytest.MonkeyPatch, result_factory: object, task_factory: object
 ) -> None:
     """探测结果只决定从哪一档起步：探出 tools 就从 tools 起，且只用第一个 key 探。"""
-    calls: list[dict[str, Any]] = []
+    calls: list[dict[str, JsonValue]] = []
 
-    def fake_probe(**kwargs: Any) -> BackendCapabilities:
+    def fake_probe(**kwargs: object) -> BackendCapabilities:
         calls.append(kwargs)
         return BackendCapabilities(tools=True, notes=("tools: 可用",))
 
-    seen: list[dict[str, Any]] = []
+    seen: list[dict[str, JsonValue]] = []
     real_provider = llm_module.Provider
 
-    def spy_provider(config: Any, keys: Any, engine: Any, **kwargs: Any) -> Any:
+    def spy_provider(config: object, keys: object, engine: object, **kwargs: object) -> object:
         seen.append(kwargs)
         return real_provider(config, keys, engine, **kwargs)
 
@@ -316,7 +317,7 @@ def test_build_backend_probe_only_shapes_the_starting_mode(
 
 
 def test_build_backend_without_probe_starts_from_the_strictest_mode(
-    result_factory: Any, task_factory: Any
+    result_factory: object, task_factory: object
 ) -> None:
     """不探测时从最严的 json_schema 起步，且不发任何探测请求。"""
     engine = DispatchEngine({"m1": result_factory(mode="json_schema")})
@@ -327,7 +328,7 @@ def test_build_backend_without_probe_starts_from_the_strictest_mode(
 
 
 def test_build_backend_stops_at_the_first_provider_by_default(
-    result_factory: Any, task_factory: Any
+    result_factory: object, task_factory: object
 ) -> None:
     """默认「一家到底」：各家 model 不同时不偷偷换模型，前一家挂了整批停。"""
     engine = DispatchEngine({"m1": TransportError("500"), "m2": result_factory()})
@@ -342,7 +343,7 @@ def test_build_backend_stops_at_the_first_provider_by_default(
     assert engine.models == ["m1"]  # 第二家根本没被打扰
 
 
-def test_build_backend_can_opt_into_mixing_models(result_factory: Any, task_factory: Any) -> None:
+def test_build_backend_can_opt_into_mixing_models(result_factory: object, task_factory: object) -> None:
     """显式打开混用后，前一家挂了才顺延到不同 model 的那家。"""
     engine = DispatchEngine({"m1": TransportError("500"), "m2": result_factory()})
     config = BackendsConfig(
@@ -355,7 +356,7 @@ def test_build_backend_can_opt_into_mixing_models(result_factory: Any, task_fact
     assert backend.generate(task_factory()).provider == "b"
 
 
-def test_build_backend_reads_a_real_toml_file(tmp_path: Any) -> None:
+def test_build_backend_reads_a_real_toml_file(tmp_path: object) -> None:
     """端到端：TOML 配置 → load_config → build_backend，key 只从环境变量来。"""
     toml_path = tmp_path / "backends.toml"
     toml_path.write_text(

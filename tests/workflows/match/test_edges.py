@@ -1,10 +1,11 @@
 """边界与错误路径：坏切分、坏判别器名、坏产物、越界取值、构造式约束。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
 from pathlib import Path
-from typing import Any
+
 
 import pytest
 
@@ -18,7 +19,7 @@ LOC = locales.load("zh")
 WORKFLOW = match_workflow.MatchWorkflow()
 
 
-def build_row(config: sp.MatchConfig, case: sp.MatchCase, seq: int) -> dict[str, Any]:
+def build_row(config: sp.MatchConfig, case: sp.MatchCase, seq: int) -> dict[str, JsonValue]:
     """输入：配置、case、序号。输出：契约样本。
 
     预期行为：走与管线同一条路（计划 → 规格 → 渲染 → 出题 → 组装），不手写样本。

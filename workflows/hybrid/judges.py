@@ -11,9 +11,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass
-from typing import Any
+
 
 from jc.judge import Verdict
 
@@ -23,7 +24,7 @@ from .spec import HybridSpec
 
 
 def skeleton_diff(
-    spec: HybridSpec, parsed: render.ParsedSchedule, loc: dict[str, Any]
+    spec: HybridSpec, parsed: render.ParsedSchedule, loc: dict[str, JsonValue]
 ) -> list[str]:
     """输入：真值规格、反解结果、语言字典。输出：差异列表（空 = 一致）。
 
@@ -56,7 +57,7 @@ class SkeletonJudge:
     name: str = "skeleton"
     locale: str = "zh"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值 spec。输出：Verdict。预期行为：没有 spec 就跳过（不误判）。"""
         if not isinstance(spec, HybridSpec):
             return Verdict(True, reason="没有 spec，跳过结构判别", raw={"skipped": True})
@@ -99,7 +100,7 @@ def _busy_level(parsed: render.ParsedSchedule) -> int:
     return min(spec_mod.BUSY_CAP, len(hours))
 
 
-def _room_index(parsed: render.ParsedSchedule, index: int, loc: dict[str, Any]) -> int | None:
+def _room_index(parsed: render.ParsedSchedule, index: int, loc: dict[str, JsonValue]) -> int | None:
     """输入：反解结果、会议下标、语言字典。输出：那场会会议室名的词表下标，或 None。"""
     names = loc["word"]["room"]["items"]
     try:
@@ -109,7 +110,7 @@ def _room_index(parsed: render.ParsedSchedule, index: int, loc: dict[str, Any]) 
 
 
 def recompute_choice(
-    family: str, target: str, parsed: render.ParsedSchedule, loc: dict[str, Any]
+    family: str, target: str, parsed: render.ParsedSchedule, loc: dict[str, JsonValue]
 ) -> tuple[str | None, list[str]]:
     """输入：题族、目标槽、反解结果、语言字典。输出：(期望的选项名, 问题列表)。
 
@@ -150,10 +151,10 @@ def recompute_choice(
 
 def _choice_problems(
     qid: str,
-    question: dict[str, Any],
-    answer: dict[str, Any],
+    question: dict[str, JsonValue],
+    answer: dict[str, JsonValue],
     parsed: render.ParsedSchedule,
-    loc: dict[str, Any],
+    loc: dict[str, JsonValue],
 ) -> list[str]:
     """输入：题号、题目、答案、反解结果、语言字典。输出：问题列表（空 = 对得上）。
 
@@ -185,7 +186,7 @@ class AnswerJudge:
     locale: str = "zh"
     max_problems: int = 5
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值 spec（不用）。输出：Verdict。预期行为：对不上就判不通过。"""
         del spec  # 刻意不用：用了就是拿答案验证答案
         loc = locales.load(self.locale)
@@ -198,7 +199,7 @@ class AnswerJudge:
         )
 
     def _check(
-        self, sample: dict[str, Any], parsed: render.ParsedSchedule, loc: dict[str, Any]
+        self, sample: dict[str, JsonValue], parsed: render.ParsedSchedule, loc: dict[str, JsonValue]
     ) -> list[str]:
         """输入：样本、反解结果、语言字典。输出：问题列表（空 = 全部对得上）。"""
         problems: list[str] = []
@@ -236,7 +237,7 @@ class TextJudge:
     locale: str = "zh"
     max_problems: int = 5
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值 spec（不用）。输出：Verdict。预期行为：不干净就判不通过。"""
         del spec
         parsed = render.parse_state(sample["state"])

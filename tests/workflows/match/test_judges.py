@@ -1,9 +1,10 @@
 """判别器：归一化、三种关系、重算、篡改能抓到、缺 spec 跳过。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 import pytest
 
@@ -15,7 +16,7 @@ from workflows.match import spec as sp
 LOC = locales.load("zh")
 
 
-def sample_of(spec: sp.MatchSpec, locale: str = "zh", seed: int = 0) -> dict[str, Any]:
+def sample_of(spec: sp.MatchSpec, locale: str = "zh", seed: int = 0) -> dict[str, JsonValue]:
     """输入：规格、语言、种子。输出：契约样本。
 
     预期行为：走真管线那两步（渲染 + 出题 + 组装），不手写样本——判别器要验的正是
@@ -27,7 +28,7 @@ def sample_of(spec: sp.MatchSpec, locale: str = "zh", seed: int = 0) -> dict[str
     return assemble.assemble_sample("m-0000001", state, labeled, random.Random(seed))
 
 
-def facts_of(sample: dict[str, Any], locale: str = "zh") -> judges.Facts:
+def facts_of(sample: dict[str, JsonValue], locale: str = "zh") -> judges.Facts:
     """输入：样本、语言。输出：从 state 重算出来的事实。"""
     loc = locales.load(locale)
     return judges.recompute(parse.parse_state(sample["state"], parse.tables_of(loc)), loc)

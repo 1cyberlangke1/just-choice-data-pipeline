@@ -1,17 +1,19 @@
 """端到端测试：小规模跑通整条管线、可复现、审计与接线。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import dataclasses
 import json
 import random
 from pathlib import Path
-from typing import Any
+
 
 import pytest
 
 from jc import assemble, cli, jsonio, pipeline
 from jc import workflow as workflow_mod
+from jc.backend.types import GenerationBackend
 from workflows.hybrid import judges as judges_mod
 from workflows.hybrid import locales, questions, render
 from workflows.hybrid import spec as sp
@@ -38,7 +40,7 @@ def tiny_config(split: str = "train") -> sp.HybridConfig:
 
 
 def make_config(
-    tmp_path: Path, run_id: str, *, split: str = "train", concurrency: int = 1, backend: Any = None
+    tmp_path: Path, run_id: str, *, split: str = "train", concurrency: int = 1, backend: GenerationBackend | None = None
 ) -> pipeline.RunConfig:
     """输入：临时目录、run 名、切分、并发度、后端。输出：指向 tmp 的运行配置。"""
     return pipeline.RunConfig(
@@ -60,7 +62,7 @@ def _case_count(config: pipeline.RunConfig) -> int:
     return len(hy_workflow.HybridWorkflow().build_cases(config.config_override))
 
 
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: Any) -> None:
+def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: GenerationBackend) -> None:
     """输入：极小配置 + 假后端。输出：RunResult。
 
     预期行为：每个 case 出一条样本、零拒绝、三个判别器全通过；产物过审计。
@@ -78,7 +80,7 @@ def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: Any) -> None:
     assert report["train"]["index_bad"] == 0 and report["train"]["options_bad"] == 0
 
 
-def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: Any) -> None:
+def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: GenerationBackend) -> None:
     """输入：同种子、不同并发度跑两次。输出：两份产物。
 
     预期行为：逐字节一致——RNG 由 (seed, workflow, split, seq) 派生，并发不改变内容。
@@ -91,7 +93,7 @@ def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: Any) -> None:
     ).read_bytes()
 
 
-def test_manifest_and_stats_are_written(tmp_path: Path, fake_backend: Any) -> None:
+def test_manifest_and_stats_are_written(tmp_path: Path, fake_backend: GenerationBackend) -> None:
     """输入：一次跑。输出：产物目录。
 
     预期行为：manifest 记下 workflow / 切分 / case 列表 / 「需要 text 能力」；
@@ -129,7 +131,7 @@ def test_a_missing_backend_is_refused(tmp_path: Path) -> None:
         workflow.render(spec, random.Random(1), "zh")
 
 
-def test_bind_backend_stores_the_backend(fake_backend: Any) -> None:
+def test_bind_backend_stores_the_backend(fake_backend: GenerationBackend) -> None:
     """输入：一个后端。输出：无。预期行为：存下来给 `render` 用。"""
     workflow = hy_workflow.HybridWorkflow()
     backend = fake_backend()
@@ -163,7 +165,7 @@ def test_samples_draw_theme_directions_from_the_config() -> None:
     assert seen == {3, 7}
 
 
-def test_a_config_with_no_cases_is_refused(tmp_path: Path, fake_backend: Any) -> None:
+def test_a_config_with_no_cases_is_refused(tmp_path: Path, fake_backend: GenerationBackend) -> None:
     """输入：一个「所有组合都写不出来」的采样参数。输出：ValueError（人话）。
 
     预期行为：`compatible` 剔完一个 case 都不剩时要**当场报错**，不能让管线拿着空表
@@ -216,7 +218,7 @@ def test_bucket_of_is_stable_and_case_label_roundtrips() -> None:
     assert set(workflow.stats_dimensions(case)) == set(workflow.dimension_titles())
 
 
-def test_reparse_reads_a_rendered_schedule(make_spec: Any) -> None:
+def test_reparse_reads_a_rendered_schedule(make_spec: object) -> None:
     """输入：一份渲染好的日程。输出：反解结果。
 
     预期行为：`Workflow.reparse` 没有语言参数，靠结构与合并标签表读出来。
@@ -247,7 +249,7 @@ def test_judges_are_the_declared_defaults() -> None:
     assert isinstance(judges_mod.TextJudge(), object)
 
 
-def _row(state: str, questions: dict[str, Any], answers: dict[str, Any]) -> dict[str, Any]:
+def _row(state: str, questions: dict[str, JsonValue], answers: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """造一条最小样本行（审计只读 state / questions / answers）。"""
     return {
         "id": "hybrid-train-0000000",
@@ -300,7 +302,7 @@ def test_audit_catches_a_bad_index_and_a_wrong_option_count(tmp_path: Path) -> N
     assert any("题族 earliest_start 一条都没出" in item for item in missing)
 
 
-def test_audit_passes_a_self_consistent_artifact(tmp_path: Path, make_spec: Any) -> None:
+def test_audit_passes_a_self_consistent_artifact(tmp_path: Path, make_spec: object) -> None:
     """输入：一条自己组装出来的、自洽的产物行。输出：(报告, 缺失项)。
 
     预期行为：零缺失——题族齐全、答案编号在范围内、选项个数与日程场数自洽。
@@ -320,7 +322,7 @@ def test_audit_passes_a_self_consistent_artifact(tmp_path: Path, make_spec: Any)
 
 
 def test_cli_lists_cases_and_audits(
-    tmp_path: Path, fake_backend: Any, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, fake_backend: object, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """输入：`jc cases` 与 `jc audit`。输出：退出码与 stdout。
 

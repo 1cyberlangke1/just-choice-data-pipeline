@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import random
 import re
-from typing import Any
+
 
 import pytest
 
@@ -29,7 +29,7 @@ def _render(case: sp.HybridCase, lang: str, seed: int = 5) -> sp.HybridSpec:
     return spec
 
 
-def _fake(**kwargs: Any) -> Any:
+def _fake(**kwargs: object) -> object:
     """输入：假后端开关。输出：假后端实例。预期行为：延迟导入 conftest 里的类。"""
     from tests.workflows.hybrid.conftest import FakeBackend
 
@@ -116,7 +116,7 @@ def test_build_needs_written_text() -> None:
 
 
 @pytest.mark.parametrize("state", [None, 5, {"a": 1}, ["x"], ""])
-def test_parse_state_tolerates_non_schedule_states(state: Any) -> None:
+def test_parse_state_tolerates_non_schedule_states(state: object) -> None:
     """输入：非日程的 state。输出：空日程。
 
     预期行为：不崩——判别器据此判「与真值不符」，而不是在解析处抛异常。
@@ -164,7 +164,7 @@ def test_parse_state_reads_the_english_locale() -> None:
     )
 
 
-def test_prompt_carries_no_skeleton_facts(make_spec: Any) -> None:
+def test_prompt_carries_no_skeleton_facts(make_spec: object) -> None:
     """输入：一份日程的提示词。输出：提示词文本。
 
     预期行为：只给场数与规则——不能出现任何一场会的时刻、会议室名或主持人姓名，
@@ -182,7 +182,7 @@ def test_prompt_carries_no_skeleton_facts(make_spec: Any) -> None:
         assert render.lead_text(spec, index, loc) not in prompt
 
 
-def test_prompt_carries_the_theme_direction(make_spec: Any) -> None:
+def test_prompt_carries_the_theme_direction(make_spec: object) -> None:
     """输入：两份只差主题方向的规格。输出：两段提示词。
 
     预期行为：提示词里出现该语言的**主题词**，且换个方向就换一段提示词。写文本的提示词里
@@ -197,7 +197,7 @@ def test_prompt_carries_the_theme_direction(make_spec: Any) -> None:
     assert first != second
 
 
-def test_build_task_only_exposes_the_meeting_count(make_spec: Any) -> None:
+def test_build_task_only_exposes_the_meeting_count(make_spec: object) -> None:
     """输入：一份规格。输出：后端任务。
 
     预期行为：`spec` 里只有场数（不是骨架），题型标 `text`，响应模型是草稿模型；
@@ -213,7 +213,7 @@ def test_build_task_only_exposes_the_meeting_count(make_spec: Any) -> None:
     assert "meetings" in task.schema["properties"]
 
 
-def test_check_draft_accepts_a_clean_draft(make_spec: Any) -> None:
+def test_check_draft_accepts_a_clean_draft(make_spec: object) -> None:
     """输入：干净草稿。输出：{槽名: 文本}。
 
     预期行为：条数对得上、文本干净、标题 / 议题两两不同就收下，顺序与日程一致。
@@ -234,7 +234,7 @@ def test_check_draft_accepts_a_clean_draft(make_spec: Any) -> None:
     _ = make_spec
 
 
-def test_check_draft_rejects_bad_drafts(make_spec: Any) -> None:
+def test_check_draft_rejects_bad_drafts(make_spec: object) -> None:
     """输入：四种坏草稿。输出：DraftInvalidError（带人话说明）。
 
     预期行为：场数不对 / 不是数组 / 夹带骨架事实 / 标题重复，都要在生成期炸掉——
@@ -260,7 +260,7 @@ def test_check_draft_rejects_bad_drafts(make_spec: Any) -> None:
         render.check_draft(spec, loc, duplicated)
 
 
-def test_check_draft_rejects_a_non_object_meeting(make_spec: Any) -> None:
+def test_check_draft_rejects_a_non_object_meeting(make_spec: object) -> None:
     """输入：一条不是对象的会议草稿。输出：DraftInvalidError。"""
     spec = make_spec(5)
     loc = locales.load("zh")
@@ -317,7 +317,7 @@ def test_text_helpers_reject_out_of_range_values() -> None:
         render.weekday_text(0, loc)
 
 
-def test_expected_meetings_matches_the_rendered_text(make_spec: Any) -> None:
+def test_expected_meetings_matches_the_rendered_text(make_spec: object) -> None:
     """输入：一份规格。输出：期望值。
 
     预期行为：`expected_meetings` 与「把渲染文本反解一遍」得到的结果完全一致——

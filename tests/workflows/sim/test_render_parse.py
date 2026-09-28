@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+
 
 import pytest
 
@@ -198,7 +198,7 @@ def test_labels_of_rejects_two_keys_sharing_one_text() -> None:
         parse.labels_of(loc)
 
 
-def _patched_merged(monkeypatch: pytest.MonkeyPatch, mutate: Any) -> None:
+def _patched_merged(monkeypatch: pytest.MonkeyPatch, mutate: object) -> None:
     """输入：monkeypatch、一个改语言字典的回调。输出：无。
 
     预期行为：把两门语言换成「zh + 改过的 en」，好单独验合并表的三种冲突。

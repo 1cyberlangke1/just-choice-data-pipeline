@@ -6,15 +6,17 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import json
+import random
 from pathlib import Path
-from typing import Any
+
 
 import pytest
 
 from jc import cli, jsonio, pipeline
-from jc.backend.types import AllProvidersDown, Draft, DraftInvalidError, TransportError
+from jc.backend.types import AllProvidersDown, Draft, DraftInvalidError, GenerationBackend, TransportError
 from jc.workflow import LabeledQuestion, SplitSpec
 
 
@@ -32,11 +34,11 @@ class StubBackend:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def generate(self, task: Any) -> None:
+    def generate(self, task: object) -> None:
         """输入：一个任务。输出：None。预期行为：记下 task_id。"""
         self.calls.append(task.task_id)
 
-    def generate_many(self, tasks: list[Any]) -> list[None]:
+    def generate_many(self, tasks: list[JsonValue]) -> list[None]:
         """输入：任务列表。输出：与入参等长的 None 列表。"""
         return [self.generate(task) for task in tasks]
 
@@ -62,10 +64,10 @@ class BackendWorkflow:
     judges: tuple[str, ...] = ()
 
     def __init__(self) -> None:
-        self.backend: Any = None
+        self.backend: GenerationBackend | None = None
         self.bound = 0
 
-    def bind_backend(self, backend: Any) -> None:
+    def bind_backend(self, backend: GenerationBackend) -> None:
         """输入：生成后端。输出：无。预期行为：存下后端并计数。"""
         self.backend = backend
         self.bound += 1
@@ -73,52 +75,52 @@ class BackendWorkflow:
     def split_names(self) -> tuple[str, ...]:
         return ("train",)
 
-    def config_for(self, split: str) -> Any:
+    def config_for(self, split: str) -> object:
         return {}
 
-    def build_cases(self, config: Any) -> list[Any]:
+    def build_cases(self, config: object) -> list[JsonValue]:
         return [{"i": 0}, {"i": 1}]
 
-    def case_label(self, case: Any) -> str:
+    def case_label(self, case: object) -> str:
         return f"case-{case['i']}"
 
-    def stats_dimensions(self, case: Any) -> dict[str, Any]:
+    def stats_dimensions(self, case: object) -> dict[str, JsonValue]:
         return {"i": case["i"]}
 
     def dimension_titles(self) -> dict[str, str]:
         return {"i": "序号"}
 
-    def plan_sample(self, rng: Any, config: Any, case: Any, seq: int) -> SplitSpec:
+    def plan_sample(self, rng: random.Random, config: object, case: object, seq: int) -> SplitSpec:
         return SplitSpec(name="train", params={"i": case["i"]})
 
-    def sample(self, rng: Any, split: SplitSpec) -> Any:
+    def sample(self, rng: random.Random, split: SplitSpec) -> object:
         return split.params
 
-    def render(self, spec: Any, rng: Any, locale: str) -> Any:
+    def render(self, spec: object, rng: random.Random, locale: str) -> object:
         self.backend.generate(FakeTask(f"fake-{spec['i']}"))
         return f"state-{spec['i']}"
 
-    def ask(self, spec: Any, rng: Any, locale: str) -> list[LabeledQuestion]:
+    def ask(self, spec: object, rng: random.Random, locale: str) -> list[LabeledQuestion]:
         return [
             LabeledQuestion(
                 "hit", {"type": "noul", "instructions": "命中吗"}, True, shuffle=False
             )
         ]
 
-    def reparse(self, state: Any, *, case: Any = None) -> Any:
+    def reparse(self, state: object, *, case: object = None) -> object:
         return None
 
     def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[()]:
         return ()
 
-    def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[dict[str, Any], list[str]]:
+    def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[dict[str, JsonValue], list[str]]:
         return {}, []
 
     def available_locales(self) -> list[str]:
         return ["zh"]
 
 
-def test_needs_backend_without_backend_raises(tmp_path: Path, monkeypatch: Any) -> None:
+def test_needs_backend_without_backend_raises(tmp_path: Path, monkeypatch: object) -> None:
     """输入：声明了 needs 的 workflow，但没给 backend。
 
     输出：异常。
@@ -132,7 +134,7 @@ def test_needs_backend_without_backend_raises(tmp_path: Path, monkeypatch: Any) 
     assert not list(tmp_path.rglob("*.jsonl"))
 
 
-def test_backend_is_bound_and_really_used(tmp_path: Path, monkeypatch: Any) -> None:
+def test_backend_is_bound_and_really_used(tmp_path: Path, monkeypatch: object) -> None:
     """输入：声明了 needs 的 workflow + 一个假后端。
 
     输出：RunResult。
@@ -201,14 +203,14 @@ class FatalBackend(StubBackend):
         super().__init__()
         self.fail_from = fail_from
 
-    def generate(self, task: Any) -> None:
+    def generate(self, task: object) -> None:
         """输入：一个任务。输出：None 或抛 `AllProvidersDown`。"""
         super().generate(task)
         if len(self.calls) > self.fail_from:
             raise AllProvidersDown("全部 provider 都不可用：['nim', 'nim-glm']")
 
 
-def test_all_providers_down_aborts_the_run(tmp_path: Path, monkeypatch: Any) -> None:
+def test_all_providers_down_aborts_the_run(tmp_path: Path, monkeypatch: object) -> None:
     """输入：第一条就全挂的假后端。
 
     输出：`RunAborted`。
@@ -232,7 +234,7 @@ def test_all_providers_down_aborts_the_run(tmp_path: Path, monkeypatch: Any) -> 
     assert manifest["stats"]["aborted"]["seq"] == 0
 
 
-def test_abort_keeps_the_progress_already_made(tmp_path: Path, monkeypatch: Any) -> None:
+def test_abort_keeps_the_progress_already_made(tmp_path: Path, monkeypatch: object) -> None:
     """输入：跑通一条之后才全挂的假后端。
 
     输出：`RunAborted`，且那一条合格样本留在盘上。
@@ -264,14 +266,14 @@ class JunkBackend(StubBackend):
         super().__init__()
         self.junk_at = junk_at
 
-    def generate(self, task: Any) -> None:
+    def generate(self, task: object) -> None:
         """输入：一个任务。输出：None 或抛 `DraftInvalidError`。"""
         super().generate(task)
         if len(self.calls) > self.junk_at:
             raise DraftInvalidError("模型没给出合格草稿：list index out of range")
 
 
-def test_junk_draft_is_a_reject_not_an_abort(tmp_path: Path, monkeypatch: Any) -> None:
+def test_junk_draft_is_a_reject_not_an_abort(tmp_path: Path, monkeypatch: object) -> None:
     """输入：第 2 条起给不出合格草稿的假后端。
 
     输出：正常跑完的 `RunResult`（**不是** `RunAborted`）。
@@ -290,7 +292,7 @@ def test_junk_draft_is_a_reject_not_an_abort(tmp_path: Path, monkeypatch: Any) -
     assert len(backend.calls) > 1  # 后面几条真的继续跑了，不是掐掉整批
 
 
-def test_concurrency_must_be_positive(tmp_path: Path, monkeypatch: Any) -> None:
+def test_concurrency_must_be_positive(tmp_path: Path, monkeypatch: object) -> None:
     """输入：concurrency=0。输出：ValueError。预期行为：非法配置当场报人话，不静默当串行。"""
     monkeypatch.setattr(pipeline, "load", lambda name: BackendWorkflow())
     with pytest.raises(ValueError, match="concurrency"):
@@ -301,7 +303,7 @@ def test_concurrency_must_be_positive(tmp_path: Path, monkeypatch: Any) -> None:
         )
 
 
-def test_concurrent_run_matches_serial_run(tmp_path: Path, monkeypatch: Any) -> None:
+def test_concurrent_run_matches_serial_run(tmp_path: Path, monkeypatch: object) -> None:
     """输入：同一份配置，一次串行、一次并发 2。
 
     输出：两次的 `train.jsonl`。
@@ -325,7 +327,7 @@ def test_concurrent_run_matches_serial_run(tmp_path: Path, monkeypatch: Any) -> 
     assert serial.stats["judges"] == concurrent.stats["judges"]
 
 
-def test_concurrent_abort_stops_submitting_more(tmp_path: Path, monkeypatch: Any) -> None:
+def test_concurrent_abort_stops_submitting_more(tmp_path: Path, monkeypatch: object) -> None:
     """输入：并发 4 跑 2 条、后端从头就全挂。
 
     输出：`RunAborted`。
@@ -344,7 +346,7 @@ def test_concurrent_abort_stops_submitting_more(tmp_path: Path, monkeypatch: Any
     assert len(backend.calls) <= 2
 
 
-def test_load_backend_assembles_with_probe(monkeypatch: Any) -> None:
+def test_load_backend_assembles_with_probe(monkeypatch: object) -> None:
     """输入：一个配置路径（`jc.backend` 被换掉，不真读文件、不真联网）。
 
     输出：装配出来的后端对象。
@@ -352,7 +354,7 @@ def test_load_backend_assembles_with_probe(monkeypatch: Any) -> None:
     """
     import jc.backend as backend_mod
 
-    seen: dict[str, Any] = {}
+    seen: dict[str, JsonValue] = {}
 
     def fake_load_config(path: str) -> str:
         seen["path"] = path
@@ -402,7 +404,7 @@ class JudgeBackend(StubBackend):
         self.reason = reason
         self.exc = exc
 
-    def generate(self, task: Any) -> Any:
+    def generate(self, task: object) -> object:
         """输入：任务。输出：质检任务给草稿，其余给 None。预期行为：先记账。"""
         self.calls.append(task.task_id)
         if "-judge-" not in task.task_id:
@@ -419,7 +421,7 @@ class JudgeBackend(StubBackend):
         )
 
 
-def test_llm_judge_without_backend_raises(tmp_path: Path, monkeypatch: Any) -> None:
+def test_llm_judge_without_backend_raises(tmp_path: Path, monkeypatch: object) -> None:
     """输入：声明了 LLM 质检的 workflow，但没给后端。输出：ValueError。
 
     预期行为：**当场报人话**，不静默把这只眼睛摘掉——摘掉之后统计里少一项，
@@ -430,7 +432,7 @@ def test_llm_judge_without_backend_raises(tmp_path: Path, monkeypatch: Any) -> N
         pipeline.run(pipeline.RunConfig(workflow="fake_llm_judge_no_needs", out_root=tmp_path))
 
 
-def test_llm_judge_failure_is_skipped_not_rejected(tmp_path: Path, monkeypatch: Any) -> None:
+def test_llm_judge_failure_is_skipped_not_rejected(tmp_path: Path, monkeypatch: object) -> None:
     """输入：质检每次都被端点掐断（传输错误）。输出：样本照收 + 单独记账。
 
     预期行为：合格 2、被拒 0、`judge-skipped.jsonl` 两条、统计里记 skipped——
@@ -457,7 +459,7 @@ def test_llm_judge_failure_is_skipped_not_rejected(tmp_path: Path, monkeypatch: 
     assert "跳过 2 条" in stats_md
 
 
-def test_llm_judge_saying_no_rejects_the_sample(tmp_path: Path, monkeypatch: Any) -> None:
+def test_llm_judge_saying_no_rejects_the_sample(tmp_path: Path, monkeypatch: object) -> None:
     """输入：质检说「有问题」。输出：样本被拒，拒绝码带视角名。
 
     预期行为：拒绝码是 `E_JUDGE_LLM_SOLVABLE`（名字里的 `:` 换成 `_`），
@@ -476,7 +478,7 @@ def test_llm_judge_saying_no_rejects_the_sample(tmp_path: Path, monkeypatch: Any
     assert result.stats["judges"]["llm:solvable"] == {"ok": 0, "fail": 2, "skipped": 0}
 
 
-def test_llm_judge_fatal_error_aborts_the_run(tmp_path: Path, monkeypatch: Any) -> None:
+def test_llm_judge_fatal_error_aborts_the_run(tmp_path: Path, monkeypatch: object) -> None:
     """输入：质检时全部 provider 都挂了。输出：`RunAborted`。
 
     预期行为：判别器也不能把「全挂了」吞成 skipped——那会产出一整个「没质检」的假数据集。
@@ -491,7 +493,7 @@ def test_llm_judge_fatal_error_aborts_the_run(tmp_path: Path, monkeypatch: Any) 
         )
 
 
-def test_rule_judges_still_run_alongside_llm_ones(tmp_path: Path, monkeypatch: Any) -> None:
+def test_rule_judges_still_run_alongside_llm_ones(tmp_path: Path, monkeypatch: object) -> None:
     """输入：规则判别器 + LLM 判别器一起开。输出：两个都跑、各记各的。
 
     预期行为：规则判别器由 workflow 构造、LLM 的由通用层装配，两者在统计里各占一行。
@@ -505,7 +507,7 @@ def test_rule_judges_still_run_alongside_llm_ones(tmp_path: Path, monkeypatch: A
         def __init__(self) -> None:
             self.seen = 0
 
-        def judge(self, sample: dict[str, Any], spec: Any = None) -> Any:
+        def judge(self, sample: dict[str, JsonValue], spec: object = None) -> object:
             """输入：样本。输出：通过的 Verdict。预期行为：计数。"""
             from jc.judge import Verdict
 
@@ -540,11 +542,11 @@ class DuplicateStateWorkflow(BackendWorkflow):
     name = "fake_dup_state"
     judges: tuple[str, ...] = ()
 
-    def render(self, spec: Any, rng: Any, locale: str) -> Any:
+    def render(self, spec: object, rng: random.Random, locale: str) -> object:
         """输入：规格。输出：**固定不变**的素材文本。预期行为：不调后端。"""
         return "同一段素材"
 
-    def ask(self, spec: Any, rng: Any, locale: str) -> list[LabeledQuestion]:
+    def ask(self, spec: object, rng: random.Random, locale: str) -> list[LabeledQuestion]:
         """输入：规格。输出：一道 noul 题，答案随 case 变（于是同素材出现了两个答案）。"""
         return [
             LabeledQuestion(
@@ -553,7 +555,7 @@ class DuplicateStateWorkflow(BackendWorkflow):
         ]
 
 
-def test_conflicting_answers_on_one_state_are_reported(tmp_path: Path, monkeypatch: Any) -> None:
+def test_conflicting_answers_on_one_state_are_reported(tmp_path: Path, monkeypatch: object) -> None:
     """输入：两条素材相同、答案相反的样本。输出：统计里记 1 处冲突 + conflicts.jsonl。
 
     预期行为：样本照收（不拒数据），但冲突必须露出来——同素材同题不同答是自相矛盾的训练对。
@@ -576,7 +578,7 @@ def test_conflicting_answers_on_one_state_are_reported(tmp_path: Path, monkeypat
     assert "⚠️ 1 处" in stats_md
 
 
-def test_clean_run_reports_no_conflicts(tmp_path: Path, monkeypatch: Any) -> None:
+def test_clean_run_reports_no_conflicts(tmp_path: Path, monkeypatch: object) -> None:
     """输入：素材两两不同的正常 run。输出：0 处冲突、不写 conflicts.jsonl。
 
     预期行为：报告里也要写出「0 处」——没写的话读者分不清「查过没问题」与「根本没查」。
@@ -608,7 +610,7 @@ def test_torn_last_line_is_dropped_but_a_broken_middle_line_raises(tmp_path: Pat
         pipeline._read_rows(path)
 
 
-def test_run_writes_one_journal_line_per_sample(tmp_path: Path, monkeypatch: Any) -> None:
+def test_run_writes_one_journal_line_per_sample(tmp_path: Path, monkeypatch: object) -> None:
     """输入：两条样本的正常跑。输出：`progress-train.jsonl`。
 
     预期行为：每个序号一行，`row` 指向 `<split>.jsonl` 的第几行——续跑就靠它把样本取回来，
@@ -632,7 +634,7 @@ def test_run_writes_one_journal_line_per_sample(tmp_path: Path, monkeypatch: Any
     assert [s["id"] for s in samples] == ["fake_llm-train-0000000", "fake_llm-train-0000001"]
 
 
-def test_rerunning_the_same_run_id_skips_everything(tmp_path: Path, monkeypatch: Any) -> None:
+def test_rerunning_the_same_run_id_skips_everything(tmp_path: Path, monkeypatch: object) -> None:
     """输入：同一个 run_id 跑两遍。输出：两次 RunResult。
 
     预期行为：第二遍一条都不重跑（后端零调用）、产物逐字节不变、统计一致——
@@ -653,7 +655,7 @@ def test_rerunning_the_same_run_id_skips_everything(tmp_path: Path, monkeypatch:
     assert second.stats == first.stats
 
 
-def test_resume_after_abort_matches_a_single_clean_run(tmp_path: Path, monkeypatch: Any) -> None:
+def test_resume_after_abort_matches_a_single_clean_run(tmp_path: Path, monkeypatch: object) -> None:
     """输入：先跑到中止（第 1 条起全挂），再换正常后端用同一个 run_id 续跑。输出：两次产物。
 
     预期行为：续跑只补没完成的那条（后端只被调一次），最终产物与统计和「一次跑完」逐字节
@@ -688,7 +690,7 @@ def test_resume_after_abort_matches_a_single_clean_run(tmp_path: Path, monkeypat
 
 
 def test_run_refuses_when_artifacts_exist_without_a_journal(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: object
 ) -> None:
     """输入：跑完一遍后**删掉进度日志**、再用同一个 run_id 跑。输出：无（报错）。
 
@@ -710,7 +712,7 @@ def test_run_refuses_when_artifacts_exist_without_a_journal(
     assert (first.run_dir / "train.jsonl").read_text(encoding="utf-8") == rows_before
 
 
-def _write_journal(path: Path, records: list[dict[str, Any]]) -> None:
+def _write_journal(path: Path, records: list[dict[str, JsonValue]]) -> None:
     """输入：进度日志路径、要写的记录（只给要覆盖的字段）。输出：无。
 
     预期行为：补全成合法形态后**整份重写**——这里要造的正是「进度与产物对不上」的状态，
@@ -745,22 +747,22 @@ class TwoSplitWorkflow(BackendWorkflow):
     def split_names(self) -> tuple[str, ...]:
         return ("train", "val")
 
-    def config_for(self, split: str) -> Any:
+    def config_for(self, split: str) -> object:
         return {"split": split}
 
-    def build_cases(self, config: Any) -> list[Any]:
+    def build_cases(self, config: object) -> list[JsonValue]:
         return [{"i": i} for i in range(2 if config["split"] == "train" else 1)]
 
-    def plan_sample(self, rng: Any, config: Any, case: Any, seq: int) -> SplitSpec:
+    def plan_sample(self, rng: random.Random, config: object, case: object, seq: int) -> SplitSpec:
         return SplitSpec(name=config["split"], params={"i": case["i"], "tag": config["split"]})
 
-    def render(self, spec: Any, rng: Any, locale: str) -> Any:
+    def render(self, spec: object, rng: random.Random, locale: str) -> object:
         self.backend.generate(FakeTask(f"fake-{spec['tag']}-{spec['i']}"))
         return f"state-{spec['tag']}-{spec['i']}"
 
 
 def test_two_splits_in_one_run_dir_keep_separate_progress(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: object
 ) -> None:
     """输入：同一个 run_id 先跑 train 再跑 val。输出：两次 RunResult。
 
@@ -787,7 +789,7 @@ def test_two_splits_in_one_run_dir_keep_separate_progress(
 
 
 def test_products_shorter_than_the_journal_reports_a_human_error(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: object
 ) -> None:
     """输入：跑完之后把合格产物截空（进度日志还在）。输出：异常。
 
@@ -806,7 +808,7 @@ def test_products_shorter_than_the_journal_reports_a_human_error(
 
 
 def test_journal_record_pointing_past_the_products_reports_a_human_error(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: object
 ) -> None:
     """输入：进度记录说「样本在第 3 行」，但产物只有 2 行。输出：异常。
 
@@ -828,7 +830,7 @@ def test_journal_record_pointing_past_the_products_reports_a_human_error(
 
 
 def test_journal_slice_past_the_shared_products_reports_a_human_error(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: object
 ) -> None:
     """输入：进度记录说「被拒行是 [0, 5)」，但 rejected.jsonl 一行都没有。输出：异常。
 

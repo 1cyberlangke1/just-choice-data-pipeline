@@ -11,12 +11,13 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from collections.abc import Sequence
-from typing import Any
 
 
-def require_pool(field: str, values: Sequence[Any]) -> None:
+
+def require_pool(field: str, values: Sequence[JsonValue]) -> None:
     """输入：字段名、取值表。输出：无。预期行为：空表报人话（点名是哪个字段）。"""
     if len(values) == 0:
         raise ValueError(f"{field} 不能是空表：至少要有一个取值")

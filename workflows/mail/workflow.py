@@ -15,15 +15,17 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import hashlib
 import random
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from jc import jsonio
+from jc.backend.types import GenerationBackend
 from jc.judge import Judge
 from jc.knobs import require_pool
 from jc.workflow import LabeledQuestion, SplitSpec, register
@@ -174,9 +176,9 @@ class MailWorkflow:
 
     def __init__(self) -> None:
         """输入：无。输出：实例。预期行为：后端要等 `bind_backend` 才注入。"""
-        self.backend: Any = None
+        self.backend: GenerationBackend | None = None
 
-    def bind_backend(self, backend: Any) -> None:
+    def bind_backend(self, backend: GenerationBackend) -> None:
         """输入：生成后端。输出：无。预期行为：存下后端，`render` 与 `trace` 判别器要用。"""
         self.backend = backend
 
@@ -198,7 +200,7 @@ class MailWorkflow:
         """输入：一个 case。输出：一行可读描述。"""
         return " ".join(f"{key}={value}" for key, value in case.as_dict().items())
 
-    def stats_dimensions(self, case: TagSet) -> dict[str, Any]:
+    def stats_dimensions(self, case: TagSet) -> dict[str, JsonValue]:
         """输入：一个 case。输出：统计维度（把链接维拆成域名与链接文字两栏更好读）。"""
         return {
             "sender": case.sender,
@@ -252,7 +254,7 @@ class MailWorkflow:
         """输入：规格、RNG、语言。输出：题目 + 金答案（纯代码推导，不碰模型）。"""
         return questions.build(spec.tags, locales.load(locale), spec.phrasing)
 
-    def reparse(self, state: Any, *, case: Any = None) -> render.ParsedMail:
+    def reparse(self, state: object, *, case: object = None) -> render.ParsedMail:
         """输入：渲染后的 state。输出：纯代码能反解的部分（有没有链接）。"""
         return render.parse_state(state)
 
@@ -279,18 +281,18 @@ class MailWorkflow:
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, Any], list[str]]:
+    ) -> tuple[dict[str, JsonValue], list[str]]:
         """输入：run 目录、切分、语言。输出：(各切分计数, 缺失项列表)。
 
         预期行为：只读产物本身能查的东西——题族是否齐全、题型分布、
         以及**链接有无与 `link_text` 这道题是否自洽**（这条不需要 spec 就能查）。
         """
         known = set(questions.FAMILIES)
-        report: dict[str, Any] = {}
+        report: dict[str, JsonValue] = {}
         missing: list[str] = []
         for split in splits:
             path = run_dir / f"{split}.jsonl"
-            counts: dict[str, Any] = {
+            counts: dict[str, JsonValue] = {
                 "samples": 0,
                 "families": Counter(),
                 "types": Counter(),

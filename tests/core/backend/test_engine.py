@@ -1,10 +1,11 @@
 """引擎测试：异常分类、原始响应拆解、instructor 包装（客户端全 mock，不发网络）。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import json
 from types import SimpleNamespace
-from typing import Any
+
 
 import httpx2
 import openai
@@ -34,7 +35,7 @@ class Answer(BaseModel):
     answer: str
 
 
-def status_error(cls: type, status: int, headers: dict[str, str] | None = None) -> Any:
+def status_error(cls: type, status: int, headers: dict[str, str] | None = None) -> object:
     """输入：openai 异常类、HTTP 状态、响应头。输出：造好的异常实例。"""
     request = httpx2.Request("POST", "https://example.test/v1/chat/completions")
     response = httpx2.Response(status, request=request, headers=headers or {})
@@ -63,7 +64,7 @@ def retry_wrapper(
     return exc
 
 
-def timeout_error() -> Any:
+def timeout_error() -> object:
     """输入：无。输出：一个读超时的 openai 异常。预期行为：当「被包起来的底层原因」用。"""
     return openai.APITimeoutError(request=httpx2.Request("POST", "https://example.test/v1"))
 
@@ -176,7 +177,7 @@ def test_classify_survives_self_referential_retry_wrapper() -> None:
     assert isinstance(classify_exception(exc), DraftInvalidError)
 
 
-def test_extract_unwraps_wrapped_transport_errors(patched: dict[str, Any]) -> None:
+def test_extract_unwraps_wrapped_transport_errors(patched: dict[str, JsonValue]) -> None:
     """端到端走生产路径：客户端抛「重试用尽（底层读超时）」，引擎必须抛 `TransportError`。"""
     patched["next_client"] = FakeClient(error=retry_wrapper(timeout_error()))
     with pytest.raises(TransportError):
@@ -213,13 +214,15 @@ def test_split_raw_tolerates_missing_fields() -> None:
 class FakeClient:
     """假的 instructor 客户端：回放一个 (parsed, raw) 或一个异常。"""
 
-    def __init__(self, parsed: Any = None, raw: Any = None, error: BaseException | None = None):
+    def __init__(
+        self, parsed: object = None, raw: object = None, error: BaseException | None = None
+    ) -> None:
         self.parsed = parsed
         self.raw = raw
         self.error = error
-        self.kwargs: dict[str, Any] = {}
+        self.kwargs: dict[str, JsonValue] = {}
 
-    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
+    def create_with_completion(self, **kwargs: object) -> tuple[object, object]:
         """输入：调用参数。输出：(parsed, raw)。预期行为：记下参数供断言。"""
         self.kwargs = kwargs
         if self.error is not None:
@@ -227,7 +230,7 @@ class FakeClient:
         return self.parsed, self.raw
 
 
-def make_raw() -> Any:
+def make_raw() -> object:
     """造一个最小的原始 completion。"""
     return SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"answer":"hi"}'))],
@@ -236,11 +239,11 @@ def make_raw() -> Any:
 
 
 @pytest.fixture
-def patched(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def patched(monkeypatch: pytest.MonkeyPatch) -> dict[str, JsonValue]:
     """把 openai 客户端与 instructor.from_openai 都换掉，返回可观察的盒子。"""
-    box: dict[str, Any] = {"modes": [], "clients": []}
+    box: dict[str, JsonValue] = {"modes": [], "clients": []}
 
-    def fake_from_openai(_client: Any, mode: Any) -> FakeClient:
+    def fake_from_openai(_client: object, mode: object) -> FakeClient:
         box["modes"].append(mode)
         fake = box.get("next_client") or FakeClient(Answer(answer="hi"), make_raw())
         box["clients"].append(fake)
@@ -263,14 +266,14 @@ def request_for(mode: str = MODE_JSON_SCHEMA, key: str = "k1") -> EngineRequest:
     )
 
 
-def test_extract_returns_parsed_data(patched: dict[str, Any]) -> None:
+def test_extract_returns_parsed_data(patched: dict[str, JsonValue]) -> None:
     result = InstructorEngine().extract(request_for())
     assert result.data == {"answer": "hi"}
     assert result.raw_text == '{"answer":"hi"}'
     assert result.mode == MODE_JSON_SCHEMA
 
 
-def test_extract_never_sends_max_tokens(patched: dict[str, Any]) -> None:
+def test_extract_never_sends_max_tokens(patched: dict[str, JsonValue]) -> None:
     """PLAN 3.1.2：永不发 max_tokens，字段根本不该出现。"""
     engine = InstructorEngine()
     engine.extract(request_for())
@@ -279,7 +282,7 @@ def test_extract_never_sends_max_tokens(patched: dict[str, Any]) -> None:
     assert "max_completion_tokens" not in kwargs
 
 
-def tool_calls_body() -> dict[str, Any]:
+def tool_calls_body() -> dict[str, JsonValue]:
     """输入：无。输出：一份与真实端点同形的完成体（既有 tool_calls 也有 JSON 文本）。
 
     预期行为：给 MockTransport 用；tools / json_schema / md_json 三档都能从它解析出
@@ -319,7 +322,7 @@ def test_real_instructor_request_body_has_no_max_tokens(monkeypatch: pytest.Monk
     正是上游会干的事（instructor 的 v2 anthropic 分支就写死 `max_tokens=4096`）。
     抓取器的灵敏度已自检：主动注入 `max_tokens` 时它看得见。
     """
-    seen: list[dict[str, Any]] = []
+    seen: list[dict[str, JsonValue]] = []
     # 先把真类捞出来：`engine_module.openai` 就是全局 openai 模块，patch 之后
     # 再写 `openai.OpenAI` 会指回自己，直接无限递归。
     real_openai = openai.OpenAI
@@ -328,7 +331,7 @@ def test_real_instructor_request_body_has_no_max_tokens(monkeypatch: pytest.Monk
         seen.append(json.loads(request.content))
         return httpx2.Response(200, json=tool_calls_body())
 
-    def fake_openai(**kwargs: Any) -> Any:
+    def fake_openai(**kwargs: object) -> object:
         """输入：引擎给的构造参数。输出：真 openai 客户端，但 HTTP 层换成 MockTransport。"""
         return real_openai(
             api_key=kwargs["api_key"],
@@ -345,7 +348,7 @@ def test_real_instructor_request_body_has_no_max_tokens(monkeypatch: pytest.Monk
 
         OpenAI = staticmethod(fake_openai)
 
-        def __getattr__(self, name: str) -> Any:
+        def __getattr__(self, name: str) -> object:
             return getattr(openai, name)
 
     monkeypatch.setattr(engine_module, "openai", OpenAIModuleProxy())
@@ -369,7 +372,7 @@ def test_no_max_tokens_knob_anywhere() -> None:
         assert "max_completion_tokens" not in names, cls
 
 
-def test_extract_always_sends_the_model(patched: dict[str, Any]) -> None:
+def test_extract_always_sends_the_model(patched: dict[str, JsonValue]) -> None:
     """model 必须显式传下去——漏了它，真实端点会直接拒收请求。
 
     这个断言是补的：假客户端不校验参数，所以漏传 model 也能全绿，
@@ -380,7 +383,7 @@ def test_extract_always_sends_the_model(patched: dict[str, Any]) -> None:
     assert patched["clients"][0].kwargs["model"] == "openai/gpt-oss-20b"
 
 
-def test_extract_maps_our_mode_to_instructor_mode(patched: dict[str, Any]) -> None:
+def test_extract_maps_our_mode_to_instructor_mode(patched: dict[str, JsonValue]) -> None:
     engine = InstructorEngine()
     engine.extract(request_for(MODE_TOOLS))
     engine.extract(request_for(MODE_MD_JSON))
@@ -389,7 +392,7 @@ def test_extract_maps_our_mode_to_instructor_mode(patched: dict[str, Any]) -> No
     assert patched["modes"] == [instructor.Mode.TOOLS, instructor.Mode.MD_JSON]
 
 
-def test_clients_are_cached_per_endpoint_key_and_mode(patched: dict[str, Any]) -> None:
+def test_clients_are_cached_per_endpoint_key_and_mode(patched: dict[str, JsonValue]) -> None:
     engine = InstructorEngine()
     engine.extract(request_for(key="k1"))
     engine.extract(request_for(key="k1"))
@@ -397,18 +400,18 @@ def test_clients_are_cached_per_endpoint_key_and_mode(patched: dict[str, Any]) -
     assert len(patched["clients"]) == 2
 
 
-def test_extract_classifies_errors(patched: dict[str, Any]) -> None:
+def test_extract_classifies_errors(patched: dict[str, JsonValue]) -> None:
     patched["next_client"] = FakeClient(error=status_error(openai.RateLimitError, 429))
     with pytest.raises(RateLimitError):
         InstructorEngine().extract(request_for())
 
 
-def test_extract_rejects_unknown_mode(patched: dict[str, Any]) -> None:
+def test_extract_rejects_unknown_mode(patched: dict[str, JsonValue]) -> None:
     with pytest.raises(ValueError, match="未知的结构化输出档位"):
         InstructorEngine().extract(request_for("yaml"))
 
 
-def test_extract_passes_system_message_when_given(patched: dict[str, Any]) -> None:
+def test_extract_passes_system_message_when_given(patched: dict[str, JsonValue]) -> None:
     request = EngineRequest(
         base_url="https://example.test/v1",
         api_key="k",

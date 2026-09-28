@@ -1,166 +1,230 @@
-"""模型路由与降级 workflow 的判别器：结构往返 + 答案重算。
+"""模型路由与降级的判别器：分工是「纯代码能查的」与「只能问模型的」。
 
-输入：样本（`state` / `questions` / `answers`）、真值规格、语言字典。输出：`Verdict`。
-预期行为：两个判别器都**只看文本**——
-`roundtrip` 把画像反解后与真值逐格比对；`label` 反解后**独立重算**每个题族的答案。
-重算走的是 `spec` 里那套规则函数（与构造侧同一套），但输入全部来自文本：
-**任务类型只出现在正文里**，判别器得把正文读回去，这正是要训的那件事。
+- `HygieneJudge`（零 token）：请求那一行必须存在、单行、不含围栏 / HTML 标签 / 段落名残留；
+- `FrameJudge`（零 token）：state 里那张候选表必须逐行等于目录表，门槛行必须等于注入特征
+  算出来的门槛——渲染串味（挂错 tags、漏行、错档）全在这一关拦下；
+- `TraceJudge`（一次后端调用）：把请求交回后端反解**任务类型**，答案必须与注入特征一致。
+  这是「渲染必须可反解」的落地（PLAN 3.4 第 ③ 档）：请求是模型写的，唯一由文本承载的
+  标签就是任务类型，它必须能从文本里读回来，否则这道题没人答得对。
+
+输入/输出：只出 `Verdict`，不改样本。反解失败一律判不通过——宁可少要几条，
+也不要一条标签和文本对不上的数据。但**端点故障不算数据不合格**：重试与降级都试过之后
+还拿不到草稿，只能记成 `skipped=True`（没判成），否则端点抖动会被写成合成质量问题。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Final, Literal
 
-from jc.judge import Judge, Verdict
-from jc.workflow import family_of
+from pydantic import BaseModel
 
-from . import locales, parse, render
-from . import spec as spec_mod
+from jc.backend.types import BackendError, GenerationBackend, GenerationTask
+from jc.judge import Verdict
+from jc.jsontypes import JsonValue
+
+from . import features, locales, render
+from .features import CATALOG
 from .spec import RouteSpec
 
+#: 格式残留：单独成行的围栏 / HTML 换行标签（围栏在请求行里由 `render.check_draft` 与
+#: 卫生判别器各查一次；这里再按「单独成行」查一遍整段 state——模型偶尔会把整段回答
+#: 包进 ``` 里，那样的行会落在请求段之外）。
+LEFTOVER_LINES: Final[frozenset[str]] = frozenset(
+    {"```", "```json", "```toml", "```text", "```markdown"}
+)
+LEFTOVER_TAGS: Final[tuple[str, ...]] = ("<br>", "<br/>", "<br />", "</br>")
 
-def reverse(table: dict[str, str]) -> dict[str, str]:
-    """输入：{键: 原文}。输出：{原文: 键}。
+#: 反解时重问的原子题族（题族名与数据集里完全一致，选项也用同一份 locale）。
+TRACE_FAMILIES: Final[tuple[str, ...]] = ("kind",)
 
-    预期行为：原文重复时报错——重复会让反解有歧义，属于语言文件的硬伤。
+
+class TraceDraft(BaseModel):
+    """反解草稿：只反解「任务类型」这一维。
+
+    取值域必须与 `features.TASK_KINDS` 以及 locale 里 `criteria` 的 key 一致；
+    这条由 `tests/workflows/modelroute/test_locales.py` 锁住，不靠人记。
     """
-    out: dict[str, str] = {}
-    for key, text in table.items():
-        if text in out:
-            raise ValueError(f"文案重复：{text!r}（{out[text]} 与 {key}）")
-        out[text] = key
-    return out
 
-
-def task_of(body: str, loc: dict[str, Any]) -> str:
-    """输入：正文原文、语言字典。输出：任务类型键。
-
-    预期行为：看哪个**任务短语**原样出现在正文里；恰好一个才算数——认不出、或认出多个
-    都报错（那是渲染与语言文件对不上的硬伤，不是「数据难判」，不能糊过去）。
-    """
-    hits = [
-        task for task in spec_mod.TASKS if loc["task_phrase"][task] in body
-    ]
-    if len(hits) != 1:
-        raise ValueError(f"正文里认不出唯一的任务类型：{hits}")
-    return hits[0]
-
-
-def recompute(request: parse.ParsedRequest, loc: dict[str, Any]) -> dict[str, Any]:
-    """输入：反解出来的画像、语言字典。输出：{题族: 金答案}。
-
-    预期行为：把每一格的**原文**翻回键，再走 `spec` 的规则函数重算。没有升级链时
-    `next` **不出现在结果里**——题族缺一格与「多出一格」是两回事，`LabelJudge` 两边都查。
-    """
-    task = task_of(request.body, loc)
-    out: dict[str, Any] = {
-        "tier": spec_mod.tier_of(task),
-        "effort": spec_mod.effort_of(
-            reverse(loc["complexity"])[request.complexity],
-            reverse(loc["latency"])[request.latency],
-        ),
-        "is_first": spec_mod.is_first_of(reverse(loc["retry"])[request.retry]),
-        "degrade": spec_mod.degrade_of(reverse(loc["cost"])[request.cost]),
-        "cache": spec_mod.cache_of(reverse(loc["data"])[request.data]),
-    }
-    if spec_mod.has_next(task):
-        out["next"] = spec_mod.next_tier_of(task)
-    return out
-
-
-def roundtrip_diff(
-    spec: RouteSpec, request: parse.ParsedRequest, loc: dict[str, Any]
-) -> list[str]:
-    """输入：真值规格、反解结果、语言字典。输出：不一致项列表（空 = 逐格一致）。"""
-    checks = (
-        ("请求号", request.request_id, spec.request_id),
-        ("复杂度", request.complexity, loc["complexity"][spec.case.complexity]),
-        ("延迟预算", request.latency, loc["latency"][spec.case.latency]),
-        ("成本敏感", request.cost, loc["cost"][spec.case.cost]),
-        ("尝试记录", request.retry, loc["retry"][spec.case.retry]),
-        ("数据分级", request.data, loc["data"][spec.case.data]),
-        ("正文", request.body, render.body_text(spec, loc)),
-    )
-    return [
-        f"{name}：渲染 {got!r} vs 期望 {want!r}" for name, got, want in checks if got != want
+    kind: Literal[
+        "code_gen",
+        "long_summary",
+        "extraction",
+        "chat",
+        "math_reason",
+        "vision",
     ]
 
 
+def build_verify_prompt(state: str, loc: dict[str, JsonValue]) -> str:
+    """组装反解提示词。
+
+    输入：渲染好的 state、语言字典。
+    输出：提示词。预期行为：把 `TRACE_FAMILIES` 里的原子题连同选项原样再问一遍——
+    反解用的选项与数据集里的一致，否则「答对了」与「标签对了」不是一回事。
+    """
+    lines = [
+        str(loc["verify"]["intro"]),
+        "",
+        str(loc["verify"]["state_header"]),
+        state,
+        "",
+        str(loc["verify"]["questions_header"]),
+    ]
+    for index, family in enumerate(TRACE_FAMILIES, start=1):
+        lines.append(f"{index}. {loc['fam'][family]['q'][0]}")
+        for name, desc in loc["fam"][family]["criteria"].items():
+            lines.append(str(loc["verify"]["option_line"]).format(name=name, desc=desc))
+    return "\n".join(lines)
+
+
 @dataclass(frozen=True)
-class RoundtripJudge:
-    """结构判别器：画像反解后必须与真值规格逐格一致。"""
+class HygieneJudge:
+    """零 token 判别器：state 里不许有格式残留，请求那一行还得有内容、是单行。
 
-    name: str = "roundtrip"
-    locale: str = "zh"
+    查三类：**单独成行的围栏**、**HTML 换行标签**、**请求那一行是空的 / 多行 / 带段落名**。
+    口径压到最窄——宁可漏检也不误判，因为误判会直接拒掉好数据。
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
-        """输入：样本、真值 spec。输出：Verdict。预期行为：没有 spec 就跳过（不误判）。"""
-        if not isinstance(spec, RouteSpec):
-            return Verdict(True, reason="没有 spec，跳过结构判别", raw={"skipped": True})
-        loc = locales.load(self.locale)
-        try:
-            request = parse.parse_request(sample["state"], parse.label_index(loc))
-        except ValueError as exc:
-            return Verdict(False, reason=f"反解失败：{exc}")
-        diff = roundtrip_diff(spec, request, loc)
-        return Verdict(not diff, reason="; ".join(diff[:5]), raw={"diff": diff})
+    字段：`locale` 语言（要按语言认「请求」那一段的段落名）。
+    """
 
+    locale: str
+    name: str = "hygiene"
 
-@dataclass(frozen=True)
-class LabelJudge:
-    """答案判别器：反解文本后独立重算金答案，逐题比对。"""
-
-    name: str = "label"
-    locale: str = "zh"
-    max_problems: int = 5
-
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
-        """输入：样本、真值 spec（不用）。输出：Verdict。预期行为：答案对不上就判不通过。"""
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。预期行为：只看残留与形状，不看语义。"""
         del spec
+        state = sample["state"]
+        if not isinstance(state, str):
+            return Verdict(True, reason="state 不是文本，跳过卫生检查")
         loc = locales.load(self.locale)
-        try:
-            request = parse.parse_request(sample["state"], parse.label_index(loc))
-            expected = recompute(request, loc)
-        except (ValueError, KeyError) as exc:
-            return Verdict(False, reason=f"重算失败：{exc}")
-        problems = self._check(sample, expected)
+        lines = render.request_lines(state, loc)
+        lowered = state.lower()
+        leftovers = sorted(
+            {line.strip() for line in state.splitlines() if line.strip() in LEFTOVER_LINES}
+        )
+        tags = [tag for tag in LEFTOVER_TAGS if tag in lowered]
+        problems: list[str] = []
+        if not lines or not lines[0].strip():
+            problems.append("「请求」那一段是空的")
+        elif len(lines) > 1:
+            problems.append("「请求」是多行")
+        elif render.FENCE_PATTERN.search(lines[0]):
+            problems.append("「请求」里混进了 Markdown 围栏")
+        else:
+            leaked = render.label_leak(lines[0], loc)
+            if leaked:
+                problems.append(f"「请求」里混进了段落名「{leaked}」")
+        if not leftovers and not tags and not problems:
+            return Verdict(True, reason="没有格式残留")
         return Verdict(
-            not problems,
-            reason="; ".join(problems[: self.max_problems]),
-            raw={"problems": problems},
+            False,
+            reason="state 里混进了格式残留：" + "、".join([*leftovers, *tags, *problems]),
+            raw={"leftovers": leftovers, "tags": tags, "problems": problems},
         )
 
-    def _check(self, sample: dict[str, Any], expected: dict[str, Any]) -> list[str]:
-        """输入：样本、重算出来的答案。输出：问题列表（空 = 全部对得上）。
 
-        预期行为：逐题比对；**少题**那一趟遍历期望表（不是产物）——整族缺席时遍历产物
-        会一声不响，漏报比误报危险。
-        """
+@dataclass(frozen=True)
+class FrameJudge:
+    """零 token 判别器：候选表与门槛行必须与注入特征算出来的一模一样。
+
+    字段：`locale` 语言。预期行为：逐行比对目录表（名字 / 提供方 / 窗口 / 三档），
+    再比对门槛行；任何一处对不上都判不通过——那是渲染挂错了 tags，标签会跟着一起错。
+    """
+
+    locale: str
+    name: str = "frame"
+
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。预期行为：只做结构比对。"""
+        if not isinstance(spec, RouteSpec):
+            return Verdict(True, reason="没有 spec，跳过框架比对", skipped=True)
+        state = sample["state"]
+        if not isinstance(state, str):
+            return Verdict(True, reason="state 不是文本，跳过框架比对", skipped=True)
+        loc = locales.load(self.locale)
+        parsed = render.catalog_of(state, loc)
         problems: list[str] = []
-        seen: set[str] = set()
-        for qid, question in sample["questions"].items():
-            family = family_of(qid)
-            if family not in expected:
-                problems.append(f"{qid}: 未知题族或不该出这道题")
-                continue
-            seen.add(family)
-            want = expected[family]
-            answer = sample["answers"][qid]
-            qtype = question["type"]
-            if qtype == "choice":
-                options = list(question["criteria"])
-                index = answer["choice"]
-                if not 0 <= index < len(options):
-                    problems.append(f"{qid}: 答案编号越界（{index}）")
-                    continue
-                got: Any = options[index]
-            elif qtype == "noul":
-                got = answer["noul"]
-            else:
-                got = answer["score"]
-            if got != want:
-                problems.append(f"{qid}: 答案是 {got!r}，按画像重算是 {want!r}")
-        for family in sorted(set(expected) - seen):
-            problems.append(f"{family} 少了 1 道题")
-        return problems
+        if parsed != CATALOG:
+            problems.append(f"候选表与目录表对不上：解析出 {len(parsed)} 行")
+        needs = render.needs_of(state, loc)
+        expected = spec.tags.needs
+        if needs != expected:
+            problems.append(f"门槛行与注入特征对不上：解析出 {needs}，应为 {expected}")
+        if not problems:
+            return Verdict(True, reason="候选表与门槛行都与注入特征一致")
+        return Verdict(False, reason="；".join(problems), raw={"needs": str(needs)})
+
+
+@dataclass(frozen=True)
+class TraceJudge:
+    """模型判别器：把请求交回后端反解任务类型，必须与注入的一致。
+
+    字段：`backend` 生成后端（由 `bind_backend` 注入）；`locale` 语言。
+    """
+
+    backend: GenerationBackend
+    locale: str
+    name: str = "trace"
+
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。
+
+        预期行为：不一致时把「注入的」与「反解出来的」列在理由里，方便人看是哪里写歪了。
+        端点故障与草稿缺字段都只算「没判成」（`skipped=True`）——记成「不通过」会把
+        端点抖动写成数据质量问题。
+        """
+        if not isinstance(spec, RouteSpec):
+            return Verdict(True, reason="没有 spec，跳过反解", skipped=True)
+        if self.backend is None:
+            return Verdict(True, reason="没有后端，跳过反解", skipped=True)
+        loc = locales.load(self.locale)
+        task = GenerationTask(
+            task_id=spec.trace_task_id,
+            kind="text",
+            domain="model-routing",
+            prompt=build_verify_prompt(sample["state"], loc),
+            response_model=TraceDraft,
+            spec={"tags": spec.tags.as_dict()},
+        )
+        try:
+            draft = self.backend.generate(task)
+        except BackendError as exc:
+            if getattr(exc, "fatal_for_run", False):
+                raise  # 全部 provider 都挂了：整批该停下（PLAN 3.1.4）
+            return Verdict(
+                True,
+                reason=f"反解没跑成（端点故障，不是数据问题）：{exc}",
+                raw={"error": type(exc).__name__},
+                skipped=True,
+            )
+        data = draft.data if isinstance(draft.data, dict) else {}
+        broken = [name for name in TRACE_FAMILIES if name not in data]
+        if broken:
+            return Verdict(
+                True,
+                reason=f"反解草稿缺字段，判不了：{'、'.join(broken)}",
+                raw={"raw_text": draft.raw_text[:500]},
+                skipped=True,
+            )
+        labels = spec.labels
+        problems = [
+            f"{family}: 注入 {getattr(labels, family)!r}，反解成 {data[family]!r}"
+            for family in TRACE_FAMILIES
+            if data[family] != getattr(labels, family)
+        ]
+        return Verdict(
+            not problems,
+            reason="; ".join(problems),
+            raw={"traced": {family: data[family] for family in TRACE_FAMILIES}},
+        )
+
+
+def option_names(question: dict[str, JsonValue]) -> list[str]:
+    """输入：一道 choice 题。输出：按**产物里写的顺序**排好的选项名。
+
+    预期行为：答案编号就是在这个顺序里的下标（见 `jc.assemble`）——审计要拿它把编号
+    换回选项名，才能与纯代码重算的结果比对。
+    """
+    criteria = question.get("criteria")
+    return list(criteria) if isinstance(criteria, dict) else []

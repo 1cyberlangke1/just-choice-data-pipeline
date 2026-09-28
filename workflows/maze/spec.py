@@ -11,10 +11,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from jc.knobs import require_bounds, require_pool
 
@@ -522,7 +523,7 @@ def sample_spec(
     )
 
 
-def spec_to_dict(spec: MazeSpec) -> dict[str, Any]:
+def spec_to_dict(spec: MazeSpec) -> dict[str, JsonValue]:
     """把 spec 转成可 JSON 序列化的字典（用于 manifest 与调试，不写进样本行）。"""
     return {
         "rows": spec.rows,

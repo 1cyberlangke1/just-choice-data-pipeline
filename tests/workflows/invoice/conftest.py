@@ -5,16 +5,17 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 import pytest
 
 from workflows.invoice import spec as sp
 
 #: 默认维度：一条 3 行、1 处错、带正确税额的普通单据（其余维度各取第一档）。
-CASE_DEFAULTS: dict[str, Any] = {
+CASE_DEFAULTS: dict[str, JsonValue] = {
     "layout": "labeled_lines",
     "labels": "canonical",
     "currency": "cny",
@@ -26,14 +27,14 @@ CASE_DEFAULTS: dict[str, Any] = {
 }
 
 
-def _make_case(**overrides: Any) -> sp.InvoiceCase:
+def _make_case(**overrides: object) -> sp.InvoiceCase:
     """输入：维度覆盖项。输出：一个 case。预期行为：未覆盖的维度取 `CASE_DEFAULTS`。"""
     fields = dict(CASE_DEFAULTS)
     fields.update(overrides)
     return sp.InvoiceCase(**fields)
 
 
-def _make_spec(seed: int = 5, **overrides: Any) -> sp.InvoiceSpec:
+def _make_spec(seed: int = 5, **overrides: object) -> sp.InvoiceSpec:
     """输入：种子与 case 覆盖项。输出：真值规格。
 
     预期行为：同种子必得同一份规格（构造器只用传进来的 RNG，不碰全局随机源）。
@@ -42,12 +43,12 @@ def _make_spec(seed: int = 5, **overrides: Any) -> sp.InvoiceSpec:
 
 
 @pytest.fixture
-def make_case() -> Any:
+def make_case() -> object:
     """工厂夹具：`make_case(tax_state="none")` 造一个 case。"""
     return _make_case
 
 
 @pytest.fixture
-def make_spec() -> Any:
+def make_spec() -> object:
     """工厂夹具：`make_spec(7, lines=4)` 造一份真值规格。"""
     return _make_spec

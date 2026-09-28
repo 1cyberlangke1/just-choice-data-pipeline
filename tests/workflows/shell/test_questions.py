@@ -1,113 +1,88 @@
-"""题族的单元测试：题型、金答案、选项、以及「打乱之后位置不泄露标签」。"""
+"""题族构造测试：题号、题型、选项与答案形态。"""
 
 from __future__ import annotations
 
-import random
-from collections import Counter
-
 import pytest
 
-from jc import assemble
-from workflows.shell import locales, questions
-from workflows.shell import spec as sp
+from workflows.shell import features, locales, questions
+from workflows.shell.features import TagSet
+
+LOCALES = locales.available()
+
+#: 一个相容的特征组合：破坏性动作 + 生产位置 + 提权，五族答案都不会退化。
+CASE = TagSet("bash", "remove_tree", "production", "elevated")
 
 
-def build(case: sp.ShellCase, seed: int = 1) -> tuple[sp.CommandSpec, list]:
-    """输入：case、种子。输出：(规格, 题目列表)。预期行为：纯代码推导，不碰模型。"""
-    spec = sp.sample_spec(random.Random(seed), case, "train", 0, 0)
-    return spec, questions.build(spec, locales.load("zh"), 0, random.Random(seed))
+def _build(case: TagSet, lang: str = "zh"):  # noqa: ANN202 —— 测试内部小工具
+    """输入：一组特征、语言。输出：该特征下的题目列表。"""
+    return questions.build(case, locales.load(lang), phrasing=0)
 
 
-def test_all_families_are_produced_with_the_right_types() -> None:
-    """输入：一条普通命令。输出：无。预期行为：8 个题族齐全，题型与声明一致。"""
-    _, labeled = build(sp.ShellCase("bash", "remove_tree", "build_dir", "build_dir", "plain", "imperative", 2))
-    assert [item.family for item in labeled] == list(questions.FAMILIES)
-    types = {item.family: item.question["type"] for item in labeled}
-    assert types["verdict"] == "choice" and types["target_owner"] == "choice"
-    assert types["blast_radius"] == "score"
-    assert all(types[name] == "noul" for name in questions.NOUL_FAMILIES)
+@pytest.mark.parametrize("lang", LOCALES)
+def test_question_order_and_families(lang: str) -> None:
+    """题号顺序必须按 `FAMILIES` 走，题号就是题族名。"""
+    assert [item.family for item in _build(CASE, lang)] == list(questions.FAMILIES)
 
 
-def test_answers_match_the_command_facts() -> None:
-    """输入：几条代表性命令。输出：无。
+@pytest.mark.parametrize("lang", LOCALES)
+def test_every_case_asks_every_family(lang: str) -> None:
+    """输入：全部相容组合。输出：无。
 
-    预期行为：金答案就是 `spec.flags` 推出来的那几项——答案与判据同源。
+    预期行为：五个题族对**任何**相容组合都问得出来——本 workflow 没有条件题族，
+    所以每条样本的题族数恒定（有条件的 workflow 会在这一步退化）。
     """
-    spec, labeled = build(sp.ShellCase("bash", "read_file", "ssh_key", "ssh_key", "elevated", "imperative", 1))
-    answers = {item.family: item.answer for item in labeled}
-    flags = spec.flags
-    assert answers["verdict"] == "ask"  # 只读、与目标一致，但提权
-    assert answers["target_owner"] == "home"
-    assert answers["matched_goal"] is True
-    assert answers["elevated"] is True
-    assert answers["network"] is False
-    assert answers["destructive"] is False
-    assert answers["touches_secrets"] is True
-    assert answers["blast_radius"] == sp.blast_of(flags)
+    cases = features.build_cases(32)
+    assert cases
+    for case in cases:
+        assert [item.family for item in _build(case, lang)] == list(questions.FAMILIES)
 
 
-def test_misaligned_write_is_denied() -> None:
-    """输入：一条「会写数据且与目标不符」的命令。输出：无。预期行为：答案是 deny。"""
-    _, labeled = build(sp.ShellCase("bash", "remove_tree", "build_dir", "dist_dir", "plain", "imperative", 1))
-    answers = {item.family: item.answer for item in labeled}
-    assert answers["verdict"] == "deny"
-    assert answers["matched_goal"] is False
-    assert answers["destructive"] is True
+def test_choice_answers_are_option_names() -> None:
+    """choice 的答案必须是选项名本身（编号由组装器最后一步映射）。"""
+    for item in _build(CASE):
+        if item.question["type"] != "choice":
+            continue
+        assert item.answer in item.question["criteria"], item.family
 
 
-def test_option_descriptions_must_be_unique() -> None:
-    """输入：两个描述一模一样的选项。输出：异常。
-
-    预期行为：直接报错——描述重复意味着两个选项都说得通，是构造 bug，
-    必须在生成时炸掉而不是产出一条坏数据。
-    """
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice("verdict", "题面", {"a": "同样的话", "b": "同样的话"}, "a")
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("verdict", "题面", {"a": "甲", "b": "乙"}, "c")
+def test_choice_options_follow_the_contract_table() -> None:
+    """选项表必须与 `features.CHOICE_OPTIONS` 逐项一致（含顺序）。"""
+    for item in _build(CASE):
+        if item.question["type"] != "choice":
+            continue
+        assert list(item.question["criteria"]) == list(features.CHOICE_OPTIONS[item.family])
 
 
-def test_verdict_options_are_shuffled_so_position_does_not_leak() -> None:
-    """输入：同一道 verdict 题组装很多次。输出：答案位置的分布。
-
-    预期行为：三个位置都出现过——`allow` 只占命令表的一小部分，若不打乱选项，
-    「答案位置」就等于标签分布，等于把捷径白送给考生（范式 §5.8）。
-    """
-    case = sp.ShellCase("bash", "remove_tree", "build_dir", "build_dir", "plain", "imperative", 1)
-    spec, labeled = build(case)
-    positions: Counter[int] = Counter()
-    for seed in range(60):
-        row = assemble.assemble_sample("shell-train-0000000", "state", labeled, random.Random(seed))
-        positions[row["answers"]["verdict"]["choice"]] += 1
-    assert set(positions) == {0, 1, 2}
+def test_ordered_families_are_not_shuffled() -> None:
+    """处置与影响半径是阶梯，必须保持顺序；目标位置允许打乱以打掉位置捷径。"""
+    by_family = {item.family: item for item in _build(CASE)}
+    assert by_family["verdict"].shuffle is False
+    assert by_family["blast_radius"].shuffle is False
+    assert by_family["target_owner"].shuffle is True
+    assert list(by_family["verdict"].question["criteria"]) == ["allow", "confirm", "deny"]
 
 
-def test_score_answer_is_an_index_into_the_levels() -> None:
-    """输入：几条命令。输出：无。预期行为：score 答案在等级表范围内，等级表就是题面。"""
-    loc = locales.load("zh")
-    for op_name in ("list_dir", "chmod_world", "drop_table"):
-        spec, labeled = build(sp.ShellCase("bash", op_name, "build_dir" if op_name != "drop_table" else "orders_db", "build_dir" if op_name != "drop_table" else "orders_db", "plain", "imperative", 1))
-        item = next(one for one in labeled if one.family == "blast_radius")
-        assert item.question["criteria"] == loc["fam"]["blast_radius"]["levels"]
-        assert 0 <= item.answer < len(item.question["criteria"])
+def test_score_answer_is_the_level_index() -> None:
+    """影响半径题的答案是等级下标，等级数与契约上限一致。"""
+    item = {q.family: q for q in _build(CASE)}["blast_radius"]
+    assert item.question["type"] == "score"
+    assert item.answer == CASE.label().blast_radius
+    assert 0 <= item.answer < len(item.question["criteria"])
+    assert len(item.question["criteria"]) == 5
 
 
-def test_noul_families_are_not_shuffled() -> None:
-    """输入：全部题目。输出：无。预期行为：noul 与 score 都不打乱（判据在题面里，顺序有意义）。"""
-    _, labeled = build(sp.ShellCase("bash", "list_dir", "build_dir", "build_dir", "plain", "imperative", 1))
-    for item in labeled:
-        if item.question["type"] in ("noul", "score"):
-            assert item.shuffle is False
+def test_noul_answers_are_bools() -> None:
+    """noul 的答案只能是 JSON 布尔。"""
+    for item in _build(CASE):
+        if item.question["type"] == "noul":
+            assert isinstance(item.answer, bool)
 
 
-def test_unknown_noul_family_reports_the_name() -> None:
-    """输入：一个不存在的 noul 题族。输出：异常。预期行为：报错点名题族。"""
-    spec = sp.sample_spec(
-        random.Random(1),
-        sp.ShellCase("bash", "list_dir", "build_dir", "build_dir", "plain", "imperative", 1),
-        "train",
-        0,
-        0,
+@pytest.mark.parametrize("lang", LOCALES)
+def test_phrasing_index_wraps(lang: str) -> None:
+    """问法编号越界要回绕，不许报错也不许给出空串。"""
+    loc = locales.load(lang)
+    count = len(loc["fam"]["verdict"]["q"])
+    assert questions.build(CASE, loc, phrasing=count + 1)[0].question["instructions"] == (
+        questions.build(CASE, loc, phrasing=1)[0].question["instructions"]
     )
-    with pytest.raises(KeyError, match="made_up"):
-        questions._noul_answer("made_up", spec)

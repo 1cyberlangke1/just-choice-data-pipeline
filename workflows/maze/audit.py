@@ -8,10 +8,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from collections import Counter, deque
 from pathlib import Path
-from typing import Any
+
 
 from jc import jsonio
 
@@ -20,7 +21,7 @@ from . import spec as maze_spec
 from .workflow import ParsedMaze, parse_state
 
 
-def infer_format(state: Any) -> str:
+def infer_format(state: object) -> str:
     """从 state 的形态反推渲染格式（审计时手上没有 spec，只能看产物本身）。
 
     输入：state。
@@ -39,7 +40,7 @@ def infer_format(state: Any) -> str:
 
 
 def infer_symbols(
-    state: Any, loc: dict[str, Any], instructions: list[Any] | None = None
+    state: object, loc: dict[str, JsonValue], instructions: list[JsonValue] | None = None
 ) -> str | None:
     """从图例反推符号集名字。
 
@@ -73,7 +74,7 @@ def infer_symbols(
 
 
 def infer_case(
-    state: Any, loc: dict[str, Any], instructions: list[Any] | None = None
+    state: object, loc: dict[str, JsonValue], instructions: list[JsonValue] | None = None
 ) -> maze_spec.RenderCase | None:
     """从产物反推渲染变体（审计用；格式与符号集都是推断出来的）。"""
     fmt = infer_format(state)
@@ -112,14 +113,14 @@ def family_of(qid: str) -> str:
     return "".join(ch for ch in qid if not ch.isdigit()).rstrip("_")
 
 
-def audit_file(path: Path, loc: dict[str, Any]) -> dict[str, Any]:
+def audit_file(path: Path, loc: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """审计一个 JSONL 文件。
 
     输入：文件路径、语言字典。
     输出：计数字典（格式分布、各 case 计数、题族计数、走偏 1 格的实测结果）。
     预期行为：解析不出来的样本计入 unparsed；走偏 1 格要重新算距离，不能只数题族。
     """
-    counts: dict[str, Any] = {
+    counts: dict[str, JsonValue] = {
         "samples": 0,
         "formats": Counter(),
         "families": Counter(),
@@ -178,14 +179,14 @@ def audit_file(path: Path, loc: dict[str, Any]) -> dict[str, Any]:
     return counts
 
 
-def audit_run(run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[dict[str, Any], list[str]]:
+def audit_run(run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[dict[str, JsonValue], list[str]]:
     """审计一个 run 目录的多个切分。
 
     输入：run 目录、切分列表、语言。
     输出：(各切分计数, 缺失项列表)。预期行为：缺失项为空才算通过。
     """
     loc = locales.load(locale)
-    report: dict[str, Any] = {}
+    report: dict[str, JsonValue] = {}
     missing: list[str] = []
     for split in splits:
         path = run_dir / f"{split}.jsonl"

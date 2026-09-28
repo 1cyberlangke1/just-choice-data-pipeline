@@ -8,8 +8,9 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 from .render import as_phrases, flag_phrases, value_phrases
 from .spec import (
@@ -22,7 +23,7 @@ from .spec import (
 )
 
 
-def tool_of(state: str, loc: dict[str, Any]) -> str:
+def tool_of(state: str, loc: dict[str, JsonValue]) -> str:
     """输入：请求文本、语言字典。输出：工具名。
 
     预期行为：意图短语必须**恰好命中一个**——命中 0 个（文本没说清要干什么）或 2 个以上
@@ -38,7 +39,7 @@ def tool_of(state: str, loc: dict[str, Any]) -> str:
     return hits[0]
 
 
-def stated_values(state: str, name: str, values: tuple[str, ...], loc: dict[str, Any]) -> tuple[str, ...]:
+def stated_values(state: str, name: str, values: tuple[str, ...], loc: dict[str, JsonValue]) -> tuple[str, ...]:
     """输入：文本、参数名、取值表、语言字典。输出：文本里命中的取值（0 个或多个，按取值表顺序）。
 
     预期行为：**两种别名写法都认**——请求里写代码（`NVDA`）还是写中文名（`英伟达`）都要读得出来。
@@ -51,7 +52,7 @@ def stated_values(state: str, name: str, values: tuple[str, ...], loc: dict[str,
     )
 
 
-def read_request(state: str, loc: dict[str, Any]) -> CallPlan:
+def read_request(state: str, loc: dict[str, JsonValue]) -> CallPlan:
     """输入：请求文本、语言字典。输出：从文本读出来的绑定计划。
 
     预期行为：逐参数读——`choice` 命中多个取值直接报错（短语表不互斥就是构造 bug），

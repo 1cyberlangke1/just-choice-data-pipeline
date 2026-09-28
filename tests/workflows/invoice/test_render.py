@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import random
-from typing import Any
+
 
 import pytest
 
@@ -35,7 +35,7 @@ def test_format_money_uses_the_locale_symbol_and_thousands(lang: str) -> None:
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_unknown_currency_date_format_or_slot_raises(lang: str, make_spec: Any) -> None:
+def test_unknown_currency_date_format_or_slot_raises(lang: str, make_spec: object) -> None:
     """输入：语言文件里没有的货币 / 日期格式 / 槽名。输出：KeyError。
 
     预期行为：一律报错——静默回落会让「渲染出来的值」与「真值」悄悄分叉。
@@ -50,7 +50,7 @@ def test_unknown_currency_date_format_or_slot_raises(lang: str, make_spec: Any) 
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_visible_fields_drops_tax_without_a_tax_row(lang: str, make_spec: Any) -> None:
+def test_visible_fields_drops_tax_without_a_tax_row(lang: str, make_spec: object) -> None:
     """输入：有/没有税额行的规格。输出：会写出来的字段槽。
 
     预期行为：没有税额行就整行不写 `tax`——写出来会被往返判别器判成「多出字段」。
@@ -65,7 +65,7 @@ def test_visible_fields_drops_tax_without_a_tax_row(lang: str, make_spec: Any) -
 @pytest.mark.parametrize("lang", LOCALES)
 @pytest.mark.parametrize("layout,labels", SHAPES)
 def test_build_roundtrips_through_the_parser(
-    lang: str, layout: str, labels: str, make_spec: Any
+    lang: str, layout: str, labels: str, make_spec: object
 ) -> None:
     """输入：规格与语言。输出：单据文本。
 
@@ -82,14 +82,14 @@ def test_build_roundtrips_through_the_parser(
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_build_is_a_pure_function(lang: str, make_spec: Any) -> None:
+def test_build_is_a_pure_function(lang: str, make_spec: object) -> None:
     """输入：同一份规格渲染两次。输出：两段文本。预期行为：逐字节相同（渲染不用 RNG）。"""
     loc = locales.load(lang)
     spec = make_spec(41)
     assert render.build(spec, loc) == render.build(spec, loc)
 
 
-def test_paragraph_layout_prints_the_intro_once(make_spec: Any) -> None:
+def test_paragraph_layout_prints_the_intro_once(make_spec: object) -> None:
     """输入：段落版式的一份单据。输出：文本。
 
     预期行为：引言只出现一次（抬头与金额区各渲染一次，引言只能出在第一段），
@@ -105,7 +105,7 @@ def test_paragraph_layout_prints_the_intro_once(make_spec: Any) -> None:
 
 
 @pytest.mark.parametrize("layout", sp.LAYOUTS)
-def test_english_text_carries_no_cjk_punctuation(layout: str, make_spec: Any) -> None:
+def test_english_text_carries_no_cjk_punctuation(layout: str, make_spec: object) -> None:
     """输入：英文语言文件。输出：四种版式的单据文本。
 
     预期行为：英文单据里不出现「：」「；」「。」——标点由语言文件给，
@@ -129,7 +129,7 @@ def test_display_width_counts_cjk_as_two() -> None:
     assert render.display_width("税a") == 3
 
 
-def test_aligned_table_starts_every_value_in_the_same_column(make_spec: Any) -> None:
+def test_aligned_table_starts_every_value_in_the_same_column(make_spec: object) -> None:
     """输入：中文（双宽标签）的对齐表格单据。输出：文本。
 
     预期行为：所有字段行的值从同一显示列开始——按显示宽度判断，而不是字符数。

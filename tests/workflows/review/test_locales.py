@@ -1,147 +1,142 @@
-"""文案表的不变量：这些不是「文案好不好」，而是「答案对不对」的前提。"""
+"""改动审查的多语言文案测试：词表与代码表必须一一对得上。"""
 
 from __future__ import annotations
 
 import pytest
 
-from workflows.review import locales, parse
-from workflows.review import spec as sp
-
-LANGS = locales.available()
+from workflows.review import features, judges, locales, questions, render
 
 
-def _used_body_keys() -> dict[str, str | None]:
-    """输入：无。输出：{正文键: 它该命中的规则}（干净槽给 None）。"""
-    out: dict[str, str | None] = {}
-    for case in sp.build_cases(sp.ReviewConfig()):
-        for row in sp.rows_of(case):
-            out[row.body] = row.rule
-    return out
+def all_keys(node: object, path: str = "") -> set[str]:
+    """输入：解析后的 TOML 节点、路径前缀。输出：全部叶子路径。
+
+    预期行为：列表按「一个叶子」处理（不展开下标）——两个语言文件的**结构**要一致，
+    值当然不一样。
+    """
+    if isinstance(node, dict):
+        out: set[str] = set()
+        for key, value in node.items():
+            out |= all_keys(value, f"{path}.{key}")
+        return out
+    return {path}
 
 
-def test_available_locales_are_sorted_and_nonempty() -> None:
-    """输入：无。输出：无。预期行为：至少两种语言，顺序稳定。"""
-    assert LANGS == sorted(LANGS)
-    assert {"zh", "en"} <= set(LANGS)
+def test_available_locales() -> None:
+    """输入：无。输出：无。预期行为：就 zh / en 两个，按文件名排序。"""
+    assert locales.available() == ["en", "zh"]
 
 
-def test_unknown_locale_reports_available_ones() -> None:
+def test_missing_locale_reports_available() -> None:
     """输入：不存在的语言。输出：无。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="没有语言文件"):
-        locales.load("xx")
+    with pytest.raises(FileNotFoundError, match="zh"):
+        locales.load("nope")
 
 
-def test_pick_wraps_around() -> None:
-    """输入：长度为 2 的池、编号 3。输出：无。预期行为：回绕到第 1 个（不报错）。"""
-    assert locales.pick(["a", "b"], 3) == "b"
-    assert locales.pick(["a", "b"], 4) == "a"
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_locale_covers_every_dimension_value(lang: str) -> None:
+    """输入：一个语言。输出：无。
 
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_locales_share_the_same_shape(lang: str) -> None:
-    """输入：每种语言。输出：无。
-
-    预期行为：语言文件的**键集合完全一致**——少一格会让那种语言直接跑不动，少一道问法
-    会让 `pick` 回绕到别的句面上（答案照样发出去，只是题变得莫名其妙）。
-    """
-    base = locales.load("zh")
-    other = locales.load(lang)
-    assert set(other["meta"]) == set(base["meta"])
-    for table in ("file", "change", "size", "body"):
-        assert set(other[table]) == set(base[table])
-    assert set(other["fam"]) == set(base["fam"])
-    for family in base["fam"]:
-        assert len(other["fam"][family]["q"]) == len(base["fam"][family]["q"])
-        assert set(other["fam"][family]) == set(base["fam"][family])
-    assert set(other["option"]) == set(base["option"])
-    for table in base["option"]:
-        assert set(other["option"][table]) == set(base["option"][table])
-    assert set(other["policy"]) == set(base["policy"])
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_vocabularies_cover_the_spec_constants(lang: str) -> None:
-    """输入：每种语言。输出：无。
-
-    预期行为：每张词表的键就是 spec 里的常量——少一个取值会让渲染 `KeyError`，
-    多一个取值会让反解出来的键落进规则函数不认识的洞里。
+    预期行为：`dims` 与 `feature` 覆盖全部维度与取值——缺一条，`build_prompt` 会抛
+    KeyError，而那条 KeyError 只有跑到渲染阶段才暴露。
     """
     loc = locales.load(lang)
-    assert set(loc["file"]) == set(sp.FILES)
-    assert set(loc["change"]) == set(sp.CHANGES)
-    assert set(loc["size"]) == set(sp.SIZES)
-    assert set(loc["option"]["gate"]) == set(sp.GATES)
-    assert len(loc["fam"]["severity"]["levels"]) == 3
+    assert set(loc["dims"]) == set(features.DIMS)
+    assert set(loc["feature"]) == set(features.DIMS)
+    for dim, values in features.DIMS.items():
+        assert set(loc["feature"][dim]) == set(values), dim
+        for value in values:
+            assert str(loc["feature"][dim][value]["brief"]).strip()
+            assert str(loc["feature"][dim][value]["hint"]).strip()
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_body_templates_hit_exactly_their_rule(lang: str) -> None:
-    """输入：每种语言的每一条正文模板。输出：无。
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_locale_covers_every_rule_and_family(lang: str) -> None:
+    """输入：一个语言。输出：无。
 
-    预期行为：**每条模板真的命中它标注的那一条规则、且只命中那一条**（干净槽一条都不命中）
-    ——这是「flag 那一族答案对不对」的前提：题面里的判据是文本匹配，构造侧用的是键，
-    两者不一致时产出的答案就是错的。
+    预期行为：规则表与题族的文案齐全，且 choice 的选项名与代码里的取值表**完全一致**
+    （多一个少一个都会让「答对了」与「标签对了」不是一回事）。
     """
     loc = locales.load(lang)
-    used = _used_body_keys()
-    assert set(loc["body"]) == set(used)
-    for key, rule in used.items():
-        size = "big" if rule == sp.RULE_BULK else "small"
-        assert sp.rule_from(size, str(loc["body"][key])) == rule, (lang, key)
+    assert set(loc["rules"]) == set(features.REVIEW_RULES)
+    for rule in features.REVIEW_RULES:
+        assert str(loc["rules"][rule]["condition"]).strip()
+    assert set(loc["fam"]) == set(questions.FAMILIES)
+    for family in questions.FAMILIES:
+        spec = loc["fam"][family]
+        assert [str(item).strip() for item in spec["q"]]
+        if family in questions.CHOICE_FAMILIES:
+            assert set(spec["criteria"]) == set(features.CHOICE_OPTIONS[family]), family
+        elif family in questions.NOUL_FAMILIES:
+            assert set(spec["criteria"]) == {"true", "false"}, family
+        else:
+            assert len(spec["levels"]) == features.SEVERITY_LEVELS, family
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_policy_prints_every_table(lang: str) -> None:
-    """输入：每种语言的判据原文。输出：无。
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_locale_meta_and_columns(lang: str) -> None:
+    """输入：一个语言。输出：无。预期行为：段落名、行前缀与四张表的列名齐全。"""
+    loc = locales.load(lang)
+    meta = loc["meta"]
+    for key in render.SECTION_KEYS:
+        assert str(meta[key]).strip()
+    for key in ("header", "row_prefix", "paren", "colon"):
+        assert str(meta[key]).strip()
+    for key in ("manifest_columns", "rules_columns", "severity_columns", "gate_columns"):
+        assert str(meta[key]).strip()
+    assert str(loc["verify"]["intro"]).strip()
+    assert str(loc["verify"]["option_line"]).strip()
 
-    预期行为：三张表用到的标签与三条规则的触发词都在判据里印出来——考生只能从题面读规则，
-    漏印一项就等于把那一档的答案变成不可解。
+
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_prompt_rules_format_without_leftover_placeholders(lang: str) -> None:
+    """输入：一个语言。输出：无。
+
+    预期行为：每条提示词规则都能按 `{language}` 格式化，且格式化后不再留占位符——
+    留着占位符会把 `{language}` 原样发给模型。
     """
     loc = locales.load(lang)
-    policy = loc["policy"]["text"]
-    for table in ("file", "change"):
-        for text in loc[table].values():
-            assert text in policy, (lang, table, text)
-    assert loc["size"]["big"] in policy
-    assert "password" in policy and "print(" in policy
+    rules = [str(item) for item in loc["prompt"]["rules"]]
+    assert rules
+    for rule in rules:
+        filled = rule.format(language=loc["language_name"])
+        assert "{" not in filled and "}" not in filled, rule
+    assert str(loc["prompt"]["intro"]).strip()
+    assert "{dim}" in str(loc["prompt"]["bullet"])
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_policy_prints_every_gate_word(lang: str) -> None:
-    """输入：每种语言的判据原文。输出：无。
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_banned_phrases_are_the_table_names(lang: str) -> None:
+    """输入：一个语言。输出：无。
 
-    预期行为：门控三个选项的描述开头那个词都出现在判据里——选项名与判据里的措辞对不上时，
-    考生只能靠猜。
+    预期行为：禁写清单里就是那几个表名——正文是一段代码，收进 `test` / `size` 这类
+    标识符会大面积误伤（见 `render.banned_echo` 的口径）。
     """
     loc = locales.load(lang)
-    policy = loc["policy"]["text"]
-    for text in loc["option"]["gate"].values():
-        head = str(text).split("：")[0].split(":")[0].strip()
-        assert head and head in policy, (lang, head)
+    banned = [str(item) for item in loc["banned_intent_phrases"]]
+    assert banned
+    # 比对时统一小写：英文的段落名首字母大写，而禁写清单按小写匹配（`banned_echo` 也是）
+    titles = {str(loc["meta"][key]).lower() for key in render.SECTION_KEYS}
+    assert {item.lower() for item in banned} == titles
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_flag_criteria_are_distinct_and_nonempty(lang: str) -> None:
-    """输入：每种语言的 flag 判据。输出：无。预期行为：真 / 假两行都不空且不同。"""
-    criteria = locales.load(lang)["fam"]["flag"]["criteria"]
-    assert set(criteria) == {"true", "false"}
-    assert all(criteria.values())
-    assert criteria["true"] != criteria["false"]
+def test_trace_draft_matches_the_dimension_tables() -> None:
+    """输入：反解草稿的取值域。输出：无。
 
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_cell_separator_is_shared_across_languages(lang: str) -> None:
-    """输入：每种语言。输出：无。预期行为：抬头分隔符一致（合并表只按一个分隔符切行）。"""
-    assert locales.load(lang)["meta"]["cell_sep"] == locales.load("zh")["meta"]["cell_sep"]
-
-
-def test_merged_table_covers_every_key() -> None:
-    """输入：合并表。输出：无。
-
-    预期行为：三张词表把 spec 里的每一个键都覆盖到，而且语言之间不重叠（重叠会直接
-    报错，这里验的是「合并之后仍然认得出所有键」）。
+    预期行为：`TraceDraft` 的 Literal 与 `features.SECRETS` / `DEBUGS` 完全一致，
+    而且反解问的就是 `TRACE_FAMILIES` 那两族。
     """
-    merged = parse.merged()
-    assert set(merged.file.values()) == set(sp.FILES)
-    assert set(merged.change.values()) == set(sp.CHANGES)
-    assert set(merged.size.values()) == set(sp.SIZES)
+    secret_field = judges.TraceDraft.model_fields["secret"]
+    debug_field = judges.TraceDraft.model_fields["debug"]
+    assert set(secret_field.annotation.__args__) == set(features.SECRETS)
+    assert set(debug_field.annotation.__args__) == set(features.DEBUGS)
+    assert judges.TRACE_FAMILIES == ("secret", "debug")
+
+
+def test_both_locales_have_the_same_structure() -> None:
+    """输入：两个语言文件。输出：无。
+
+    预期行为：叶子路径集合完全一致——加维度 / 加题族时漏翻一个语言，这条会当场报出来。
+    """
+    zh = all_keys(locales.load("zh"))
+    en = all_keys(locales.load("en"))
+    assert zh == en

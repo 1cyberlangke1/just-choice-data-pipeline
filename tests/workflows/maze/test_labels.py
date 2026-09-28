@@ -10,15 +10,16 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from collections import deque
-from typing import Any
+
 
 from jc import assemble, pipeline, workflow as workflow_mod
 from workflows.maze import grid, locales
 from workflows.maze import questions as maze_questions
 from workflows.maze import spec as maze_spec
-from workflows.maze.workflow import parse_state, roundtrip_diff
+from workflows.maze.workflow import ParsedMaze, parse_state, roundtrip_diff
 
 LOC = locales.load("zh")
 DIR_WORDS = ("向上", "向右", "向下", "向左")
@@ -58,18 +59,18 @@ def dir_in(text: str) -> int | None:
     return None
 
 
-def answer_text(question: dict[str, Any], answer: dict[str, Any]) -> str:
+def answer_text(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> str:
     """把 choice 的编号换回选项文案。"""
     return list(question["criteria"])[answer["choice"]]
 
 
-def question_text(question: dict[str, Any]) -> str:
+def question_text(question: dict[str, JsonValue]) -> str:
     """取题面文本：block_rows 的 instructions 是 object 形态（图例与历史塞在里面）。"""
     instructions = question["instructions"]
     return instructions["question"] if isinstance(instructions, dict) else instructions
 
 
-def expected_exits_level(mask, rows, cols, cell: int) -> int:
+def expected_exits_level(mask: tuple[int, ...], rows: int, cols: int, cell: int) -> int:
     """独立复算 exits 的等级编号（0 死胡同 / 1 拐角 / 2 丁字或十字）。"""
     count = len(grid.open_neighbors(mask, cell, rows, cols))
     if count <= 1:
@@ -79,7 +80,7 @@ def expected_exits_level(mask, rows, cols, cell: int) -> int:
     return 2
 
 
-def check_sample(sample: dict[str, Any], parsed) -> list[str]:
+def check_sample(sample: dict[str, JsonValue], parsed: ParsedMaze) -> list[str]:
     """逐题独立复算，返回不一致说明列表（空 = 全部一致）。"""
     problems: list[str] = []
     mask, rows, cols = parsed.mask, parsed.rows, parsed.cols
@@ -212,7 +213,9 @@ def check_sample(sample: dict[str, Any], parsed) -> list[str]:
     return problems
 
 
-def generate(seed: int, config: maze_spec.MazeConfig, cases: list[maze_spec.MazeCase]):
+def generate(
+    seed: int, config: maze_spec.MazeConfig, cases: list[maze_spec.MazeCase]
+) -> list[tuple[dict[str, JsonValue], maze_spec.MazeSpec, ParsedMaze, maze_spec.MazeCase]]:
     """在内存里跑一遍「计划 → 采样 → 渲染 → 出题 → 组装」，产出 (sample, spec, parsed, case)。"""
     workflow = workflow_mod.load("maze")
     out = []

@@ -23,6 +23,10 @@ llm = [
     "pyrate-limiter>=4.0",
     "tenacity>=9.0",  # 重试退避；instructor 也依赖它，这里显式声明免得被上游改动连坐
 ]
+# 静态检查（本地门禁，pre-commit 钩子会跑）。刻意**不用 mypy**：pydantic 模型类会让
+# `disallow_any_explicit` 报 23 处假阳性（模型类那行被判成显式 Any），而且本仓库还有
+# 162 处历史报错——现在开等于把闸门焊死。ruff 的 ANN/F821 只做 AST 层面的判断，没有这问题。
+dev = ["ruff>=0.16"]
 
 [tool.setuptools]
 packages = [
@@ -33,13 +37,20 @@ packages = [
     "workflows.mail",
     "workflows.invoice",
     "workflows.hybrid",
-    "workflows.shell",
-    "workflows.search",
-    "workflows.citation",
-    "workflows.routing",
-    "workflows.guardrail",
-    "workflows.rerank",
     "workflows.match",
+    "workflows.functions",
+    "workflows.skillpick",
+    "workflows.sim",
+    "workflows.bench",
+    "workflows.shell",
+    "workflows.modelroute",
+    "workflows.verify",
+    "workflows.toolgate",
+    "workflows.search",
+    "workflows.compact",
+    "workflows.browser",
+    "workflows.routing",
+    "workflows.review",
 ]
 
 [tool.setuptools.package-dir]
@@ -52,14 +63,32 @@ jc = ["locales/judge/*.toml"]
 "workflows.mail" = ["locales/*.toml"]
 "workflows.invoice" = ["locales/*.toml"]
 "workflows.hybrid" = ["locales/*.toml"]
-"workflows.shell" = ["locales/*.toml"]
-"workflows.search" = ["locales/*.toml"]
-"workflows.citation" = ["locales/*.toml"]
-"workflows.routing" = ["locales/*.toml"]
-"workflows.guardrail" = ["locales/*.toml"]
-"workflows.rerank" = ["locales/*.toml"]
 "workflows.match" = ["locales/*.toml"]
+"workflows.functions" = ["locales/*.toml"]
+"workflows.skillpick" = ["locales/*.toml"]
+"workflows.sim" = ["locales/*.toml"]
+"workflows.bench" = ["locales/*.toml"]
+"workflows.shell" = ["locales/*.toml"]
+"workflows.modelroute" = ["locales/*.toml"]
+"workflows.verify" = ["locales/*.toml"]
+"workflows.toolgate" = ["locales/*.toml"]
+"workflows.search" = ["locales/*.toml"]
+"workflows.compact" = ["locales/*.toml"]
+"workflows.browser" = ["locales/*.toml"]
+"workflows.routing" = ["locales/*.toml"]
+"workflows.review" = ["locales/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# 只选与「标注必须是真的」有关的规则，不引风格类（E501 / I001 / RUF001…）：
+# 本仓库注释、提示词与颜文字里有大量中文与 4 字节字符，风格规则只会变成噪音。
+select = [
+    "ANN",   # 函数必须有标注；其中 ANN401 = 不许写 `Any`
+    "F821",  # 注解里引用的名字必须真的存在（`from __future__ import annotations` 会掩盖假标注）
+]

@@ -10,10 +10,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import re
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from jc.backend.types import GenerationTask
 from pydantic import BaseModel, Field
@@ -98,7 +99,7 @@ class ParsedMail:
         return bool(self.urls)
 
 
-def parse_state(state: Any) -> ParsedMail:
+def parse_state(state: object) -> ParsedMail:
     """从 state 里抽出所有链接。
 
     输入：state（本 workflow 只会是字符串）。
@@ -110,7 +111,7 @@ def parse_state(state: Any) -> ParsedMail:
     return ParsedMail(tuple(URL_PATTERN.findall(state)))
 
 
-def link_line_urls(state: Any, *, bare_domains: bool = False) -> tuple[str, ...]:
+def link_line_urls(state: object, *, bare_domains: bool = False) -> tuple[str, ...]:
     """输入：state、是否把裸域名也算地址。输出：**最后一行**里的不同地址（去重、保持顺序）。
 
     预期行为：「链接那一行」由 `to_state` 追加在末尾，所以最后一行就是链接行——
@@ -127,7 +128,7 @@ def link_line_urls(state: Any, *, bare_domains: bool = False) -> tuple[str, ...]
     return tuple(dict.fromkeys(pattern.findall(lines[-1])))
 
 
-def link_text_of(state: Any, *, bare_domains: bool = False) -> str:
+def link_text_of(state: object, *, bare_domains: bool = False) -> str:
     """输入：state、是否把裸域名也算地址。输出：这一族的答案（`no_link` / `matches` / `mismatched`）。
 
     预期行为：纯代码反解——渲染规则要求「链接文字与真实目标不一致时两个地址都写」，
@@ -143,7 +144,7 @@ def link_text_of(state: Any, *, bare_domains: bool = False) -> str:
     return "matches" if len(urls) == 1 else "mismatched"
 
 
-def build_prompt(tags: TagSet, loc: dict[str, Any]) -> str:
+def build_prompt(tags: TagSet, loc: dict[str, JsonValue]) -> str:
     """组装渲染提示词。
 
     输入：特征组合、语言字典。
@@ -160,7 +161,7 @@ def build_prompt(tags: TagSet, loc: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_task(tags: TagSet, loc: dict[str, Any], task_id: str) -> GenerationTask:
+def build_task(tags: TagSet, loc: dict[str, JsonValue], task_id: str) -> GenerationTask:
     """把一次渲染包成后端任务。
 
     输入：特征组合、语言字典、任务 id。
@@ -178,7 +179,7 @@ def build_task(tags: TagSet, loc: dict[str, Any], task_id: str) -> GenerationTas
     )
 
 
-def domain_line_prefix(loc: dict[str, Any]) -> str:
+def domain_line_prefix(loc: dict[str, JsonValue]) -> str:
     """输入：语言字典。输出：「官方域名」那一行的行首标记（模板里 `{domain}` 之前的部分）。
 
     预期行为：从 locale 模板推出来，代码里不写死任何语言的字面量——zh 是 `官方域名：`，
@@ -187,7 +188,7 @@ def domain_line_prefix(loc: dict[str, Any]) -> str:
     return loc["prompt"]["official_domain_line"].split("{", 1)[0]
 
 
-def strip_owned_domain_lines(text: str, loc: dict[str, Any]) -> str:
+def strip_owned_domain_lines(text: str, loc: dict[str, JsonValue]) -> str:
     """输入：一段模型写的文本、语言字典。输出：剔掉「官方域名」行之后的文本。
 
     预期行为：那一行**归渲染器写**（`to_state` 负责追加），模型写进 `body` / `signature`
@@ -201,7 +202,7 @@ def strip_owned_domain_lines(text: str, loc: dict[str, Any]) -> str:
     return "\n".join(kept).strip()
 
 
-def official_domain_of(state: Any, loc: dict[str, Any]) -> str:
+def official_domain_of(state: object, loc: dict[str, JsonValue]) -> str:
     """输入：state、语言字典。输出：「官方域名」那一行里的域名（没有那一行 → 空串）。
 
     预期行为：只认行首标记那一行、只取标记之后的文本（去空白）。这一行**归渲染器写**，
@@ -218,7 +219,7 @@ def official_domain_of(state: Any, loc: dict[str, Any]) -> str:
     return ""
 
 
-def sender_domain_of(state: Any) -> str:
+def sender_domain_of(state: object) -> str:
     """输入：state。输出：`From:` 行里发件地址（解析不出 → 空串）。
 
     预期行为：只取尖括号里那一段——显示名里也可能带域名，不能被当成发件地址。
@@ -244,7 +245,7 @@ def host_of(text: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
-def to_state(data: dict[str, Any], loc: dict[str, Any]) -> str:
+def to_state(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> str:
     """把草稿拼成 state。
 
     输入：草稿字典（`from_name` / `from_address` / `subject` / `body` / `signature` /
@@ -270,7 +271,7 @@ def to_state(data: dict[str, Any], loc: dict[str, Any]) -> str:
     return f"{state}\n{link_line}" if link_line else state
 
 
-def check_official_domain(tags: TagSet, data: dict[str, Any]) -> None:
+def check_official_domain(tags: TagSet, data: dict[str, JsonValue]) -> None:
     """输入：注入特征与草稿字典。输出：无；不合规就抛 `ValueError`。
 
     预期行为：**声称机构身份**（`known_vendor` / `forged_brand`）时「官方域名」字段必须非空，

@@ -11,9 +11,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass
-from typing import Any
+
 
 from jc.judge import Verdict
 
@@ -22,7 +23,7 @@ from . import spec as spec_mod
 from .spec import InvoiceSpec
 
 
-def roundtrip_diff(spec: InvoiceSpec, parsed: parse.ParsedInvoice, loc: dict[str, Any]) -> list[str]:
+def roundtrip_diff(spec: InvoiceSpec, parsed: parse.ParsedInvoice, loc: dict[str, JsonValue]) -> list[str]:
     """输入：真值规格、反解结果、语言字典。输出：差异列表（空 = 一致）。
 
     预期行为：字段**逐字**比（连货币符号、千分位、日期写法都算），明细逐格比；
@@ -51,7 +52,7 @@ class RoundtripJudge:
     name: str = "roundtrip"
     locale: str = "zh"
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值 spec。输出：Verdict。预期行为：没有 spec 就跳过（不误判）。"""
         if not isinstance(spec, InvoiceSpec):
             return Verdict(True, reason="没有 spec，跳过结构判别", raw={"skipped": True})
@@ -83,7 +84,7 @@ def _recompute_bad_lines(parsed: parse.ParsedInvoice) -> int:
     return min(3, sum(1 for item in parsed.items if item.amount != item.qty * item.unit))
 
 
-def _value_problems(qid: str, slot: str, description: Any, parsed: parse.ParsedInvoice) -> list[str]:
+def _value_problems(qid: str, slot: str, description: object, parsed: parse.ParsedInvoice) -> list[str]:
     """输入：题号、目标槽、选项描述、反解结果。输出：问题列表（空 = 这个选项与单据对得上）。
 
     预期行为：**按类归一比**——日期比日期三元组、金额与单价比整数、其余比字符串。
@@ -124,7 +125,7 @@ class LabelJudge:
     locale: str = "zh"
     max_problems: int = 5
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
         """输入：样本、真值 spec（不用）。输出：Verdict。预期行为：答案对不上就判不通过。"""
         loc = locales.load(self.locale)
         parsed = parse.parse_document(sample["state"], loc)
@@ -136,7 +137,7 @@ class LabelJudge:
         )
 
     def _check(
-        self, sample: dict[str, Any], parsed: parse.ParsedInvoice, loc: dict[str, Any]
+        self, sample: dict[str, JsonValue], parsed: parse.ParsedInvoice, loc: dict[str, JsonValue]
     ) -> list[str]:
         """输入：样本、反解结果、语言字典。输出：问题列表（空 = 全部对得上）。"""
         problems: list[str] = []

@@ -341,7 +341,7 @@ def remove_edge(mask: tuple[int, ...], a: int, b: int, rows: int, cols: int) -> 
 
 def braid(
     rng: random.Random, mask: tuple[int, ...], rows: int, cols: int, prob: float
-):
+) -> tuple[int, ...]:
     """以 prob 的概率拆掉死胡同（产生环路）。
 
     输入：RNG、mask、行列数、概率。

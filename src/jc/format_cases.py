@@ -12,12 +12,13 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import itertools
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from . import contract, cover, jsonio
 
@@ -29,12 +30,12 @@ _DEFAULT_ROOT = "cases/format"
 # ---------- 组装 ----------
 def _row(
     seq: int,
-    state: Any,
-    questions: dict[str, Any],
-    answers: dict[str, Any],
+    state: object,
+    questions: dict[str, JsonValue],
+    answers: dict[str, JsonValue],
     *,
     split: str = _SPLIT,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """组装一行样本。
 
     输入：序号、state、题目字典、答案字典、可选切分。输出：契约形态的样本。
@@ -51,10 +52,10 @@ def _row(
 
 def _single(
     seq: int,
-    state: Any,
-    question: dict[str, Any],
-    answer: dict[str, Any],
-) -> dict[str, Any]:
+    state: object,
+    question: dict[str, JsonValue],
+    answer: dict[str, JsonValue],
+) -> dict[str, JsonValue]:
     """组装单题样本（正例里绝大多数是单题）。
 
     输入：序号、state、一道题、它的答案。输出：样本。
@@ -64,11 +65,11 @@ def _single(
 
 
 def _choice(
-    options: dict[str, Any],
+    options: dict[str, JsonValue],
     *,
-    instructions: Any = "where next?",
+    instructions: str = "where next?",
     answer: int = 0,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, JsonValue], dict[str, JsonValue]]:
     """造一道 choice 题与它的答案。
 
     输入：criteria 选项表、可选 instructions、答案编号。输出：(题目, 答案)。
@@ -84,27 +85,27 @@ def _choice(
 
 def _noul(
     *,
-    instructions: Any = "yes or no?",
-    criteria: dict[str, Any] | None = None,
+    instructions: str = "yes or no?",
+    criteria: dict[str, JsonValue] | None = None,
     answer: bool = True,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, JsonValue], dict[str, JsonValue]]:
     """造一道 noul 题与它的答案。
 
     输入：可选 instructions / criteria / 答案布尔。输出：(题目, 答案)。
     预期行为：criteria 为 None 时整块省略（契约允许 noul 没有 criteria）。
     """
-    question: dict[str, Any] = {"type": contract.TYPE_NOUL, "instructions": instructions}
+    question: dict[str, JsonValue] = {"type": contract.TYPE_NOUL, "instructions": instructions}
     if criteria is not None:
         question["criteria"] = criteria
     return question, {"type": contract.TYPE_NOUL, "noul": answer}
 
 
 def _score(
-    levels: Any,
+    levels: JsonValue,
     *,
-    instructions: Any = "how much?",
+    instructions: str = "how much?",
     answer: int = 0,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, JsonValue], dict[str, JsonValue]]:
     """造一道 score 题与它的答案。
 
     输入：等级列表（负例里故意传别的形态）、可选 instructions、答案下标。输出：(题目, 答案)。
@@ -145,7 +146,7 @@ _SCORE_SIZES: Final[dict[str, int]] = {
 }
 
 
-def matrix_combos() -> list[dict[str, Any]]:
+def matrix_combos() -> list[dict[str, JsonValue]]:
     """返回正例矩阵用的维度组合（成对覆盖，确定性）。
 
     输入：无。输出：组合列表。预期行为：等价于 `cover.cover_dims(SCHEMA_DIMS)`。
@@ -158,7 +159,7 @@ def _text(script: str, ascii_text: str, cjk_text: str) -> str:
     return cjk_text if script == "cjk" else ascii_text
 
 
-def _state_for(kind: str, script: str) -> Any:
+def _state_for(kind: str, script: str) -> object:
     """按 state_kind 造 state（string / object / array 三种都非空）。"""
     if kind == "string":
         return _text(script, "a small state", "起点在左上角，出口在右下角。")
@@ -167,7 +168,7 @@ def _state_for(kind: str, script: str) -> Any:
     return [_text(script, "line one", "第一行"), _text(script, "line two", "第二行")]
 
 
-def _desc_for(kind: str, script: str) -> Any:
+def _desc_for(kind: str, script: str) -> object:
     """按 desc_kind 造描述值（只出 string / object / array，三种题型都合法）。"""
     if kind == "string":
         return _text(script, "go north", "向北走")
@@ -190,13 +191,13 @@ def _option_names(count: int, script: str) -> list[str]:
     return head[:count] + rest
 
 
-def _level_descriptions(desc: Any, count: int) -> list[Any]:
+def _level_descriptions(desc: object, count: int) -> list[JsonValue]:
     """把一份描述值复制成 count 份**互不相同**的等级描述（形态保持不变）。
 
     输入：描述值、等级数。输出：等级列表。
     预期行为：string 加后缀、object 加键、array 加元素；等级语义不重叠，读起来像真的。
     """
-    out: list[Any] = []
+    out: list[JsonValue] = []
     for index in range(count):
         if isinstance(desc, str):
             out.append(f"{desc} #{index + 1}")
@@ -207,7 +208,7 @@ def _level_descriptions(desc: Any, count: int) -> list[Any]:
     return out
 
 
-def _matrix_question(dims: Mapping[str, Any]) -> tuple[dict[str, Any], int]:
+def _matrix_question(dims: Mapping[str, JsonValue]) -> tuple[dict[str, JsonValue], int]:
     """按维度造主问题，并给出它的取值个数。
 
     输入：维度取值。输出：(题目, 取值个数)；取值个数 = choice 选项数 / score 等级数 / noul 记 2。
@@ -215,7 +216,7 @@ def _matrix_question(dims: Mapping[str, Any]) -> tuple[dict[str, Any], int]:
     「省略 criteria / 只给 true / true+false 都给」）。
     """
     qtype = dims["question_type"]
-    instructions: Any = _text(dims["text_script"], "which one?", "选哪个？")
+    instructions: str = _text(dims["text_script"], "which one?", "选哪个？")
     if dims["instructions_kind"] == "object":
         instructions = {"ask": instructions}
     elif dims["instructions_kind"] == "array":
@@ -249,7 +250,7 @@ def _matrix_question(dims: Mapping[str, Any]) -> tuple[dict[str, Any], int]:
     return question, 2
 
 
-def _matrix_answer(qtype: str, size: int, pos: str) -> dict[str, Any]:
+def _matrix_answer(qtype: str, size: int, pos: str) -> dict[str, JsonValue]:
     """按题型与 answer_pos 造答案（first = 首，last = 末）。"""
     if qtype == contract.TYPE_NOUL:
         return {"type": qtype, "noul": pos == "last"}
@@ -257,7 +258,7 @@ def _matrix_answer(qtype: str, size: int, pos: str) -> dict[str, Any]:
     return {"type": qtype, field: size - 1 if pos == "last" else 0}
 
 
-def _matrix_row(seq: int, dims: Mapping[str, Any]) -> dict[str, Any]:
+def _matrix_row(seq: int, dims: Mapping[str, JsonValue]) -> dict[str, JsonValue]:
     """按一组维度取值造一行合法样本。
 
     输入：序号、维度取值。输出：样本。
@@ -281,14 +282,14 @@ def _matrix_row(seq: int, dims: Mapping[str, Any]) -> dict[str, Any]:
 
 
 # ---------- 正例 ----------
-def valid_files() -> dict[str, list[dict[str, Any]]]:
+def valid_files() -> dict[str, list[dict[str, JsonValue]]]:
     """返回 {相对路径: 行列表}（键按构造顺序，写出时保持同样顺序）。
 
     输入：无。输出：正例文件内容。
     预期行为：确定性；id 整库唯一；覆盖 state 形态 × 题型 × 描述形态 × 数量与编号边界。
     """
     seq = itertools.count(1)
-    files: dict[str, list[dict[str, Any]]] = {}
+    files: dict[str, list[dict[str, JsonValue]]] = {}
 
     # 正例矩阵：维度枚举器给的成对覆盖组合（系统化的那一份，覆盖全部 schema 维度）。
     files["valid/pairwise-matrix.jsonl"] = [
@@ -398,7 +399,7 @@ def invalid_files() -> dict[str, bytes]:
     """
     out: dict[str, bytes] = {}
 
-    def put(code: str, rows: list[dict[str, Any]]) -> None:
+    def put(code: str, rows: list[dict[str, JsonValue]]) -> None:
         """把若干样本行写成该错误码的负例文件。"""
         text = "".join(jsonio.dumps_line(row) + "\n" for row in rows)
         out[f"invalid/{code}.jsonl"] = text.encode("utf-8")
@@ -407,7 +408,7 @@ def invalid_files() -> dict[str, bytes]:
         """把原始文本写成该错误码的负例文件（解析期就要坏掉的行用这个）。"""
         out[f"invalid/{code}.jsonl"] = text.encode("utf-8")
 
-    def base(seq: int = 1) -> dict[str, Any]:
+    def base(seq: int = 1) -> dict[str, JsonValue]:
         """一份合法样本，各负例都在它上面只改一处。
 
         输入：行内序号。输出：合法样本。

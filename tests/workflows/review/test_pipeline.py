@@ -1,175 +1,260 @@
-"""端到端测试：小规模跑通整条管线、可复现、审计与切分不重叠、均衡靠构造。"""
+"""改动审查的端到端测试：假后端跑通整条管线，并验证切分不变量与判别器拦错。"""
 
 from __future__ import annotations
 
-import dataclasses
+import random
 from pathlib import Path
 
-from jc import jsonio, pipeline
-from jc import workflow as workflow_mod
-from tests.workflows.review.conftest import tiny_config
-from workflows.review import spec as spec_mod
-from workflows.review.workflow import ReviewWorkflow
+import pytest
 
-#: 四个题族在均衡报告里的键（`类型:题族`）。
-BALANCE_KEYS = ("noul:flag", "score:severity", "choice:gate", "choice:top")
+from jc import pipeline, workflow as workflow_mod
+
+from workflows.review import features, locales, render, workflow as review_workflow
+from workflows.review.spec import ReviewSpec, spec_to_dict
+
+from tests.workflows.review.conftest import FakeBackend, body_for
+
+CASE_LIMIT = 8
 
 
 def make_config(
-    tmp_path: Path, run_id: str, *, split: str = "train", concurrency: int = 1
+    tmp_path: Path, run_id: str, backend: object, *, split: str = "train"
 ) -> pipeline.RunConfig:
-    """输入：临时目录、run 名、切分、并发度。输出：指向 tmp 的运行配置（不需要后端）。"""
+    """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
     return pipeline.RunConfig(
         workflow="review",
         split=split,
         locales=("zh",),
-        run_seed=17,
+        run_seed=7,
         per_case=1,
-        concurrency=concurrency,
         out_root=tmp_path,
         run_id=run_id,
-        config_override=tiny_config(split),
+        config_override=review_workflow.ReviewConfig(split=split, case_limit=CASE_LIMIT),
+        backend=backend,
     )
 
 
-def _case_count(config: pipeline.RunConfig) -> int:
-    """输入：运行配置。输出：该切分的 case 数。预期行为：与产物条数对得上。"""
-    return len(ReviewWorkflow().build_cases(config.config_override))
+def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
+    """输入：假后端（从不撒谎）。输出：RunResult。
 
-
-def test_end_to_end_all_judges_pass(tmp_path: Path) -> None:
-    """输入：极小配置（零 token，不需要后端）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、两个判别器全通过；产物过审计。
+    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，
+    而且清单行、正文形状、三张表、严重度与门控全都自洽。
     """
-    config = make_config(tmp_path, "rv1")
-    result = pipeline.run(config)
-    assert result.accepted == _case_count(config) > 0
+    result = pipeline.run(make_config(tmp_path, "c1", fake_backend()))
+    assert result.accepted == CASE_LIMIT
     assert result.rejected == []
-    assert set(result.stats["judges"]) == {"roundtrip", "label"}
+    assert set(result.stats["judges"]) == {"hygiene", "frame", "trace"}
     for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0 and bucket["ok"] > 0
+        assert bucket["fail"] == 0
+        assert bucket["ok"] > 0
     report, missing = workflow_mod.load("review").audit(result.run_dir, ("train",), "zh")
     assert missing == []
-    assert report["train"]["samples"] == result.accepted
-    assert report["train"]["index_bad"] == 0
-    assert report["train"]["label_mismatch"] == 0
-    assert set(report["train"]["types"]) == {"choice", "noul", "score"}
-    assert set(report["train"]["families"]) == {"flag", "severity", "gate", "top"}
+    assert report["train"]["samples"] == CASE_LIMIT
+    for counter in (
+        "manifest_bad",
+        "body_shape_bad",
+        "rules_bad",
+        "severity_table_bad",
+        "gate_table_bad",
+        "severity_bad",
+        "gate_bad",
+    ):
+        assert report["train"][counter] == 0, counter
 
 
-def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
-    """输入：同种子、不同并发度跑两次。输出：两份产物。预期行为：逐字节一致。"""
-    serial = pipeline.run(make_config(tmp_path, "rv2a", concurrency=1))
-    parallel = pipeline.run(make_config(tmp_path, "rv2b", concurrency=4))
-    assert (serial.run_dir / "train.jsonl").read_bytes() == (
-        parallel.run_dir / "train.jsonl"
+def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
+    """输入：同种子跑两次。输出：两份产物。预期行为：逐字节一致。"""
+    first = pipeline.run(make_config(tmp_path, "c2a", fake_backend()))
+    second = pipeline.run(make_config(tmp_path, "c2b", fake_backend()))
+    assert (first.run_dir / "train.jsonl").read_bytes() == (
+        second.run_dir / "train.jsonl"
     ).read_bytes()
 
 
-def test_every_case_yields_exactly_one_sample(tmp_path: Path) -> None:
-    """输入：一次 train 跑。输出：无。预期行为：样本数 = case 数（per_case=1）。"""
-    config = make_config(tmp_path, "rv3")
-    result = pipeline.run(config)
-    rows = [row for _, row in jsonio.iter_jsonl(result.run_dir / "train.jsonl")]
-    assert len(rows) == _case_count(config)
-    for row in rows:
-        assert row["id"].startswith("review-train-")
-        assert row["questions"] and row["answers"]
-        assert set(row["questions"]) == set(row["answers"])
+@pytest.mark.parametrize(
+    ("switch", "code"),
+    [
+        ("trace_lies_secret", "E_JUDGE_TRACE"),
+        ("trace_lies_debug", "E_JUDGE_TRACE"),
+        ("table_body", "E_ASSEMBLE"),
+        ("no_prefix_body", "E_ASSEMBLE"),
+        ("fence_body", "E_ASSEMBLE"),
+        ("label_body", "E_ASSEMBLE"),
+        ("empty_body", "E_ASSEMBLE"),
+    ],
+)
+def test_bad_drafts_and_bad_traces_are_rejected(
+    tmp_path: Path, fake_backend: type[FakeBackend], switch: str, code: str
+) -> None:
+    """输入：各种作弊开关。输出：RunResult。
 
-
-def test_ood_split_only_carries_unseen_values(tmp_path: Path) -> None:
-    """输入：一次 test_ood 跑。输出：无。预期行为：零拒绝、审计零问题。"""
-    config = make_config(tmp_path, "rv4", split="test_ood")
-    result = pipeline.run(config)
-    assert result.accepted == _case_count(config) > 0
-    report, missing = workflow_mod.load("review").audit(result.run_dir, ("test_ood",), "zh")
-    assert missing == [] and report["test_ood"]["samples"] == result.accepted
-
-
-def test_three_id_splits_are_disjoint(tmp_path: Path) -> None:
-    """输入：train / val / test_iid 三次跑。输出：三份产物。
-
-    预期行为：三份产物的 state 集合两两不相交——切分按**素材**哈希分桶，同一屏改动
-    不会同时出现在两档里（`config_for` 忘了替换 `split` 时这条会红）。
+    预期行为：一条都留不下，拒绝码就是该有的那一个——反解说反话是 `E_JUDGE_TRACE`，
+    形状 / 内容不合规是渲染期的 `E_ASSEMBLE`（重试耗尽后仍被拒，不静默放行）。
     """
-    seen: list[set[str]] = []
+    result = pipeline.run(make_config(tmp_path, f"c3-{switch}", fake_backend(**{switch: True})))
+    assert result.accepted == 0
+    assert {item["code"] for item in result.rejected} == {code}
+
+
+def test_case_splits_are_disjoint_and_cover_the_space() -> None:
+    """输入：四个切分的 case 列表。输出：无。
+
+    预期行为：同分布三个切分互不相交、`test_ood` 与它们不相交，四份合起来正好是全空间
+    （同分布侧剔除留出取值后是 60 组，留出侧 48 组，合计 108 组）。
+    """
+    keys: dict[tuple[tuple[str, str], ...], str] = {}
+    for split in ("train", "val", "test_iid", "test_ood"):
+        cases = review_workflow.cases_for(review_workflow.ReviewConfig(split=split))
+        assert cases
+        for case in cases:
+            key = tuple(case.as_dict().items())
+            assert key not in keys, f"{key} 同时出现在 {keys[key]} 与 {split}"
+            keys[key] = split
+    assert len(keys) == 108
+
+
+def test_id_splits_never_carry_the_held_out_value() -> None:
+    """输入：同分布三个切分。输出：无。预期行为：一条都不带留出的变更类型。"""
     for split in ("train", "val", "test_iid"):
-        result = pipeline.run(make_config(tmp_path, f"rv5-{split}", split=split))
-        rows = [row for _, row in jsonio.iter_jsonl(result.run_dir / f"{split}.jsonl")]
-        assert rows
-        seen.append({row["state"] for row in rows})
-    assert not seen[0] & seen[1]
-    assert not seen[0] & seen[2]
-    assert not seen[1] & seen[2]
+        cases = review_workflow.cases_for(review_workflow.ReviewConfig(split=split))
+        assert cases
+        for case in cases:
+            assert case.change_kind not in review_workflow.OOD_CHANGE_KINDS
 
 
-def test_states_are_distinct_within_a_split(tmp_path: Path) -> None:
-    """输入：一次 train 跑。输出：无。
+def test_ood_side_only_carries_the_held_out_value() -> None:
+    """输入：`test_ood` 的 case 列表。输出：无。预期行为：每一条都带留出的那个取值。"""
+    cases = review_workflow.cases_for(review_workflow.ReviewConfig(split="test_ood"))
+    assert cases
+    for case in cases:
+        assert case.change_kind in review_workflow.OOD_CHANGE_KINDS
 
-    预期行为：同一档里的 state 两两不同——「case 维度不同 ⇒ 文本不同」是构造不变量，
-    破了它就会出现两条一模一样的样本。
+
+def test_ood_side_still_reaches_every_option() -> None:
+    """输入：`test_ood` 的 case 列表。输出：无。
+
+    预期行为：留出 `change_kind` 不杀任何一档——五族每一档在留出侧都还到得了。
     """
-    result = pipeline.run(make_config(tmp_path, "rv6"))
-    rows = [row for _, row in jsonio.iter_jsonl(result.run_dir / "train.jsonl")]
-    states = [row["state"] for row in rows]
-    assert len(set(states)) == len(states)
+    labels = [
+        case.label()
+        for case in review_workflow.cases_for(review_workflow.ReviewConfig(split="test_ood"))
+    ]
+    assert {label.secret for label in labels} == set(features.SECRETS)
+    assert {label.debug for label in labels} == set(features.DEBUGS)
+    assert {label.rule for label in labels} == set(features.REVIEW_RULES)
+    assert {label.severity for label in labels} == set(range(features.SEVERITY_LEVELS))
+    assert {label.gate for label in labels} == set(features.GATES)
 
 
-def test_answer_balance_is_built_in(tmp_path: Path) -> None:
-    """输入：一次 train 跑。输出：无。
+def test_id_side_still_reaches_every_option() -> None:
+    """输入：同分布三个切分的 case 列表。输出：无。
 
-    预期行为：四个题族的答案分布全在容差内——该不该提 50/50、严重度与门控各三档均分、
-    最严重的位置六处均分。均衡是**构造**出来的，不靠事后过滤。
+    预期行为：留出「新增」不杀任何一档——五族每一档在训练侧都还到得了。
     """
-    result = pipeline.run(make_config(tmp_path, "rv7"))
-    offenders = [item for item in result.stats["balance"] if not item["ok"]]
-    assert offenders == [], offenders
-    assert {item["key"] for item in result.stats["balance"]} == set(BALANCE_KEYS)
-
-
-def test_id_config_produces_no_unseen_values() -> None:
-    """输入：三个同分布切分的配置。输出：无。
-
-    预期行为：它们产出的 case 里**一个留出取值都没有**——否则 test_ood 与同分布侧会重叠。
-    """
-    workflow = workflow_mod.load("review")
-    for split in ("train", "val", "test_iid"):
-        cases = workflow.build_cases(workflow.config_for(split))
-        assert cases and not any(case.unseen_dims() for case in cases)
-
-
-def test_ood_config_produces_only_cases_with_unseen_values() -> None:
-    """输入：`test_ood` 配置。输出：无。预期行为：每条都至少含一个留出取值。"""
-    workflow = workflow_mod.load("review")
-    cases = workflow.build_cases(workflow.config_for("test_ood"))
-    assert cases and all(case.unseen_dims() for case in cases)
-
-
-def test_ood_materials_never_overlap_the_id_splits() -> None:
-    """输入：四个切分的 case。输出：无。
-
-    预期行为：OOD 侧的素材指纹与同分布侧完全不相交——值留出与素材留出叠加之后
-    两侧按构造不重叠。
-    """
-    workflow = workflow_mod.load("review")
-    id_materials = {
-        spec_mod.material_of(case)
+    labels = [
+        case.label()
         for split in ("train", "val", "test_iid")
-        for case in workflow.build_cases(workflow.config_for(split))
-    }
-    ood_materials = {
-        spec_mod.material_of(case)
-        for case in workflow.build_cases(workflow.config_for("test_ood"))
-    }
-    assert ood_materials and not id_materials & ood_materials
+        for case in review_workflow.cases_for(review_workflow.ReviewConfig(split=split))
+    ]
+    assert {label.rule for label in labels} == set(features.REVIEW_RULES)
+    assert {label.severity for label in labels} == set(range(features.SEVERITY_LEVELS))
+    assert {label.gate for label in labels} == set(features.GATES)
 
 
-def test_english_locale_runs_end_to_end(tmp_path: Path) -> None:
-    """输入：英文一次跑。输出：RunResult。预期行为：零拒绝、审计零问题。"""
-    config = dataclasses.replace(make_config(tmp_path, "rv8"), locales=("en",))
-    result = pipeline.run(config)
-    assert result.accepted == _case_count(config)
-    report, missing = workflow_mod.load("review").audit(result.run_dir, ("train",), "en")
-    assert missing == [] and report["train"]["samples"] == result.accepted
+def test_cover_limit_forces_full_enumeration() -> None:
+    """输入：默认 `cover_limit`。输出：无。
+
+    预期行为：同分布空间（60 组）与全空间（108 组）都在 512 之下，所以走的是**全枚举**
+    ——成对覆盖在这里只会白扔组合。
+    """
+    id_cases = review_workflow.cases_for(review_workflow.ReviewConfig(split="train"))
+    assert review_workflow.ReviewConfig().cover_limit >= 108
+    assert len(features.build_cases(review_workflow.ReviewConfig().cover_limit)) == 108
+    assert id_cases
+
+
+def test_bad_knobs_are_rejected() -> None:
+    """输入：坏旋钮。输出：无。预期行为：构造期就报人话。"""
+    with pytest.raises(ValueError):
+        review_workflow.ReviewConfig(split="train", case_limit=-1)
+    with pytest.raises(ValueError):
+        review_workflow.ReviewConfig(split="train", phrasing_pool=())
+    with pytest.raises(KeyError):
+        review_workflow.ReviewWorkflow().config_for("nope")
+
+
+def test_render_without_backend_raises() -> None:
+    """输入：没注入后端的 workflow。输出：无。
+
+    预期行为：直接报错，绝不悄悄降级成模板——那会让「正文由模型写」这条前提失效。
+    """
+    wf = review_workflow.ReviewWorkflow()
+    spec = ReviewSpec(tags=features.build_cases(2048)[0], phrasing=0, split="train", seq=0)
+    with pytest.raises(RuntimeError):
+        wf.render(spec, random.Random(0), "zh")
+
+
+def test_unknown_judge_name_raises() -> None:
+    """输入：不存在的判别器名。输出：无。预期行为：直接报错。"""
+    with pytest.raises(KeyError):
+        review_workflow.ReviewWorkflow().make_judges(("nope",), "zh")
+
+
+def test_workflow_declares_what_it_needs() -> None:
+    """输入：workflow 的类属性。输出：无。
+
+    预期行为：`needs` 非空（正文由后端写）、三种题型都声明、判别器名单与默认一致。
+    """
+    wf = review_workflow.ReviewWorkflow()
+    assert wf.name == "review"
+    assert wf.needs == frozenset({"text"})
+    assert wf.kinds == frozenset({"choice", "noul", "score"})
+    assert wf.judges == ("hygiene", "frame", "trace")
+    assert wf.available_locales() == ["en", "zh"]
+    assert wf.split_names() == ("train", "val", "test_iid", "test_ood")
+
+
+def test_config_for_and_reparse_wire_up() -> None:
+    """输入：切分名与一段 state。输出：无。
+
+    预期行为：`config_for` 给出该切分的采样参数、`reparse` 走纯代码反解——
+    这两条是通用层与 workflow 的接线点，接错了整条管线就哑了。
+    """
+    wf = review_workflow.ReviewWorkflow()
+    assert wf.config_for("train").split == "train"
+    assert wf.config_for("test_ood").split == "test_ood"
+    tags = features.build_cases(2048)[0]
+    state = render.to_state({"body": body_for(tags.as_dict())}, tags, locales.load("zh"))
+    parsed = wf.reparse(state)
+    assert parsed.body == body_for(tags.as_dict())
+    assert parsed.manifest is not None
+
+
+def test_case_label_and_stats_dimensions_cover_every_dimension() -> None:
+    """输入：一个 case。输出：无。预期行为：可读描述与统计维度覆盖全部五维。"""
+    wf = review_workflow.ReviewWorkflow()
+    case = features.build_cases(2048)[0]
+    label = wf.case_label(case)
+    for dim, value in case.as_dict().items():
+        assert f"{dim}={value}" in label
+    assert set(wf.stats_dimensions(case)) == set(features.DIMS)
+    assert set(wf.dimension_titles()) == set(features.DIMS)
+
+
+def test_spec_to_dict_and_task_ids() -> None:
+    """输入：一条真值规格。输出：无。
+
+    预期行为：`spec_to_dict` 可 JSON 序列化且字段齐全；渲染 / 反解任务 id 按同一条
+    样本可重算（断点续跑按它查进度）。
+    """
+    tags = features.build_cases(2048)[0]
+    spec = ReviewSpec(tags=tags, phrasing=2, split="train", seq=5)
+    assert spec_to_dict(spec) == {
+        "tags": tags.as_dict(),
+        "phrasing": 2,
+        "split": "train",
+        "seq": 5,
+    }
+    assert spec.labels == tags.label()
+    assert spec.render_task_id == "review-train-0000005-render"
+    assert spec.trace_task_id == "review-train-0000005-trace"

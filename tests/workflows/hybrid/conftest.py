@@ -6,9 +6,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 import pytest
 
@@ -68,14 +69,14 @@ class FakeBackend:
         self.broken = broken
         self.calls: list[str] = []
 
-    def generate(self, task: Any) -> Draft:
+    def generate(self, task: object) -> Draft:
         """输入：一个任务。输出：草稿。预期行为：任务里没带 count 就报错（夹具写错要炸）。"""
         self.calls.append(task.task_id)
         assert "count" in task.spec, f"假后端要求任务带上 count：{task.task_id}"
         count = max(1, task.spec["count"] + self.count_delta)
         if self.broken:
             return self._draft({"meetings": "不是数组"})
-        data: dict[str, Any] = {
+        data: dict[str, JsonValue] = {
             "meetings": [
                 {
                     "title": TITLES[(index + self.drift) % len(TITLES)],
@@ -88,12 +89,12 @@ class FakeBackend:
             data["meetings"][0]["title"] = DIRTY_TITLE
         return self._draft(data)
 
-    def generate_many(self, tasks: list[Any]) -> list[Draft]:
+    def generate_many(self, tasks: list[JsonValue]) -> list[Draft]:
         """输入：任务列表。输出：与入参顺序一致的草稿列表。"""
         return [self.generate(task) for task in tasks]
 
     @staticmethod
-    def _draft(data: dict[str, Any]) -> Draft:
+    def _draft(data: dict[str, JsonValue]) -> Draft:
         """输入：草稿数据。输出：`Draft`。预期行为：填满必填的记账字段。"""
         return Draft(
             data=data,
@@ -107,7 +108,7 @@ class FakeBackend:
 
 
 #: 默认维度：一场 3 场会、中午开、不冲突、列表版式、周三、短时长的普通日程。
-CASE_DEFAULTS: dict[str, Any] = {
+CASE_DEFAULTS: dict[str, JsonValue] = {
     "meetings": 3,
     "opening": "early",
     "clash": "none",
@@ -117,14 +118,14 @@ CASE_DEFAULTS: dict[str, Any] = {
 }
 
 
-def _make_case(**overrides: Any) -> sp.HybridCase:
+def _make_case(**overrides: object) -> sp.HybridCase:
     """输入：维度覆盖项。输出：一个 case。预期行为：未覆盖的维度取 `CASE_DEFAULTS`。"""
     fields = dict(CASE_DEFAULTS)
     fields.update(overrides)
     return sp.HybridCase(**fields)
 
 
-def fill_text(spec: sp.HybridSpec, locale: str = "zh", **backend_kwargs: Any) -> sp.HybridSpec:
+def fill_text(spec: sp.HybridSpec, locale: str = "zh", **backend_kwargs: object) -> sp.HybridSpec:
     """输入：规格、语言、假后端开关。输出：同一份规格（`written` 已填好）。
 
     预期行为：走与真实渲染完全一样的路径（`build_task` → `check_draft`），
@@ -137,7 +138,7 @@ def fill_text(spec: sp.HybridSpec, locale: str = "zh", **backend_kwargs: Any) ->
     return spec
 
 
-def _make_spec(seed: int = 5, *, locale: str = "zh", **overrides: Any) -> sp.HybridSpec:
+def _make_spec(seed: int = 5, *, locale: str = "zh", **overrides: object) -> sp.HybridSpec:
     """输入：种子、语言、case 覆盖项。输出：文本已填好的真值规格。
 
     预期行为：同种子必得同一份规格（构造器只用传进来的 RNG，不碰全局随机源）。
@@ -153,12 +154,12 @@ def fake_backend() -> type[FakeBackend]:
 
 
 @pytest.fixture
-def make_case() -> Any:
+def make_case() -> object:
     """工厂夹具：`make_case(clash="same_room", meetings=3)` 造一个 case。"""
     return _make_case
 
 
 @pytest.fixture
-def make_spec() -> Any:
+def make_spec() -> object:
     """工厂夹具：`make_spec(7, meetings=4)` 造一份文本已填好的真值规格。"""
     return _make_spec

@@ -19,10 +19,11 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
 from collections.abc import Callable
-from typing import Any
+
 
 from jc import contract
 from jc.workflow import LabeledQuestion
@@ -34,7 +35,7 @@ from .spec import OPTION_CELL, PATH_LENGTH_BUCKETS, MazeSpec
 DIRECTIONS = grid.DIRECTIONS
 
 
-def _dir_words(maze: MazeSpec, loc: dict[str, Any]) -> dict[int, str]:
+def _dir_words(maze: MazeSpec, loc: dict[str, JsonValue]) -> dict[int, str]:
     """方向 → 选项文案。
 
     输入：spec、语言字典。
@@ -70,7 +71,7 @@ def _toward_exit(maze: MazeSpec) -> int | None:
     return best[0] if len(best) == 1 else None
 
 
-def _pick_grouped(rng: random.Random, groups: dict[Any, list[Any]]) -> Any | None:
+def _pick_grouped(rng: random.Random, groups: dict[object, list[JsonValue]]) -> object | None:
     """先均匀挑「目标答案」，再在该组里随机挑一个候选。
 
     输入：RNG、{答案: [候选…]}（空组应事先剔除）。
@@ -117,7 +118,7 @@ def _score(family: str, question: str, levels: list[str], answer: int) -> Labele
 # ---------------------------------------------------------------- 全局题族
 
 
-def build_next_step(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_next_step(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """从当前位置出发，下一步朝哪走最快到出口（覆盖「往最优道路上走」的情形）。"""
     d = _toward_exit(maze)
     if d is None:
@@ -127,7 +128,7 @@ def build_next_step(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx
     return _choice("next_step", q, [words[x] for x in DIRECTIONS], words[d])
 
 
-def build_off_by_one(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_off_by_one(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """当前位置偏离最优路径恰好 1 格时，往哪走能回到最优路径。"""
     if maze.agent.deviation != 1:
         return None
@@ -145,7 +146,7 @@ def build_off_by_one(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], id
     return _choice("off_by_one", q, [words[x] for x in DIRECTIONS], words[d])
 
 
-def build_on_optimal(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_on_optimal(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """当前位置是否在 S→E 最优路径上。"""
     path = maze.path()
     if path is None:
@@ -154,7 +155,7 @@ def build_on_optimal(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], id
     return _noul("on_optimal", q, maze.current() in set(path))
 
 
-def build_deviation(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_deviation(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """当前位置偏离最优路径几步（0 / 1 / 2 / ≥3）。"""
     if maze.path() is None or maze.agent.deviation < 0:
         return None
@@ -164,7 +165,7 @@ def build_deviation(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx
     return _score("deviation", q, levels, answer)
 
 
-def build_path_via(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_path_via(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """S→E 最优路径经过哪个标记格（「都不经过」作为正确答案保留）。"""
     path = maze.path()
     if path is None:
@@ -180,7 +181,7 @@ def build_path_via(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx:
     return _choice("path_via", q, options, answer)
 
 
-def build_on_path(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_on_path(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """某个标记格是否在最优路径上（真假尽量 1:1）。"""
     path = maze.path()
     if path is None:
@@ -196,13 +197,13 @@ def build_on_path(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: 
     return _noul("on_path", q, picked in [l for l, c in sorted(maze.marks.items()) if c in path_set])
 
 
-def build_reachable(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_reachable(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """S 能否走到 E（被 cut 砍断时为假）。"""
     q = locales.phrasing(loc, "reachable", idx)
     return _noul("reachable", q, maze.reachable())
 
 
-def build_path_length(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_path_length(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """S→E 最少几步（分桶成 5 档）。"""
     path = maze.path()
     if path is None:
@@ -240,7 +241,7 @@ def _step_result_label(maze: MazeSpec, cell: int, d: int, options: list[str]) ->
     return passage
 
 
-def build_step_result(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_step_result(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """从标记格某方向走一步会到哪里（先抽目标类别，再挑标记与方向）。"""
     options = list(loc["fam"]["step_result"]["options"])
     groups: dict[str, list[tuple[str, int, str]]] = {}
@@ -257,7 +258,7 @@ def build_step_result(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], i
     return _choice("step_result", q, options, label)
 
 
-def build_can_move(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_can_move(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """从标记格某方向能否直接走一步（真假 1:1）。"""
     groups: dict[bool, list[tuple[str, int]]] = {True: [], False: []}
     for letter, cell in sorted(maze.marks.items()):
@@ -272,7 +273,7 @@ def build_can_move(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx:
     return _noul("can_move", q, answer)
 
 
-def build_dead_end(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_dead_end(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """标记格是否死胡同（只有一个方向能走）。"""
     groups: dict[bool, list[str]] = {True: [], False: []}
     for letter, cell in sorted(maze.marks.items()):
@@ -300,7 +301,7 @@ def _exits_level(maze: MazeSpec, cell: int) -> int:
     return 2
 
 
-def build_exits(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int) -> LabeledQuestion | None:
+def build_exits(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:
     """标记格周围有几个方向能走（各档尽量均匀）。"""
     levels = list(loc["fam"]["exits"]["levels"])
     groups: dict[int, list[str]] = {}
@@ -314,7 +315,7 @@ def build_exits(maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: in
     return _score("exits", q, levels, answer)
 
 
-BUILDERS: dict[str, Callable[[MazeSpec, random.Random, dict[str, Any], int], LabeledQuestion | None]] = {
+BUILDERS: dict[str, Callable[[MazeSpec, random.Random, dict[str, JsonValue], int], LabeledQuestion | None]] = {
     "next_step": build_next_step,
     "off_by_one": build_off_by_one,
     "on_optimal": build_on_optimal,
@@ -333,7 +334,7 @@ ALL_FAMILIES: tuple[str, ...] = tuple(BUILDERS)
 
 
 def build_one(
-    family: str, maze: MazeSpec, rng: random.Random, loc: dict[str, Any], idx: int
+    family: str, maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int
 ) -> LabeledQuestion | None:
     """按题族名出题。
 

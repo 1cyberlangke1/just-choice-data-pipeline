@@ -5,11 +5,12 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")
 #: 默认语言：构造**与语言无关**的随机计划时固定用它（取值名两种语言一致）。
@@ -22,7 +23,7 @@ def available() -> list[str]:
 
 
 @lru_cache(maxsize=8)
-def load(lang: str) -> dict[str, Any]:
+def load(lang: str) -> dict[str, JsonValue]:
     """读取并缓存一个语言文件。
 
     输入：语言代码。输出：字典。预期行为：文件不存在时抛 FileNotFoundError 并列出可用语言。
@@ -35,7 +36,7 @@ def load(lang: str) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=1)
-def merged() -> dict[str, Any]:
+def merged() -> dict[str, JsonValue]:
     """输入：无。输出：全部语言合并后的字典（**形状与单个语言文件不同**，只够反解用）。
 
     预期行为：供**没有语言参数**的 `Workflow.reparse` 用。
@@ -67,7 +68,7 @@ def merged() -> dict[str, Any]:
     return {"intent": intent, "val": val, "flag": flags}
 
 
-def _iter_phrases(table: dict[str, Any]) -> list[tuple[str, tuple[str, ...]]]:
+def _iter_phrases(table: dict[str, JsonValue]) -> list[tuple[str, tuple[str, ...]]]:
     """输入：单语言的 `[val.<键>]` 表。输出：[(取值, 该取值的全部写法)]。
 
     预期行为：带别名的表把两张子表按取值合起来；不带别名的表一格就是一条写法。

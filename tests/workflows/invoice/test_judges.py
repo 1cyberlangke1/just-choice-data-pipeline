@@ -1,10 +1,11 @@
 """判别器的测试：构造式数据的两个规则判别器（零 token）必须真的会拦错。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import dataclasses
 import random
-from typing import Any
+
 
 import pytest
 
@@ -15,8 +16,8 @@ LOCALES = locales.available()
 
 
 def _sample(
-    make_spec: Any, seed: int = 5, lang: str = "zh", **overrides: Any
-) -> tuple[dict[str, Any], sp.InvoiceSpec]:
+    make_spec: object, seed: int = 5, lang: str = "zh", **overrides: object
+) -> tuple[dict[str, JsonValue], sp.InvoiceSpec]:
     """输入：规格工厂、种子、语言、case 覆盖项。输出：(组装好的样本, 真值规格)。"""
     loc = locales.load(lang)
     spec = make_spec(seed, **overrides)
@@ -28,13 +29,13 @@ def _sample(
     return sample, spec
 
 
-def _first_choice(sample: dict[str, Any]) -> str:
+def _first_choice(sample: dict[str, JsonValue]) -> str:
     """输入：样本。输出：第一道 choice 的题号。"""
     return next(qid for qid, item in sample["questions"].items() if item["type"] == "choice")
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_roundtrip_judge_passes_a_correct_sample(lang: str, make_spec: Any) -> None:
+def test_roundtrip_judge_passes_a_correct_sample(lang: str, make_spec: object) -> None:
     """输入：正确渲染的样本 + 真值。输出：Verdict。
 
     预期行为：通过、差异列表为空（字段逐字比、明细逐格比）。
@@ -47,7 +48,7 @@ def test_roundtrip_judge_passes_a_correct_sample(lang: str, make_spec: Any) -> N
     assert judges_mod.roundtrip_diff(spec, parsed, locales.load(lang)) == []
 
 
-def test_roundtrip_judge_skips_without_a_spec(make_spec: Any) -> None:
+def test_roundtrip_judge_skips_without_a_spec(make_spec: object) -> None:
     """输入：样本但没有真值规格。输出：Verdict。
 
     预期行为：跳过（不误判），并在 raw 里标注——宁可少拒一条，也不能凭空判错。
@@ -58,7 +59,7 @@ def test_roundtrip_judge_skips_without_a_spec(make_spec: Any) -> None:
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_roundtrip_judge_catches_a_different_document(lang: str, make_spec: Any) -> None:
+def test_roundtrip_judge_catches_a_different_document(lang: str, make_spec: object) -> None:
     """输入：另一份单据的文本 + 本份的真值。输出：Verdict。
 
     预期行为：判不通过——渲染出来的东西必须与真值逐字对得上。
@@ -72,7 +73,7 @@ def test_roundtrip_judge_catches_a_different_document(lang: str, make_spec: Any)
     assert verdict.raw["diff"]
 
 
-def test_roundtrip_judge_names_the_field_that_disagrees(make_spec: Any) -> None:
+def test_roundtrip_judge_names_the_field_that_disagrees(make_spec: object) -> None:
     """输入：真值里的「总计」被改掉（文本没变）。输出：Verdict。
 
     预期行为：判不通过，理由里点名 `total`——判别器拿文本与真值对，方向无所谓。
@@ -84,7 +85,7 @@ def test_roundtrip_judge_names_the_field_that_disagrees(make_spec: Any) -> None:
     assert any("total" in item for item in verdict.raw["diff"])
 
 
-def test_roundtrip_diff_flags_an_extra_field(make_spec: Any) -> None:
+def test_roundtrip_diff_flags_an_extra_field(make_spec: object) -> None:
     """输入：反解结果里多出一个字段。输出：差异列表。
 
     预期行为：多写字段也算差异（说明渲染写了这份单据不该有的东西）。
@@ -98,7 +99,7 @@ def test_roundtrip_diff_flags_an_extra_field(make_spec: Any) -> None:
 
 
 @pytest.mark.parametrize("lang", LOCALES)
-def test_label_judge_passes_a_correct_sample(lang: str, make_spec: Any) -> None:
+def test_label_judge_passes_a_correct_sample(lang: str, make_spec: object) -> None:
     """输入：正确组装的样本。输出：Verdict。
 
     预期行为：通过、零问题——它只看渲染文本与题面，不看真值里的答案。
@@ -108,7 +109,7 @@ def test_label_judge_passes_a_correct_sample(lang: str, make_spec: Any) -> None:
     assert verdict.ok is True and verdict.raw["problems"] == []
 
 
-def test_label_judge_catches_a_wrong_choice_index(make_spec: Any) -> None:
+def test_label_judge_catches_a_wrong_choice_index(make_spec: object) -> None:
     """输入：把 choice 的答案编号改成另一个选项。输出：Verdict。
 
     预期行为：判不通过，并点出「答案指向的选项不是题面问的那个」。
@@ -122,7 +123,7 @@ def test_label_judge_catches_a_wrong_choice_index(make_spec: Any) -> None:
     assert any("题面问的是" in item for item in verdict.raw["problems"])
 
 
-def test_label_judge_catches_swapped_option_descriptions(make_spec: Any) -> None:
+def test_label_judge_catches_swapped_option_descriptions(make_spec: object) -> None:
     """输入：把两个选项的描述对调。输出：Verdict。
 
     预期行为：判不通过——每个选项的描述都要与单据里对应字段的值一致；
@@ -137,7 +138,7 @@ def test_label_judge_catches_swapped_option_descriptions(make_spec: Any) -> None
     assert any(names[0] in item or names[1] in item for item in verdict.raw["problems"])
 
 
-def test_label_judge_catches_an_out_of_range_index(make_spec: Any) -> None:
+def test_label_judge_catches_an_out_of_range_index(make_spec: object) -> None:
     """输入：答案编号 99。输出：Verdict。预期行为：判不通过并明说越界。"""
     sample, _ = _sample(make_spec, 221)
     qid = _first_choice(sample)
@@ -146,7 +147,7 @@ def test_label_judge_catches_an_out_of_range_index(make_spec: Any) -> None:
     assert any("答案编号越界" in item for item in problems)
 
 
-def test_label_judge_catches_a_flipped_noul_answer(make_spec: Any) -> None:
+def test_label_judge_catches_a_flipped_noul_answer(make_spec: object) -> None:
     """输入：把 noul 答案取反。输出：Verdict。
 
     预期行为：判不通过——答案必须与按文本重算的结果一致。
@@ -160,7 +161,7 @@ def test_label_judge_catches_a_flipped_noul_answer(make_spec: Any) -> None:
     assert any("按文本重算是" in item for item in problems)
 
 
-def test_label_judge_catches_a_wrong_score(make_spec: Any) -> None:
+def test_label_judge_catches_a_wrong_score(make_spec: object) -> None:
     """输入：把 score 答案改成别的档位。输出：Verdict。预期行为：判不通过。"""
     sample, _ = _sample(make_spec, 241, lines=4, defects=2)
     sample["answers"]["bad_lines"]["score"] = 3
@@ -168,7 +169,7 @@ def test_label_judge_catches_a_wrong_score(make_spec: Any) -> None:
     assert any("按文本重算是" in item for item in problems)
 
 
-def test_label_judge_catches_an_unknown_question(make_spec: Any) -> None:
+def test_label_judge_catches_an_unknown_question(make_spec: object) -> None:
     """输入：一句本 workflow 认不出的题面。输出：Verdict。
 
     预期行为：判不通过并说「认不出题面」——认不出来时不能默认通过。
@@ -179,7 +180,7 @@ def test_label_judge_catches_an_unknown_question(make_spec: Any) -> None:
     assert any("认不出题面" in item for item in problems)
 
 
-def test_label_judge_complains_when_a_needed_field_is_missing(make_spec: Any) -> None:
+def test_label_judge_complains_when_a_needed_field_is_missing(make_spec: object) -> None:
     """输入：把单据里的「税率」那一行删掉。输出：Verdict。
 
     预期行为：判不通过并说解不出判据字段——缺字段不能当成「算出来是 False」。
@@ -193,7 +194,7 @@ def test_label_judge_complains_when_a_needed_field_is_missing(make_spec: Any) ->
     assert any("解不出判据需要的字段" in item for item in problems)
 
 
-def test_label_judge_catches_a_wrong_value_in_an_option(make_spec: Any) -> None:
+def test_label_judge_catches_a_wrong_value_in_an_option(make_spec: object) -> None:
     """输入：把某个选项的描述换成一个对不上的金额。输出：Verdict。
 
     预期行为：判不通过——选项描述必须与单据里那个字段的值对得上。
@@ -206,7 +207,7 @@ def test_label_judge_catches_a_wrong_value_in_an_option(make_spec: Any) -> None:
     assert any(name in item for item in problems)
 
 
-def test_recompute_helpers(make_spec: Any) -> None:
+def test_recompute_helpers(make_spec: object) -> None:
     """输入：反解结果。输出：重算出来的答案。
 
     预期行为：`_recompute_bool` 只认得出两个 noul 题族（别的返回 None，不能瞎猜）；
@@ -232,7 +233,7 @@ def test_recompute_bool_gives_up_on_an_empty_document() -> None:
     assert judges_mod._recompute_bool("tax_consistent", empty) is None
 
 
-def test_value_problems_checks_line_options(make_spec: Any) -> None:
+def test_value_problems_checks_line_options(make_spec: object) -> None:
     """输入：明细行选项的三种情形。输出：问题列表。
 
     预期行为：对得上返回空；行号超出明细行数、单价与单据不一致都要报出来。
@@ -251,7 +252,7 @@ def test_value_problems_checks_line_options(make_spec: Any) -> None:
     )
 
 
-def test_value_problems_rejects_unparseable_values(make_spec: Any) -> None:
+def test_value_problems_rejects_unparseable_values(make_spec: object) -> None:
     """输入：日期槽配一句不是日期的描述。输出：问题列表。
 
     预期行为：解不出来就报错，而不是当成「相等」放过去。

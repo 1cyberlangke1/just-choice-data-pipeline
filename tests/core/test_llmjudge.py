@@ -6,8 +6,9 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
-from typing import Any
+
 
 import pytest
 
@@ -22,14 +23,14 @@ class FakeBackend:
     capabilities = None
 
     def __init__(
-        self, *, data: dict[str, Any] | None = None, exc: BaseException | None = None
+        self, *, data: dict[str, JsonValue] | None = None, exc: BaseException | None = None
     ) -> None:
         """输入：要返回的结论、要抛的异常（二选一）。输出：实例。"""
         self.data = {"verdict": True, "score": 0.9, "reason": "没问题"} if data is None else data
         self.exc = exc
-        self.calls: list[Any] = []
+        self.calls: list[JsonValue] = []
 
-    def generate(self, task: Any) -> Draft:
+    def generate(self, task: object) -> Draft:
         """输入：任务。输出：草稿。预期行为：先记账再按剧本返回或抛异常。"""
         self.calls.append(task)
         if self.exc is not None:
@@ -44,10 +45,10 @@ class FakeBackend:
         )
 
 
-def make_sample(*, kinds: tuple[str, ...] = ("choice",), state: str = "素材：甲乙丙") -> dict[str, Any]:
+def make_sample(*, kinds: tuple[str, ...] = ("choice",), state: str = "素材：甲乙丙") -> dict[str, JsonValue]:
     """输入：要包含哪些题型、素材文本。输出：最小契约样本。"""
-    questions: dict[str, Any] = {}
-    answers: dict[str, Any] = {}
+    questions: dict[str, JsonValue] = {}
+    answers: dict[str, JsonValue] = {}
     if "choice" in kinds:
         questions["pick"] = {
             "type": "choice",

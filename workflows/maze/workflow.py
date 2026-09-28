@@ -11,13 +11,15 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
-from typing import Any
 
+
+from jc.backend.types import GenerationBackend
 from jc.judge import Judge
 from jc.workflow import LabeledQuestion, SplitSpec, register
 
@@ -170,7 +172,7 @@ def _parse_wall_ascii(grid_lines: list[str]) -> ParsedMaze:
     return ParsedMaze(rows, cols, tuple(mask), start, exit_cell, marks, current, trail)
 
 
-def _parse_passages(state: dict[str, Any]) -> ParsedMaze:
+def _parse_passages(state: dict[str, JsonValue]) -> ParsedMaze:
     """解析结构化通路格式。"""
     rows, cols = int(state["size"][0]), int(state["size"][1])
     mask = [0] * (rows * cols)
@@ -196,7 +198,7 @@ def _parse_passages(state: dict[str, Any]) -> ParsedMaze:
     return ParsedMaze(rows, cols, tuple(mask), start, exit_cell, marks, current, trail)
 
 
-def parse_state(state: Any, case: spec_mod.RenderCase) -> ParsedMaze | None:
+def parse_state(state: object, case: spec_mod.RenderCase) -> ParsedMaze | None:
     """从渲染出的 state 反解迷宫事实。
 
     输入：state（string / object / array）与它对应的渲染变体。
@@ -354,7 +356,7 @@ class MazeWorkflow:
         """case 的一行描述（用于报告与文件名）。"""
         return case.describe()
 
-    def stats_dimensions(self, case: spec_mod.MazeCase) -> dict[str, Any]:
+    def stats_dimensions(self, case: spec_mod.MazeCase) -> dict[str, JsonValue]:
         """把 case 摊平成统计维度：{维度名: 取值}。"""
         return {
             "format": case.fmt,
@@ -415,7 +417,7 @@ class MazeWorkflow:
                 return maze
         raise RuntimeError(f"采样失败：{case.describe()} 在 128 次重试内没有构造出合法 spec")
 
-    def render(self, maze: spec_mod.MazeSpec, rng: random.Random, locale: str) -> Any:
+    def render(self, maze: spec_mod.MazeSpec, rng: random.Random, locale: str) -> object:
         """渲染 state（渲染格式与变体都写在 spec 里，rng 未使用）。"""
         return render.render_state(maze, locales.load(locale))
 
@@ -436,7 +438,7 @@ class MazeWorkflow:
                 out.append(item)
         return out
 
-    def reparse(self, state: Any, *, case: spec_mod.RenderCase | None = None) -> ParsedMaze | None:
+    def reparse(self, state: object, *, case: spec_mod.RenderCase | None = None) -> ParsedMaze | None:
         """反解渲染文本（需要渲染变体 case；缺省返回 None）。"""
         if case is None:
             return None
@@ -463,7 +465,7 @@ class MazeWorkflow:
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, Any], list[str]]:
+    ) -> tuple[dict[str, JsonValue], list[str]]:
         """审计产物（委托 audit 模块）。"""
         from . import audit as audit_mod  # 延迟导入：避免与 audit 互相 import 成环
 
@@ -473,7 +475,7 @@ class MazeWorkflow:
         """支持的语言列表。"""
         return locales.available()
 
-    def bind_backend(self, backend: Any) -> None:
+    def bind_backend(self, backend: GenerationBackend) -> None:
         """空操作：迷宫是纯构造式（`needs` 为空），管线不会给后端，也不该给。
 
         输入：生成后端（实际不会收到）。输出：无。

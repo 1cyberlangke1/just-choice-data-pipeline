@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
-from typing import Any
+
 
 import pytest
 
@@ -142,7 +142,7 @@ def test_audit_prints_the_report_and_passes(
             """输入：无。输出：一个切分名。"""
             return ("train",)
 
-        def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[Any, list[str]]:
+        def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[object, list[str]]:
             """输入：目录 / 切分 / 语言。输出：(计数, 缺失项)。预期行为：永远通过。"""
             assert splits == ("train",)
             return {"train": counts}, []
@@ -369,7 +369,7 @@ def test_audit_fails_on_duplicate_ids(
             """输入：无。输出：一个切分名。"""
             return ("train",)
 
-        def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[Any, list[str]]:
+        def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[object, list[str]]:
             """输入：目录 / 切分 / 语言。输出：(计数, 缺失项)。预期行为：永远通过。"""
             return {"train": {"samples": 2}}, []
 
@@ -409,7 +409,7 @@ def test_audit_passes_when_the_product_also_holds_the_contract(
             """输入：无。输出：一个切分名。"""
             return ("train",)
 
-        def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[Any, list[str]]:
+        def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[object, list[str]]:
             """输入：目录 / 切分 / 语言。输出：(计数, 缺失项)。预期行为：永远通过。"""
             return {"train": {"samples": 1}}, []
 

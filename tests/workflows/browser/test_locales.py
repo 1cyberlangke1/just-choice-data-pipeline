@@ -1,121 +1,172 @@
-"""文案表的不变量：这些不是「文案好不好」，而是「答案对不对」的前提。"""
+"""浏览器 / GUI 操作的文案测试：选项与取值一一对应、提示词只覆盖那一维、禁用语可用。"""
 
 from __future__ import annotations
 
 import pytest
 
-from workflows.browser import locales, parse
-from workflows.browser import spec as sp
-from workflows.browser.spec import ACTIONS, DECOYS, NEUTRALS, OBJECTS, ROLES, STATES, TASKS
+from workflows.browser import features, locales, questions, render
+from workflows.browser.features import TagSet
 
-LANGS = locales.available()
+from tests.workflows.browser.conftest import request_for
 
-
-def _every_object_key() -> set[str]:
-    """输入：无。输出：spec 里用到的全部对象键（陪衬 + 干扰 + 目标）。"""
-    used: set[str] = set(NEUTRALS.values()) | set(DECOYS.values())
-    for task in TASKS:
-        used |= set(OBJECTS[task])
-    return used
+TAGS = TagSet(intent="fill", state="ready", sensitive="yes", decoy="same_role", screen="form")
 
 
-def test_available_locales_are_sorted_and_nonempty() -> None:
-    """输入：无。输出：无。预期行为：至少两种语言，顺序稳定。"""
-    assert LANGS == sorted(LANGS)
-    assert {"zh", "en"} <= set(LANGS)
+def test_every_choice_and_noul_family_matches_the_feature_values() -> None:
+    """输入：两语言的题族选项。输出：无。
 
-
-def test_unknown_locale_reports_available_ones() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="没有语言文件"):
-        locales.load("xx")
-
-
-def test_pick_wraps_around() -> None:
-    """输入：长度为 2 的池、编号 3。输出：无。预期行为：回绕到第 1 个（不报错）。"""
-    assert locales.pick(["a", "b"], 3) == "b"
-    assert locales.pick(["a", "b"], 4) == "a"
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_locales_share_the_same_shape(lang: str) -> None:
-    """输入：每种语言。输出：无。
-
-    预期行为：语言文件的**键集合完全一致**——少一格会让那种语言直接跑不动，少一道问法
-    会让 `pick` 回绕到别的句面上（答案照样发出去，只是题变得莫名其妙）。
+    预期行为：每个 choice / noul 题族的选项名必须与特征层那一维的取值完全一致——
+    对不上就会出现「选项里没有的答案」或「答不出选项里的答案」。
     """
-    base = locales.load("zh")
-    other = locales.load(lang)
-    assert set(other["meta"]) == set(base["meta"])
-    for table in ("role", "state", "intent", "object"):
-        assert set(other[table]) == set(base[table])
-    assert set(other["fam"]) == set(base["fam"])
-    for family in base["fam"]:
-        assert len(other["fam"][family]["q"]) == len(base["fam"][family]["q"])
-        assert set(other["fam"][family]) == set(base["fam"][family])
-    assert set(other["option"]) == set(base["option"])
-    for table in base["option"]:
-        assert set(other["option"][table]) == set(base["option"][table])
-    assert set(other["policy"]) == set(base["policy"])
-    assert set(other["sensitive"]) == set(base["sensitive"])
+    for lang in locales.available():
+        loc = locales.load(lang)
+        assert list(loc["fam"]["intent"]["criteria"]) == list(features.INTENTS)
+        assert list(loc["fam"]["action"]["criteria"]) == list(features.ACTIONS)
+        for family in questions.NOUL_FAMILIES:
+            assert list(loc["fam"][family]["criteria"]) == ["true", "false"]
+        assert len(loc["fam"]["risk"]["levels"]) == features.RISK_LEVELS
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_vocabularies_cover_the_spec_constants(lang: str) -> None:
-    """输入：每种语言。输出：无。
+def test_prompt_only_covers_the_sentence_dimension() -> None:
+    """输入：两语言 `dims` 表。输出：无。
 
-    预期行为：每张词表的键就是 spec 里的常量——少一个取值会让渲染 `KeyError`，
-    多一个取值会让反解出来的键落进规则函数不认识的洞里。
+    预期行为：`dims` 里只有由那句话承载的那一维——多一维就会让提示词把元素表 / 门控表 /
+    意图表管的事也写进那句话，两边一冲突这道题就有歧义了（范式 §9.13）。
     """
-    loc = locales.load(lang)
-    assert set(loc["role"]) == set(ROLES)
-    assert set(loc["state"]) == set(STATES)
-    assert set(loc["intent"]) == set(TASKS)
-    assert set(loc["object"]) == _every_object_key()
-    assert set(loc["option"]["action"]) == set(ACTIONS)
+    for lang in locales.available():
+        loc = locales.load(lang)
+        assert list(loc["dims"]) == list(render.DIM_ORDER)
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_sensitive_labels_really_hit_the_list(lang: str) -> None:
-    """输入：每种语言的每一条对象文案。输出：无。
+def test_every_prompt_dimension_value_has_text() -> None:
+    """输入：两语言文案。输出：无。预期行为：提示词里每一维的每个取值都有 brief 与 hint。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        for dim in render.DIM_ORDER:
+            for value in features.DIMS[dim]:
+                assert str(loc["feature"][dim][value]["brief"]).strip()
+                assert str(loc["feature"][dim][value]["hint"]).strip()
 
-    预期行为：**命中敏感清单的对象，文案里真的含清单里的词；其余对象一个都不含**——
-    这是「risk 那一族答案对不对」的前提：题面里的判据是**子串匹配**，而构造侧用的是
-    对象键上的布尔标记，两者不一致时产出的答案就是错的。
+
+def test_feature_line_raises_on_a_missing_phrase() -> None:
+    """输入：一个没写进 locale 的取值。输出：无。预期行为：抛 KeyError，不静默给空串。"""
+    loc = locales.load("zh")
+    with pytest.raises(KeyError):
+        locales.feature_line(loc, "intent", "bogus")
+    with pytest.raises(KeyError):
+        locales.feature_line(loc, "bogus", "fill")
+
+
+def test_target_line_carries_the_element_name() -> None:
+    """输入：元素名、两语言文案。输出：无。
+
+    预期行为：那一行必须原样带上元素名，而且不留占位符——留着 `{label}` 会把占位符
+    原样发给模型，那样它只能自己编一个元素名。
     """
-    loc = locales.load(lang)
-    words = loc["sensitive"]["words"]
-    for key, text in loc["object"].items():
-        hit = any(word in text for word in words)
-        assert hit is sp.is_sensitive(key), (lang, key, text)
+    for lang in locales.available():
+        loc = locales.load(lang)
+        line = locales.target_line(loc, "收件地址")
+        assert "收件地址" in line
+        assert "{" not in line
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_policy_prints_the_sensitive_list(lang: str) -> None:
-    """输入：每种语言的判据原文。输出：无。
+def test_role_and_state_words_cover_every_token() -> None:
+    """输入：两语言的词表。输出：无。预期行为：每个角色 / 状态词元都有对应的说法。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        assert set(loc["role"]) == set(features.ROLES)
+        assert set(loc["state"]) == set(features.STATES)
+        for role in features.ROLES:
+            assert locales.role_word(loc, role).strip()
+        for state in features.STATES:
+            assert locales.state_word(loc, state).strip()
 
-    预期行为：敏感清单里的每个词都出现在判据里——考生只能从题面读到清单，漏印一个词
-    就等于把那一档的答案变成不可解。
+
+def test_gates_table_embeds_the_code_word_list() -> None:
+    """输入：两语言门控表。输出：无。
+
+    预期行为：敏感那一行的说明里必须逐个出现 `features.SENSITIVE_WORDS` 的每个词——
+    词表由代码填进 `{words}`，不靠人抄一遍（抄一遍就会漂移）。
     """
-    loc = locales.load(lang)
-    for word in loc["sensitive"]["words"]:
-        assert word in loc["policy"]["text"], (lang, word)
+    for lang in locales.available():
+        loc = locales.load(lang)
+        rows = render.gate_rows(loc)
+        assert [token for token, _ in rows] == list(render.GATE_TOKENS)
+        sensitive_row = rows[0][1]
+        for word in features.SENSITIVE_WORDS:
+            assert word in sensitive_row, word
+        assert "{" not in sensitive_row
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_cell_separator_is_shared_across_languages(lang: str) -> None:
-    """输入：每种语言。输出：无。预期行为：三格分隔符一致（合并表只按一个分隔符切行）。"""
-    assert locales.load(lang)["meta"]["cell_sep"] == locales.load("zh")["meta"]["cell_sep"]
+def test_every_prompt_rule_formats_and_has_no_stray_placeholder() -> None:
+    """输入：两语言规则。输出：无。预期行为：每条规则都能把 `{language}` 填掉、不留别的槽。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        for rule in loc["prompt"]["rules"]:
+            filled = str(rule).format(language=loc["language_name"])
+            assert "{" not in filled
 
 
-def test_merged_table_covers_every_key() -> None:
-    """输入：合并表。输出：无。
+def test_banned_phrases_are_present_and_usable() -> None:
+    """输入：两语言禁用语清单。输出：无。
 
-    预期行为：四张词表把 spec 里的每一个键都覆盖到，而且语言之间不重叠（重叠会直接
-    报错，这里验的是「合并之后仍然认得出所有键」）。
+    预期行为：每条禁用语都能被 `render.banned_echo` 认出来，而且清单非空——
+    空清单等于这道防线不存在。
     """
-    merged = parse.merged()
-    assert set(merged.role.values()) == set(ROLES)
-    assert set(merged.state.values()) == set(STATES)
-    assert set(merged.intent.values()) == set(TASKS)
-    assert set(merged.object.values()) == _every_object_key()
+    for lang in locales.available():
+        loc = locales.load(lang)
+        phrases = loc["banned_intent_phrases"]
+        assert phrases, f"{lang} 没有禁用语"
+        for phrase in phrases:
+            assert str(phrase) in render.banned_echo(f"这是{phrase}的说法", loc)
+
+
+def test_banned_phrases_do_not_fire_on_the_fixture_requests() -> None:
+    """输入：夹具里那几句请求。输出：无。
+
+    预期行为：一条都不许撞禁用语——撞了就说明禁用语写得过宽，真跑时会把本来能用的
+    数据在渲染期白拒掉。
+    """
+    cases = features.build_cases(1024)
+    for lang in locales.available():
+        loc = locales.load(lang)
+        for case in cases:
+            request = request_for(case.as_dict(), lang)
+            assert render.banned_echo(request, loc) == [], request
+
+
+def test_every_family_has_three_phrasings() -> None:
+    """输入：两语言文案。输出：无。预期行为：每题族三种问法，`pick` 在三个编号上都取得到。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        for family in questions.FAMILIES:
+            assert len(loc["fam"][family]["q"]) >= 3
+            for phrasing in (0, 1, 2):
+                assert locales.pick(loc["fam"][family]["q"], phrasing)
+
+
+def test_target_family_has_the_row_and_none_texts() -> None:
+    """输入：两语言 `target` 题族。输出：无。预期行为：行号模板与「不操作」的说法都在。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        assert "{" in str(loc["fam"]["target"]["row_option"])
+        assert str(loc["fam"]["target"]["none"]).strip()
+
+
+def test_meta_placeholders_render() -> None:
+    """输入：两语言 meta。输出：无。预期行为：段落头与括号模板都能格式化。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        assert "X" in locales.header(loc, "X")
+        assert loc["meta"]["paren"].format(text="T").strip()
+        for key in render.SECTION_KEYS:
+            assert str(loc["meta"][key]).strip()
+        for key in ("elements_columns", "gates_columns", "criteria_columns"):
+            assert str(loc["meta"][key]).strip()
+
+
+def test_unknown_locale_lists_the_available_ones() -> None:
+    """输入：不存在的语言。输出：无。预期行为：抛 FileNotFoundError 并列出可用语言。"""
+    with pytest.raises(FileNotFoundError) as info:
+        locales.load("nope")
+    assert "zh" in str(info.value)

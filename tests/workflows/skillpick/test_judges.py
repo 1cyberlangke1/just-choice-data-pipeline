@@ -1,16 +1,17 @@
 """判别器的测试：反解 → 重算 → 逐格比对，以及每一条「对不上」都要点名。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 from jc import assemble
 from tests.workflows.skillpick.conftest import _make_spec
 from workflows.skillpick import judges, locales, parse, questions, render, spec as sp
 
 
-def _sample(**overrides: Any) -> tuple[dict[str, Any], sp.SkillSpec]:
+def _sample(**overrides: object) -> tuple[dict[str, JsonValue], sp.SkillSpec]:
     """输入：case 覆盖项。输出：(走生产路径组装出来的合格样本, 真值规格)。"""
     spec = _make_spec(**overrides)
     loc = locales.load("zh")

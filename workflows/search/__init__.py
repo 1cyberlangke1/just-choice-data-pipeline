@@ -1,4 +1,4 @@
-"""检索 workflow：构造式（检索页与全部判断都由表格算出来，零 token）。
+"""检索结果判读（search）workflow：规则表与「来源与时效」由代码写，查询与结果条目由后端写。
 
 导入本包即自注册（`jc.workflow.load("search")` 可用）。
 """

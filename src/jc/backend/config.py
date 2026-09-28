@@ -7,13 +7,14 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import os
 import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+
 
 from .types import ALL_MODES, MODE_AUTO
 
@@ -100,7 +101,7 @@ class BackendsConfig:
             raise ValueError(f"provider 名字重复：{names}")
 
 
-def _limits_from(raw: Mapping[str, Any], where: str) -> Limits:
+def _limits_from(raw: Mapping[str, JsonValue], where: str) -> Limits:
     """输入：`[provider.limits]` 的原始 dict 与报错位置。输出：Limits。
 
     预期行为：只认识的键才收，未知键报错（防拼写错误被静默忽略）。

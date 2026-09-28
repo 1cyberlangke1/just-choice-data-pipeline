@@ -7,9 +7,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import unicodedata
-from typing import Any, Final
+from typing import Final
 
 from . import locales
 from .spec import InvoiceSpec
@@ -37,7 +38,7 @@ DATE_SLOTS: Final[tuple[str, ...]] = ("issue", "due", "received")
 MONEY_SLOTS: Final[tuple[str, ...]] = ("subtotal", "shipping", "tax", "total")
 
 
-def format_date(date: tuple[int, int, int], fmt: str, loc: dict[str, Any]) -> str:
+def format_date(date: tuple[int, int, int], fmt: str, loc: dict[str, JsonValue]) -> str:
     """输入：日期、日期格式名、语言字典。输出：渲染后的日期文本。
 
     预期行为：模板由语言文件给（中文是「年月日」，英文是短横线），但**必须年在前**——
@@ -50,7 +51,7 @@ def format_date(date: tuple[int, int, int], fmt: str, loc: dict[str, Any]) -> st
     return spec["tpl"].format(y=year, m=month, d=day)
 
 
-def format_money(amount: int, currency: str, loc: dict[str, Any]) -> str:
+def format_money(amount: int, currency: str, loc: dict[str, JsonValue]) -> str:
     """输入：金额（整数）、货币名、语言字典。输出：带符号与千分位的金额文本。"""
     entry = loc["currency"].get(currency)
     if entry is None:
@@ -58,7 +59,7 @@ def format_money(amount: int, currency: str, loc: dict[str, Any]) -> str:
     return loc["money"]["tpl"].format(symbol=entry["symbol"], amount=f"{amount:,}")
 
 
-def format_rate(rate: int, loc: dict[str, Any]) -> str:
+def format_rate(rate: int, loc: dict[str, JsonValue]) -> str:
     """输入：税率（百分数）、语言字典。输出：税率文本（如 `6%`）。"""
     return loc["rate"]["tpl"].format(rate=rate)
 
@@ -77,7 +78,7 @@ def _pad(text: str, width: int) -> str:
     return text + " " * max(0, width - display_width(text))
 
 
-def field_text(spec: InvoiceSpec, slot: str, loc: dict[str, Any]) -> str:
+def field_text(spec: InvoiceSpec, slot: str, loc: dict[str, JsonValue]) -> str:
     """输入：规格、字段槽、语言字典。输出：该槽渲染出来的文本。
 
     预期行为：这是「槽 → 文本」的唯一出口——渲染、选项描述、往返判别器都调它，
@@ -99,7 +100,7 @@ def field_text(spec: InvoiceSpec, slot: str, loc: dict[str, Any]) -> str:
     raise KeyError(f"未知字段槽：{slot!r}")
 
 
-def item_name(spec: InvoiceSpec, index: int, loc: dict[str, Any]) -> str:
+def item_name(spec: InvoiceSpec, index: int, loc: dict[str, JsonValue]) -> str:
     """输入：规格、明细行下标、语言字典。输出：该行的品名。"""
     return locales.word_of(loc, "service", spec.items[index].name_index)
 
@@ -118,12 +119,12 @@ def visible_fields(spec: InvoiceSpec) -> tuple[str, ...]:
     return tuple(slot for slot in ALL_FIELDS if is_visible(spec, slot))
 
 
-def expected_fields(spec: InvoiceSpec, loc: dict[str, Any]) -> dict[str, str]:
+def expected_fields(spec: InvoiceSpec, loc: dict[str, JsonValue]) -> dict[str, str]:
     """输入：规格、语言字典。输出：{槽: 该写出来的文本}（往返判别器拿它比对）。"""
     return {slot: field_text(spec, slot, loc) for slot in visible_fields(spec)}
 
 
-def expected_items(spec: InvoiceSpec, loc: dict[str, Any]) -> list[tuple[str, int, int, int]]:
+def expected_items(spec: InvoiceSpec, loc: dict[str, JsonValue]) -> list[tuple[str, int, int, int]]:
     """输入：规格、语言字典。输出：[(品名, 数量, 单价, 金额)]（往返判别器拿它比对）。"""
     return [
         (item_name(spec, index, loc), item.qty, item.unit, item.amount)
@@ -131,13 +132,13 @@ def expected_items(spec: InvoiceSpec, loc: dict[str, Any]) -> list[tuple[str, in
     ]
 
 
-def _label(slot: str, loc: dict[str, Any], style: str) -> str:
+def _label(slot: str, loc: dict[str, JsonValue], style: str) -> str:
     """输入：槽名、语言字典、标签风格。输出：本次渲染用的标签文本。"""
     return locales.label_of(loc, slot, style)
 
 
 def _field_block(
-    slots: tuple[str, ...], spec: InvoiceSpec, loc: dict[str, Any], *, with_intro: bool = False
+    slots: tuple[str, ...], spec: InvoiceSpec, loc: dict[str, JsonValue], *, with_intro: bool = False
 ) -> list[str]:
     """输入：要渲染的槽、规格、语言字典。输出：字段区的若干行。
 
@@ -174,7 +175,7 @@ def _field_block(
     return [f"{_label(slot, loc, spec.case.labels)}{colon}{value}" for slot, value in pairs]
 
 
-def _item_block(spec: InvoiceSpec, loc: dict[str, Any]) -> list[str]:
+def _item_block(spec: InvoiceSpec, loc: dict[str, JsonValue]) -> list[str]:
     """输入：规格、语言字典。输出：明细表的若干行（表头 + 每行 + 无表尾）。
 
     预期行为：`aligned_table` 用等宽列，其余版式用竖线表格——两种形态反解都认，
@@ -200,7 +201,7 @@ def _item_block(spec: InvoiceSpec, loc: dict[str, Any]) -> list[str]:
     return ["| " + " | ".join(row) + " |" for row in rows]
 
 
-def build(spec: InvoiceSpec, loc: dict[str, Any]) -> str:
+def build(spec: InvoiceSpec, loc: dict[str, JsonValue]) -> str:
     """输入：规格、语言字典。输出：整份单据文本。
 
     预期行为：抬头字段 → 明细表 → 金额字段 → 备注；字段与数值一一对应，

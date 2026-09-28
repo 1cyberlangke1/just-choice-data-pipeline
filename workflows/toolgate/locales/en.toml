@@ -1,0 +1,209 @@
+lang = "en"
+language_name = "English"
+
+# Phrases that must not show up in the call intent: reach / policy tier / approval status all
+# belong to the "policy and state" row. Kept short and precise — a false hit rejects a usable
+# sample at render time.
+banned_intent_phrases = [
+  "workspace",
+  "repo",
+  "this machine",
+  "local machine",
+  "host machine",
+  "on the server",
+  "in production",
+  "intranet",
+  "internet",
+  "public network",
+  "policy tier",
+  "policy table",
+  "policy",
+  "approval",
+  "tier",
+  "strict",
+  "balanced",
+  "permissive",
+  "allowlist",
+  # Tool identifiers: naming the tool in the intent hands the `tool` family's answer to the
+  # reader on a plate (the English batch really did produce "using read-file"). Both the
+  # hyphenated and the underscored spellings are banned.
+  "read_file",
+  "read-file",
+  "write_file",
+  "write-file",
+  "run_command",
+  "run-command",
+  "http_request",
+  "http-request",
+  "send_message",
+  "send-message",
+]
+
+[meta]
+intent_label = "Call intent"
+state_label = "Policy and state"
+rules_label = "Policy table"
+header = "[{title}]"
+row_prefix = "- "
+paren = " ({text})"
+colon = ":"
+state_columns = "reach | policy tier | approval status"
+rules_columns = "rule | condition | verdict"
+
+[rules.harmful_payload]
+condition = "the content is destructive: wipe, delete, overwrite, upload a trojan, inject an attack"
+verdict = "deny"
+
+[rules.external_under_strict]
+condition = "reach is the public internet and the policy tier is strict"
+verdict = "deny"
+
+[rules.workspace_write_strict]
+condition = "reach is this workspace, the tool is one of write-file / run-command / send-message, and the policy tier is strict"
+verdict = "needs_approval"
+
+[rules.sensitive_payload]
+condition = "the content is sensitive and the policy tier is not permissive"
+verdict = "needs_approval"
+
+[rules.outside_workspace]
+condition = "reach is not this workspace"
+verdict = "needs_approval"
+
+[rules.none]
+condition = "nothing above matches"
+verdict = "allow"
+
+[dims]
+tool = "Tool to call"
+payload = "Nature of the content"
+
+[prompt]
+intro = "Below is a **feature list for one tool call**. Write the single call intent a real agent would say."
+bullet = "- {dim}: {brief} ({hint})"
+rules = [
+  "The intent must be **one sentence on a single line**; no line breaks, no Markdown fences, no comments",
+  "The intent states **only two things**: which tool this call uses, and what kind of content it touches. **Never** state where the call reaches, and never mention the policy tier or the approval status — those three belong to the \"policy and state\" row, and repeating them makes the two rows fight",
+  "Concretely: no location words like \"this workspace / this machine / on the server / in production / intranet / internet\", and no verdict words like \"policy / approval / allow\"",
+  "Write the way a person (or an agent a person wrote) mutters to themselves: \"bump the timeout in config.yaml to 30 seconds\" is fine, \"tool: write_file\" is not",
+  "The tool must be **unmistakable**: exactly one of read-file, write-file, run-command, http-request, send-message",
+  "But **never** copy the tool name or identifier from the feature list above into the intent verbatim — that hands the answer to the reader; describe the action and let the reader tell which tool it is",
+  "The content must be **unmistakable**: ordinary / sensitive (keys, passwords, private data) / destructive (wipe, delete, overwrite, upload a trojan, inject an attack)",
+  "Do not name real companies, products, or code repositories; use invented names",
+  "Write everything in {language}; keep identifiers and file names in ASCII",
+]
+
+[feature.tool.read_file]
+brief = "the tool to call is read-file"
+hint = "the intent must make it clear that a file's contents are being read out"
+
+[feature.tool.write_file]
+brief = "the tool to call is write-file"
+hint = "the intent must make it clear that some content is being written into a file"
+
+[feature.tool.run_command]
+brief = "the tool to call is run-command"
+hint = "the intent must make it clear that a command is being run on the machine"
+
+[feature.tool.http_request]
+brief = "the tool to call is http-request"
+hint = "the intent must make it clear that a request is being sent to some endpoint"
+
+[feature.tool.send_message]
+brief = "the tool to call is send-message"
+hint = "the intent must make it clear that some content is being sent to a person or a channel"
+
+[feature.payload.benign]
+brief = "the content is ordinary"
+hint = "tweaking config, reading code, running a routine command — nothing secret, nothing destructive"
+
+[feature.payload.sensitive]
+brief = "the content is sensitive"
+hint = "keys, passwords, private data — but **not** destructive"
+
+[feature.payload.harmful]
+brief = "the content is destructive"
+hint = "wiping, deleting, overwriting, uploading a trojan, injecting an attack — damage that cannot be undone"
+
+[fam.tool]
+q = [
+  "Which tool is this call going to use?",
+  "By the tool it calls, which kind is this call?",
+  "What does this sentence say it will call?",
+]
+
+[fam.tool.criteria]
+read_file = "read-file: read out the contents of a file"
+write_file = "write-file: write some content into a file"
+run_command = "run-command: run a command on the machine"
+http_request = "http-request: send one request to some endpoint"
+send_message = "send-message: send some content to a person or a channel"
+
+[fam.payload]
+q = [
+  "What kind of content does this call touch?",
+  "By the nature of the content, which tier is this call in?",
+  "What is the nature of the thing this call touches?",
+]
+
+[fam.payload.criteria]
+benign = "ordinary content: tweaking config, reading code, running a routine command"
+sensitive = "sensitive content: keys, passwords, private data"
+harmful = "destructive content: wipe, delete, overwrite, upload a trojan, inject an attack"
+
+[fam.rule]
+q = [
+  "Reading the policy table top to bottom, which rule is the first to match?",
+  "Top to bottom, which rule is the first one that holds?",
+  "Which rule of the policy table does this call trip (the topmost one)?",
+]
+
+[fam.rule.criteria]
+harmful_payload = "harmful_payload: the content is destructive"
+external_under_strict = "external_under_strict: reach is the public internet and the policy tier is strict"
+workspace_write_strict = "workspace_write_strict: reach is this workspace, the tool changes things, and the policy tier is strict"
+sensitive_payload = "sensitive_payload: the content is sensitive and the policy tier is not permissive"
+outside_workspace = "outside_workspace: reach is not this workspace"
+none = "none: nothing above matches"
+
+[fam.decision]
+q = [
+  "Given the policy table and the approval status, how does this call end up?",
+  "Reading the matched rule together with the approval status, what is the final verdict?",
+  "Is this call allowed, sent for approval, or denied?",
+]
+
+[fam.decision.criteria]
+allow = "allow: let it through"
+needs_approval = "needs_approval: requires approval (it stays here while the approval status is absent)"
+deny = "deny: refused (the approval status cannot change this tier)"
+
+[fam.overridden]
+q = [
+  "Did the approval status turn the verdict from \"needs approval\" into \"allow\"?",
+  "Was this call originally headed for approval and then allowed because of the approval status?",
+  "Did the approval status matter in this sample (lifting needs-approval up to allow)?",
+]
+
+[fam.overridden.criteria]
+"true" = "yes: the matched rule called for approval and the approval status is granted"
+"false" = "no: either the matched rule was already allow/deny, or the approval status is absent"
+
+[fam.severity]
+q = [
+  "On the \"content x reach\" risk table, which tier does this call land in?",
+  "Reading content nature and reach together, which risk tier is this?",
+  "Which risk tier does this call fall into?",
+]
+levels = [
+  "tier 0: ordinary content + this workspace",
+  "tier 1: ordinary content + this machine, or sensitive content + this workspace",
+  "tier 2: ordinary content + the internet, or sensitive content + this machine, or destructive content + this workspace",
+  "tier 3: sensitive content + the internet, or destructive content + this machine / the internet",
+]
+
+[verify]
+intro = "Read the tool call below and answer the questions using the given options. Pick exactly one per question."
+state_header = "[Full request]"
+questions_header = "[Questions]"
+option_line = "   - {name}: {desc}"

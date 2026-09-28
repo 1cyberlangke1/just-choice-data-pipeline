@@ -17,7 +17,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
-from typing import Any, Final
+from typing import Final
 
 from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
 from tenacity import (
@@ -75,7 +75,7 @@ def _is_daily_quota(exc: RateLimitError) -> bool:
     return any(marker in text for marker in _DAILY_QUOTA_MARKERS)
 
 
-def _wait_honouring_retry_after(base: Any) -> Any:
+def _wait_honouring_retry_after(base: object) -> object:
     """输入：tenacity 的退避策略。输出：包了一层的退避策略。
 
     预期行为：异常带 `retry_after_s`（来自 429 的 `Retry-After`）且比算出来的退避更长时，

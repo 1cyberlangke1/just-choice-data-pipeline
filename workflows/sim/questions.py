@@ -18,9 +18,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from collections.abc import Sequence
-from typing import Any, Final
+from typing import Final
 
 from jc.workflow import LabeledQuestion
 
@@ -72,7 +73,7 @@ def _fill(text: str, **slots: str) -> str:
     return out
 
 
-def _instructions(loc: dict[str, Any], family: str, phrasing: int, **slots: str) -> str:
+def _instructions(loc: dict[str, JsonValue], family: str, phrasing: int, **slots: str) -> str:
     """输入：语言字典、题族、问法编号、槽位取值。输出：题面（问句 + 判据原文）。
 
     预期行为：判据（`loc["policy"]["text"]`）整段拼在问句后面——题面自带判据，
@@ -102,7 +103,7 @@ def _choice(
 
 
 def _noul(
-    family: str, loc: dict[str, Any], phrasing: int, answer: bool, **slots: str
+    family: str, loc: dict[str, JsonValue], phrasing: int, answer: bool, **slots: str
 ) -> LabeledQuestion:
     """输入：题族、语言字典、问法编号、金答案、槽位取值。输出：一道 noul 题。
 
@@ -119,7 +120,7 @@ def _noul(
 
 
 def _score(
-    family: str, loc: dict[str, Any], phrasing: int, answer: int, **slots: str
+    family: str, loc: dict[str, JsonValue], phrasing: int, answer: int, **slots: str
 ) -> LabeledQuestion:
     """输入：题族、语言字典、问法编号、金答案（档位下标）、槽位取值。输出：一道 score 题。
 
@@ -135,7 +136,7 @@ def _score(
     return LabeledQuestion(family, question, answer, shuffle=False)
 
 
-def _slot_options(rows: Sequence[RowLike], loc: dict[str, Any]) -> dict[str, str]:
+def _slot_options(rows: Sequence[RowLike], loc: dict[str, JsonValue]) -> dict[str, str]:
     """输入：六行动作、语言字典。输出：位置选项（`p1`..`p6`）。
 
     预期行为：描述里带上那一行的四格（动作名 · 耗 · 收益 · 冷却）并且带上位置号——
@@ -156,7 +157,7 @@ def _slot_options(rows: Sequence[RowLike], loc: dict[str, Any]) -> dict[str, str
 
 
 def build(
-    rows: Sequence[RowLike], head: HeadLike, loc: dict[str, Any], phrasing: int
+    rows: Sequence[RowLike], head: HeadLike, loc: dict[str, JsonValue], phrasing: int
 ) -> list[LabeledQuestion]:
     """输入：六行动作、抬头、语言字典、问法编号。输出：题目 + 金答案（顺序稳定）。
 

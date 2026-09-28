@@ -1,16 +1,17 @@
 """记录匹配 workflow 测试的公共夹具：小规格构造器（不联网、不落盘）。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 import pytest
 
 from workflows.match import spec as sp
 
 #: 默认维度：拉格、五栏全不一致、写法对 0-1、正序、不写额外栏。
-CASE_DEFAULTS: dict[str, Any] = {
+CASE_DEFAULTS: dict[str, JsonValue] = {
     "product": "lager",
     "pattern": sp.PATTERNS[0],
     "spelling": sp.SPELLINGS[0],
@@ -19,14 +20,14 @@ CASE_DEFAULTS: dict[str, Any] = {
 }
 
 
-def _make_case(**overrides: Any) -> sp.MatchCase:
+def _make_case(**overrides: object) -> sp.MatchCase:
     """输入：维度覆盖项。输出：一个 case。预期行为：未覆盖的维度取 `CASE_DEFAULTS`。"""
     fields = dict(CASE_DEFAULTS)
     fields.update(overrides)
     return sp.MatchCase(**fields)
 
 
-def _make_spec(seed: int = 5, **overrides: Any) -> sp.MatchSpec:
+def _make_spec(seed: int = 5, **overrides: object) -> sp.MatchSpec:
     """输入：种子与 case 覆盖项。输出：真值规格。
 
     预期行为：同 case 必得同一份规格（构造器不掷骰子，种子只是为了签名一致）。
@@ -53,12 +54,12 @@ def tiny_config(split: str = "train") -> sp.MatchConfig:
 
 
 @pytest.fixture
-def make_case() -> Any:
+def make_case() -> object:
     """工厂夹具：`make_case(layout="reversed")` 造一个 case。"""
     return _make_case
 
 
 @pytest.fixture
-def make_spec() -> Any:
+def make_spec() -> object:
     """工厂夹具：`make_spec(7, extra="origin")` 造一条真值规格。"""
     return _make_spec

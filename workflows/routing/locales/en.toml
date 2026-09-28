@@ -1,21 +1,98 @@
-# 工单分诊 workflow 的英文文案：标签、词表、正文模板、题面判据与选项描述。
-#
-# 与中文文案一一对应；标签两语互不重叠，`reparse` 才能用合并表做语言无关的反解。
+lang = "en"
+language_name = "English"
+
+# Phrases banned from the body: the tier / compliance / area value words and the three table
+# names all belong to the attribute row and those tables; repeating them in the body can
+# contradict them. High-precision only — a false hit wastes a usable sample at render time.
+# `enterprise` / `gdpr` are the attribute row's own value tokens, so echoing them leaks the
+# label; `free` / `pro` are far too common in ordinary prose to ban.
+banned_intent_phrases = [
+  "ticket attributes",
+  "dispatch table",
+  "priority table",
+  "extra rules",
+  "critical area",
+  "critical areas",
+  "free plan",
+  "pro plan",
+  "enterprise plan",
+  "data deletion request",
+  "security report",
+  "gdpr",
+  "enterprise",
+]
 
 [meta]
-title = "Ticket triage desk"
+body_label = "Ticket body"
+attrs_label = "Ticket attributes"
+queue_label = "Dispatch table"
+priority_label = "Priority table"
+flags_label = "Extra rules"
+header = "【{title}】"
+row_prefix = "- "
+paren = " ({text})"
 colon = ": "
-# 正文里三句话之间的连接符：英文句子之间要留一个空格。
-sent_sep = " "
-ticket_label = "Ticket ID"
-area_label = "Area"
-tier_label = "Tier"
-impact_label = "Impact"
-urgency_label = "Urgency"
-compliance_label = "Compliance"
-created_label = "Created"
-current_label = "Now"
-body_label = "Body"
+list_sep = ", "
+attrs_columns = "area | tier | compliance"
+queue_columns = "rule | condition | queue"
+priority_columns = "urgency | free | pro | enterprise"
+flags_columns = "name | note"
+
+# The critical-area list is filled in by code through {areas}: copying it into the locale would
+# let it drift, and it is exactly the list the `needs_human` rule needs.
+[flags]
+critical_areas = "there are only two critical areas: {areas}"
+needs_human = "the queue is incident response / security incident / privacy compliance, or the area is a critical area and the tier is enterprise — either one means a human must take it"
+
+[dims]
+issue = "what the ticket is about"
+urgency = "how urgent it is"
+
+[prompt]
+intro = "Below is the feature list of a **support ticket**. Write the ticket body (the message the user actually submitted) from this list."
+bullet = "- {dim}: {brief} ({hint})"
+rules = [
+  "The body must be a **single line** (one paragraph, no line breaks); do not use Markdown fences, do not write comments",
+  "Do **not** write the tier, compliance flag, or product area in the body, and do not write the names \"ticket attributes / dispatch table / priority table / extra rules\" — those belong to the ticket system's fields and tables, and writing them in the body makes the two fight",
+  "Concretely: do not use the words \"free plan / pro plan / enterprise plan / data deletion request / security report / critical area\", and do not write the words gdpr or enterprise",
+  "It must read like a message the user really submitted: \"our data pipeline has been unable to upload anything since this morning\" is fine; \"issue type: outage\" is not",
+  "\"what the ticket is about\" must be obvious at a glance: outage / data loss / bug / how-to / feature request, exactly one of the five",
+  "\"how urgent it is\" must be obvious at a glance: can wait / blocked / deadline, exactly one of the three",
+  "Do not name any real company, product, or codebase; use invented names only",
+  "Write everything in {language}; keep the product-area codes in ASCII",
+]
+
+[feature.issue.outage]
+brief = "outage: one line is entirely unavailable"
+hint = "write it like \"this line is completely unusable right now\""
+
+[feature.issue.data_loss]
+brief = "data loss: records went missing / do not add up"
+hint = "write it like \"we found a batch of records missing\""
+
+[feature.issue.bug]
+brief = "bug: the behaviour does not match the documentation"
+hint = "write it like \"it does something different from what the docs say\""
+
+[feature.issue.howto]
+brief = "how-to: asking how to use it correctly"
+hint = "write it like \"I want to confirm how this should be used\""
+
+[feature.issue.feature]
+brief = "feature request: wanting a new way of doing something"
+hint = "write it like \"I hope you can support ...\""
+
+[feature.urgency.can_wait]
+brief = "can wait"
+hint = "write it like \"no rush, whenever you get a chance\""
+
+[feature.urgency.blocked]
+brief = "blocked"
+hint = "write it like \"this line is completely stuck and the work has stopped\""
+
+[feature.urgency.deadline]
+brief = "has a deadline"
+hint = "write it like \"I need an answer before the end of the day\""
 
 [area]
 payments = "payments"
@@ -28,113 +105,110 @@ free = "free"
 pro = "pro"
 enterprise = "enterprise"
 
-[impact]
-single_user = "a single user"
-team = "one team"
-all_users = "all users"
-
-[urgency]
-can_wait = "can wait"
-blocked = "work is blocked"
-deadline = "has a deadline"
-
 [compliance]
 none = "none"
 gdpr = "data deletion request"
 security = "security report"
 
-[body.issue]
-outage = "The {area} service has been broadly unavailable since this morning and we cannot continue at all."
-data_loss = "We noticed that a batch of records is missing from {area} and the data may already be gone."
-bug = "{area} behaves differently from the documentation, which looks like a defect."
-howto = "We would like to confirm the correct way to use {area}."
-feature = "We hope {area} can support a new way of doing this."
+[rules.security_report]
+condition = "the compliance flag is \"security report\", and the issue is outage, data loss, or bug"
 
-[body.impact]
-single_user = "So far only I am affected."
-team = "The whole team is stuck here."
-all_users = "Every customer is affected."
+[rules.privacy_request]
+condition = "the compliance flag is \"data deletion request\", and the issue is data loss or feature request"
 
-[body.urgency]
-can_wait = "No rush, whenever there is time."
-blocked = "This path is completely unusable and the work has stopped."
-deadline = "We need a conclusion before the end of the day."
+[rules.outage_response]
+condition = "the issue is outage"
 
-[fam.severity]
+[rules.loss_response]
+condition = "the issue is data loss"
+
+[rules.defect]
+condition = "the issue is bug"
+
+[rules.howto]
+condition = "the issue is how-to"
+
+[rules.feature_request]
+condition = "none of the above match"
+
+[verify]
+intro = "Below is a support ticket. Read its features back from the given options."
+state_header = "【Full ticket】"
+questions_header = "【Questions】"
+option_line = "   - {name}: {desc}"
+
+[fam.issue]
 q = [
-  "Which severity band is this ticket in? Severity matrix (impact x urgency): a single user -> can wait s4, work is blocked s4, has a deadline s3; one team -> can wait s3, work is blocked s2, has a deadline s2; all users -> can wait s3, work is blocked s1, has a deadline s1.",
-  "Grade this ticket with the severity matrix (impact x urgency): a single user -> can wait s4, work is blocked s4, has a deadline s3; one team -> can wait s3, work is blocked s2, has a deadline s2; all users -> can wait s3, work is blocked s1, has a deadline s1.",
-  "Which severity band does this ticket land in? Matrix (impact x urgency): a single user -> can wait s4, work is blocked s4, has a deadline s3; one team -> can wait s3, work is blocked s2, has a deadline s2; all users -> can wait s3, work is blocked s1, has a deadline s1.",
+  "What is this ticket about?",
+  "Pick one under \"what the ticket is about\".",
+  "Which kind of problem is this ticket?",
 ]
+[fam.issue.criteria]
+outage = "outage: one line is entirely unavailable"
+data_loss = "data loss: records went missing / do not add up"
+bug = "bug: the behaviour does not match the documentation"
+howto = "how-to: asking how to use it correctly"
+feature = "feature request: wanting a new way of doing something"
 
-[option.severity]
-s1 = "s1: all users blocked or on a deadline"
-s2 = "s2: one team blocked or on a deadline"
-s3 = "s3: a single user on a deadline, or a team / all users who can wait"
-s4 = "s4: a single user blocked or able to wait"
+[fam.urgency]
+q = [
+  "How urgent is this ticket?",
+  "Pick one under \"how urgent it is\".",
+  "Which urgency level is this ticket?",
+]
+[fam.urgency.criteria]
+can_wait = "can wait"
+blocked = "blocked"
+deadline = "has a deadline"
+
+[fam.rule]
+q = [
+  "Which rule of the dispatch table does this ticket hit?",
+  "Reading the dispatch table top to bottom, which is the first rule that matches?",
+  "Pick the matching rule from the dispatch table.",
+]
+[fam.rule.criteria]
+security_report = "the compliance flag is \"security report\", and the issue is outage, data loss, or bug"
+privacy_request = "the compliance flag is \"data deletion request\", and the issue is data loss or feature request"
+outage_response = "the issue is outage"
+loss_response = "the issue is data loss"
+defect = "the issue is bug"
+howto = "the issue is how-to"
+feature_request = "none of the above match"
 
 [fam.queue]
 q = [
-  "Which queue should this ticket go to? Routing rules, first match wins: 1) how-to -> tier-1 support; 2) compliance flag is a data deletion request and the issue is data loss or a feature request -> privacy ops; 3) compliance flag is a security report and the issue is an outage, data loss or a defect -> security incident; 4) the issue is an outage or data loss -> incident response; 5) the issue is a defect -> engineering; 6) otherwise -> product backlog.",
-  "Pick a queue with the routing rules (first match wins): 1) how-to -> tier-1 support; 2) compliance flag is a data deletion request and the issue is data loss or a feature request -> privacy ops; 3) compliance flag is a security report and the issue is an outage, data loss or a defect -> security incident; 4) the issue is an outage or data loss -> incident response; 5) the issue is a defect -> engineering; 6) otherwise -> product backlog.",
+  "Which queue should this ticket go to?",
+  "Per the dispatch table, which queue takes this ticket?",
+  "Which queue owns this ticket?",
 ]
-
-[option.queue]
-support_l1 = "tier-1 support: takes how-to tickets"
-engineering = "engineering: takes defect tickets"
-incident_response = "incident response: takes outages and data loss"
-privacy_ops = "privacy ops: takes data deletion requests"
-security_incident = "security incident: takes security reports"
-product_backlog = "product backlog: takes feature requests"
-
-[fam.escalation]
-q = [
-  "Should this ticket be escalated to an owner? Escalation rules: compliance flag is a security report -> security lead; it is a data deletion request -> privacy lead; no compliance flag -> no escalation.",
-  "Who should be escalated to? Rules: compliance flag is a security report -> security lead; it is a data deletion request -> privacy lead; no compliance flag -> no escalation.",
-]
-
-[option.escalation]
-none = "no escalation"
-security_lead = "escalate to the security lead"
-privacy_lead = "escalate to the privacy lead"
-
-[fam.critical_area]
-q = [
-  "Is this ticket in a critical product area? There are only two critical areas: payments and identity.",
-  "Does the product area fall in a critical area? Only two are critical: payments and identity.",
-]
-criteria = { "true" = "yes, the area is critical (payments or identity)", "false" = "no, the area is not critical" }
-
-[fam.needs_human]
-q = [
-  "Does this ticket need a human? Rule: severity is s1 or s2; or the compliance flag is a security report and the tier is enterprise - either one means a human is required.",
-  "Should a human look at this ticket? Rule: severity s1 / s2; or a security report on an enterprise tier - either one requires a human.",
-]
-criteria = { "true" = "a human is required", "false" = "no human needed" }
-
-[fam.sla_breach]
-q = [
-  "Has this ticket passed its first-response deadline? Limit table (severity -> free / pro / enterprise, minutes): s1 -> 10 / 5 / 3; s2 -> 30 / 15 / 10; s3 -> 120 / 60 / 30; s4 -> 480 / 300 / 200. Waiting time = now minus created; it counts as breached only when waiting time is strictly greater than the limit.",
-  "Is the first response overdue? Limit table (severity -> free / pro / enterprise, minutes): s1 -> 10 / 5 / 3; s2 -> 30 / 15 / 10; s3 -> 120 / 60 / 30; s4 -> 480 / 300 / 200. Waiting = now minus created, strictly greater than the limit counts as breached.",
-]
-criteria = { "true" = "breached (waiting strictly exceeds the limit)", "false" = "not breached (waiting does not exceed the limit)" }
-
-[fam.data_risk]
-q = [
-  "Does this ticket go through the data incident process? Rule: the issue is data loss, or the compliance flag is a data deletion request - either one means yes.",
-  "Should this be handled as a data incident? Rule: the issue is data loss, or the compliance flag is a data deletion request.",
-]
-criteria = { "true" = "goes through the data incident process", "false" = "no data incident process needed" }
+[fam.queue.criteria]
+support_l1 = "front-line support"
+engineering = "engineering"
+incident_response = "incident response"
+privacy_ops = "privacy compliance"
+security_incident = "security incident"
+product_backlog = "product backlog"
 
 [fam.priority]
 q = [
-  "Which priority band does this ticket get? Priority table (severity x tier): s1 -> band 4 (any tier); s2 and s3 -> free 1, pro 2, enterprise 3; s4 -> band 0 (any tier).",
-  "Set the priority band (severity x tier): s1 -> 4; s2 and s3 -> free 1, pro 2, enterprise 3; s4 -> 0.",
+  "Which priority level is this ticket?",
+  "Assign a priority level from the priority table.",
+  "Where does this ticket rank on the priority scale?",
 ]
 levels = [
-  "band 0: severity s4",
-  "band 1: severity s2 or s3 on the free tier",
-  "band 2: severity s2 or s3 on the pro tier",
-  "band 3: severity s2 or s3 on the enterprise tier",
-  "band 4: severity s1",
+  "level 0: lowest",
+  "level 1: low",
+  "level 2: medium",
+  "level 3: highest",
 ]
+
+[fam.needs_human]
+q = [
+  "Does this ticket require a human?",
+  "Per the extra rules, should a person take this ticket?",
+  "Should this ticket land in a human's hands?",
+]
+[fam.needs_human.criteria]
+true = "yes: the queue is incident response / security incident / privacy compliance, or the area is a critical area and the tier is enterprise"
+false = "no: neither of those two holds"

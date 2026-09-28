@@ -20,6 +20,7 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import hashlib
 import json
@@ -29,8 +30,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
+
+from .backend.types import GenerationBackend
 from . import assemble, consistency, jsonio, judge as judge_mod, validate
 from .workflow import SplitSpec, Workflow, family_of, load
 
@@ -56,8 +58,8 @@ class RunConfig:
     judges: tuple[str, ...] | None = None  # None = 用 workflow 声明的默认判别器
     #: 一条样本最多渲染几次：判别器拒掉就重渲染（PLAN 6.1 第二道闸）；1 = 不重试。
     render_attempts: int = 2
-    config_override: Any = None  # 覆盖 workflow 的默认采样参数（小规模试跑 / 测试用）
-    backend: Any = None  # 生成后端（jc.backend.types.GenerationBackend）；needs 为空的 workflow 用不到
+    config_override: object = None  # 覆盖 workflow 的默认采样参数（小规模试跑 / 测试用）
+    backend: GenerationBackend | None = None  # 生成后端（jc.backend.types.GenerationBackend）；needs 为空的 workflow 用不到
 
     def resolved_run_id(self) -> str:
         """运行目录名；未指定时用时间戳。"""
@@ -70,8 +72,8 @@ class RunResult:
 
     run_dir: Path
     accepted: int = 0
-    rejected: list[dict[str, Any]] = field(default_factory=list)
-    stats: dict[str, Any] = field(default_factory=dict)
+    rejected: list[dict[str, JsonValue]] = field(default_factory=list)
+    stats: dict[str, JsonValue] = field(default_factory=dict)
 
 
 class RunAborted(RuntimeError):
@@ -105,7 +107,7 @@ def sample_rng(run_seed: int, workflow: str, split: str, seq: int) -> random.Ran
 
 
 def build_judges(
-    workflow: Workflow, names: tuple[str, ...], locale: str, backend: Any = None
+    workflow: Workflow, names: tuple[str, ...], locale: str, backend: GenerationBackend | None = None
 ) -> tuple[judge_mod.Judge, ...]:
     """委托 workflow 构造判别器。
 
@@ -133,7 +135,7 @@ def _mean(values: list[int]) -> float:
     return round(sum(values) / len(values), 1) if values else 0.0
 
 
-def _consistency_line(stats: dict[str, Any]) -> str:
+def _consistency_line(stats: dict[str, JsonValue]) -> str:
     """输入：统计字典。输出：一致性那一行（统计报告用）。
 
     预期行为：0 处冲突写成 ✅，非 0 写成 ⚠️ 并指向 `conflicts.jsonl`——
@@ -145,7 +147,7 @@ def _consistency_line(stats: dict[str, Any]) -> str:
     return f"⚠️ {count} 处「同素材同题不同答」，见 conflicts.jsonl"
 
 
-def balance_report(stats: dict[str, Any], tolerance: float) -> list[dict[str, Any]]:
+def balance_report(stats: dict[str, JsonValue], tolerance: float) -> list[dict[str, JsonValue]]:
     """逐题族算答案分布与「均匀」的偏差。
 
     输入：统计字典、容差（0.03 表示 3 个百分点）。
@@ -159,7 +161,7 @@ def balance_report(stats: dict[str, Any], tolerance: float) -> list[dict[str, An
     - 结构性不可达（例如某个档位在当前规模下永远取不到）与题族间耦合
       （两个题族共享同一个自由度）会在报告里照实标出，由 workflow 决定怎么调。
     """
-    report: list[dict[str, Any]] = []
+    report: list[dict[str, JsonValue]] = []
     for key, bucket in stats["answers"].items():
         total = sum(bucket.values())
         if total == 0:
@@ -191,10 +193,10 @@ def balance_report(stats: dict[str, Any], tolerance: float) -> list[dict[str, An
 class _CaseOutcome:
     """一条样本的处理结果（并发安全：只返回，不碰共享状态）。"""
 
-    sample: dict[str, Any] | None  # 合格样本；None = 被拒
-    rejected: list[dict[str, Any]]  # 这一条产生的拒绝记录
+    sample: dict[str, JsonValue] | None  # 合格样本；None = 被拒
+    rejected: list[dict[str, JsonValue]]  # 这一条产生的拒绝记录
     judges: list[tuple[str, bool]]  # (判别器名, 是否通过)，只用于统计；不含没判成的
-    judge_skips: list[dict[str, Any]] = field(default_factory=list)  # 没判成的（端点故障 / 不适用）
+    judge_skips: list[dict[str, JsonValue]] = field(default_factory=list)  # 没判成的（端点故障 / 不适用）
     attempts: int = 1  # 实际渲染了几次（>1 说明前面几次被判别器拒了，重渲染过）
 
 
@@ -222,9 +224,9 @@ def _retryable(outcome: _CaseOutcome) -> bool:
 def _one_case(
     workflow: Workflow,
     judge_pool: dict[str, tuple[judge_mod.Judge, ...]],
-    cases: list[Any],
+    cases: list[JsonValue],
     config: RunConfig,
-    config_for_split: Any,
+    config_for_split: object,
     seq: int,
 ) -> _CaseOutcome:
     """跑完一条样本的「计划 → 采样 → 渲染 → 出题 → 组装 → 契约校验 → 判别」。
@@ -250,9 +252,9 @@ def _one_case(
 def _attempt_case(
     workflow: Workflow,
     judge_pool: dict[str, tuple[judge_mod.Judge, ...]],
-    cases: list[Any],
+    cases: list[JsonValue],
     config: RunConfig,
-    config_for_split: Any,
+    config_for_split: object,
     seq: int,
 ) -> _CaseOutcome:
     """渲染并判一次（`_one_case` 的其中一次尝试）。
@@ -301,8 +303,8 @@ def _attempt_case(
         )
 
     verdicts = judge_mod.run_judges(sample, spec, judge_pool[locale])
-    rows: list[dict[str, Any]] = []
-    skips: list[dict[str, Any]] = []
+    rows: list[dict[str, JsonValue]] = []
+    skips: list[dict[str, JsonValue]] = []
     failed = False
     for name, verdict in verdicts:
         if verdict.skipped:
@@ -344,10 +346,10 @@ def _journal_path(run_dir: Path, split: str) -> Path:
 
 
 def _check_journal_matches_products(
-    done: dict[int, dict[str, Any]],
-    samples: list[dict[str, Any]],
-    rejecteds: list[dict[str, Any]],
-    skips: list[dict[str, Any]],
+    done: dict[int, dict[str, JsonValue]],
+    samples: list[dict[str, JsonValue]],
+    rejecteds: list[dict[str, JsonValue]],
+    skips: list[dict[str, JsonValue]],
     artifacts: "_Artifacts",
 ) -> None:
     """输入：进度日志、三个产物在本次启动时读回来的行、产物路径。输出：无（不一致就抛）。
@@ -390,7 +392,7 @@ def _check_journal_matches_products(
             )
 
 
-def _read_rows(path: Path) -> list[dict[str, Any]]:
+def _read_rows(path: Path) -> list[dict[str, JsonValue]]:
     """输入：产物路径。输出：已写下的行。
 
     预期行为：文件不存在给空表；**只有最后一行允许残缺**——追加写 + fsync 的性质是
@@ -399,7 +401,7 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
     lines = path.read_text(encoding="utf-8").splitlines()
-    out: list[dict[str, Any]] = []
+    out: list[dict[str, JsonValue]] = []
     for index, line in enumerate(lines):
         if not line.strip():
             continue
@@ -412,7 +414,7 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
     return out
 
 
-def _append_rows(path: Path, rows: list[dict[str, Any]]) -> None:
+def _append_rows(path: Path, rows: list[dict[str, JsonValue]]) -> None:
     """输入：产物路径、要追加的行。输出：无。
 
     预期行为：一次写完并 fsync——崩溃时最坏留下半行，读回来时当它没写过（3.1.5）。
@@ -428,7 +430,7 @@ def _append_rows(path: Path, rows: list[dict[str, Any]]) -> None:
         os.fsync(handle.fileno())
 
 
-def _read_journal(path: Path) -> dict[int, dict[str, Any]]:
+def _read_journal(path: Path) -> dict[int, dict[str, JsonValue]]:
     """输入：进度日志路径。输出：{序号: 记录}。
 
     预期行为：残缺的尾行按「没写过」处理（与产物同一条规矩）；同一序号写了多次
@@ -438,10 +440,10 @@ def _read_journal(path: Path) -> dict[int, dict[str, Any]]:
 
 
 def _outcome_from_journal(
-    record: dict[str, Any],
-    samples: list[dict[str, Any]],
-    rejecteds: list[dict[str, Any]],
-    skips: list[dict[str, Any]],
+    record: dict[str, JsonValue],
+    samples: list[dict[str, JsonValue]],
+    rejecteds: list[dict[str, JsonValue]],
+    skips: list[dict[str, JsonValue]],
 ) -> _CaseOutcome:
     """输入：一条进度记录、三个产物在**本次启动时**读回来的全部行。输出：outcome。
 
@@ -476,7 +478,7 @@ class _Artifacts:
     journal: Path
     rows: dict[str, int] = field(default_factory=dict)
 
-    def commit(self, outcome: _CaseOutcome, seq: int) -> dict[str, Any]:
+    def commit(self, outcome: _CaseOutcome, seq: int) -> dict[str, JsonValue]:
         """输入：一条 outcome、序号。输出：写进进度日志的那条记录。
 
         预期行为：合格样本进 `<split>.jsonl`、被拒行进 `rejected.jsonl`、
@@ -495,7 +497,7 @@ class _Artifacts:
             row = self.rows["sample"] + 1
             _append_rows(self.sample, [outcome.sample])
             self.rows["sample"] = row
-        record: dict[str, Any] = {
+        record: dict[str, JsonValue] = {
             "seq": seq,
             "status": "ok" if outcome.sample is not None else "invalid",
             "row": row,
@@ -569,7 +571,7 @@ def run(config: RunConfig) -> RunResult:
     # 产物各多出「恰好一个切分 case 数」的行，多余行数正好等于 case 数。宁可报人话停下，
     # 也不静默产出坏数据（`jc audit` 现在也会跨行查 id 唯一，但那是事后发现）。
     _check_journal_matches_products(done, samples, rejected_all, skipped_all, artifacts)
-    stats: dict[str, Any] = {
+    stats: dict[str, JsonValue] = {
         "cases": len(cases),
         "requested": total,
         "families": {},
@@ -595,7 +597,7 @@ def run(config: RunConfig) -> RunResult:
 
     # 只跑还没完成的序号（3.1.5）：`done` 里已有的直接跳过，不重花配额。
     todo = [seq for seq in range(total) if seq not in done]
-    aborted: dict[str, Any] | None = None
+    aborted: dict[str, JsonValue] | None = None
     fresh: dict[int, _CaseOutcome] = {}
     if config.concurrency > 1 and len(todo) > 1:
         # 并发跑；按序号取回，取回一条就落盘一条，所以产物顺序与串行逐字节一致。
@@ -626,9 +628,9 @@ def run(config: RunConfig) -> RunResult:
             fresh[seq] = outcome
             done[seq] = artifacts.commit(outcome, seq)
 
-    accepted_rows: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = []
-    judge_skips: list[dict[str, Any]] = []
+    accepted_rows: list[dict[str, JsonValue]] = []
+    rejected: list[dict[str, JsonValue]] = []
+    judge_skips: list[dict[str, JsonValue]] = []
     # 按序号顺序合并「本次新跑的」与「上次已完成的」：续跑出来的统计与一次跑完的完全一致。
     for seq in sorted(done):
         outcome = (
@@ -687,9 +689,9 @@ def run(config: RunConfig) -> RunResult:
 
 
 def _accumulate(
-    stats: dict[str, Any],
-    sample: dict[str, Any],
-    case: Any,
+    stats: dict[str, JsonValue],
+    sample: dict[str, JsonValue],
+    case: object,
     locale: str,
     workflow: Workflow,
 ) -> None:
@@ -719,7 +721,7 @@ def _accumulate(
     stats["questions_per_sample"].append(len(sample["questions"]))
 
 
-def backend_manifest(config: RunConfig) -> dict[str, Any]:
+def backend_manifest(config: RunConfig) -> dict[str, JsonValue]:
     """把后端记账写进 manifest（溯源用）。
 
     输入：运行配置。输出：`{name, starting_mode}`；没有后端时返回 `{}`。
@@ -740,8 +742,8 @@ def backend_manifest(config: RunConfig) -> dict[str, Any]:
 
 
 def manifest(
-    config: RunConfig, stats: dict[str, Any], workflow: Workflow, cases: list[Any]
-) -> dict[str, Any]:
+    config: RunConfig, stats: dict[str, JsonValue], workflow: Workflow, cases: list[JsonValue]
+) -> dict[str, JsonValue]:
     """生成 manifest（溯源用）：配置、workflow 声明、case 矩阵规模、统计摘要。"""
     return {
         "run_id": config.resolved_run_id(),
@@ -763,7 +765,7 @@ def manifest(
     }
 
 
-def render_stats_md(stats: dict[str, Any], config: RunConfig, workflow: Workflow) -> str:
+def render_stats_md(stats: dict[str, JsonValue], config: RunConfig, workflow: Workflow) -> str:
     """把统计渲染成 markdown 报告。
 
     输入：统计字典、配置、workflow（提供维度中文标题）。

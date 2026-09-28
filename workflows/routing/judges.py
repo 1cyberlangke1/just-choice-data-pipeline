@@ -1,184 +1,235 @@
-"""工单分诊 workflow 的判别器：结构往返 + 答案重算。
+"""工单分诊的判别器：分工是「纯代码能查的」与「只能问模型的」。
 
-输入：样本（`state` / `questions` / `answers`）、真值规格、语言字典。输出：`Verdict`。
-预期行为：两个判别器都**只看文本**——
-`roundtrip` 把工单反解后与真值逐格比对；`label` 反解后**独立重算**每个题族的答案。
-重算走的是 `spec` 里那套规则函数（与构造侧同一套），但输入全部来自文本：
-**问题类型只出现在正文里**，判别器得把正文读回去，这正是要训的那件事。
+- `HygieneJudge`（零 token）：正文必须存在、单行、不含围栏 / 段落名残留 / 属性词；
+- `FrameJudge`（零 token）：属性行必须逐格等于注入特征（产品域 / 客户等级 / 合规标记），
+  三张表必须逐行等于规范表——渲染串味（挂错 tags、漏行、错格）全在这一关拦下；
+- `TraceJudge`（一次后端调用）：把整条工单交回后端反解**是什么问题**与**有多急**，两个
+  答案都必须与注入特征一致。这是「渲染必须可反解」的落地（PLAN 3.4 第 ③ 档）：正文是
+  模型写的，唯一由文本承载的两个标签就是这两维，它们必须能从正文里读回来，否则这道题
+  没人答得对。
+
+输入/输出：只出 `Verdict`，不改样本。反解失败一律判不通过——宁可少要几条，也不要一条
+标签和文本对不上的数据。但**端点故障不算数据不合格**：重试与降级都试过之后还拿不到草稿，
+只能记成 `skipped=True`（没判成），否则端点抖动会被写成合成质量问题。
 """
 
 from __future__ import annotations
 
-import datetime as dt
 from dataclasses import dataclass
-from typing import Any
+from typing import Final, Literal
 
-from jc.judge import Judge, Verdict
-from jc.workflow import family_of
+from pydantic import BaseModel
 
-from . import locales, parse, render
-from . import spec as spec_mod
-from .spec import TicketSpec
+from jc.backend.types import BackendError, GenerationBackend, GenerationTask
+from jc.judge import Verdict
+from jc.jsontypes import JsonValue
+
+from . import locales, render
+from .spec import RoutingSpec
+
+#: 格式残留：单独成行的围栏 / HTML 换行标签（围栏在正文里由 `render.check_draft` 与
+#: 卫生判别器各查一次；这里再按「单独成行」查一遍整段 state——模型偶尔会把整段回答
+#: 包进 ``` 里，那样的行会落在正文段之外）。
+LEFTOVER_LINES: Final[frozenset[str]] = frozenset(
+    {"```", "```json", "```toml", "```text", "```markdown"}
+)
+LEFTOVER_TAGS: Final[tuple[str, ...]] = ("<br>", "<br/>", "<br />", "</br>")
+
+#: 反解时重问的原子题族（题族名与数据集里完全一致，选项也用同一份 locale）。
+TRACE_FAMILIES: Final[tuple[str, ...]] = ("issue", "urgency")
 
 
-def reverse(table: dict[str, str]) -> dict[str, str]:
-    """输入：{键: 原文}。输出：{原文: 键}。
+class TraceDraft(BaseModel):
+    """反解草稿：反解「是什么问题」与「有多急」两维。
 
-    预期行为：原文重复时报错——重复会让反解有歧义，属于语言文件的硬伤。
+    取值域必须与 `features.ISSUES` / `features.URGENCIES` 以及 locale 里 `criteria`
+    的 key 一致；这条由 `tests/workflows/routing/test_locales.py` 锁住，不靠人记。
     """
-    out: dict[str, str] = {}
-    for key, text in table.items():
-        if text in out:
-            raise ValueError(f"文案重复：{text!r}（{out[text]} 与 {key}）")
-        out[text] = key
-    return out
+
+    issue: Literal["outage", "data_loss", "bug", "howto", "feature"]
+    urgency: Literal["can_wait", "blocked", "deadline"]
 
 
-def issue_of(body: str, area_text: str, loc: dict[str, Any]) -> str:
-    """输入：正文原文、产品域原文、语言字典。输出：问题类型键。
+def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
+    """组装反解提示词。
 
-    预期行为：把每个问题句模板用同一个产品域名渲染一遍，看哪一句**原样**出现在正文里；
-    恰好一句才算数——认不出、或认出多句都报错（那是渲染与语言文件对不上的硬伤，
-    不是「数据难判」，不能糊过去）。
+    输入：渲染好的 state、语言字典。
+    输出：提示词。预期行为：把 `TRACE_FAMILIES` 里的原子题连同选项原样再问一遍——
+    反解用的选项与数据集里的一致，否则「答对了」与「标签对了」不是一回事。
     """
-    hits = [
-        key
-        for key in spec_mod.ISSUES
-        if loc["body"]["issue"][key].format(area=area_text) in body
+    lines = [
+        str(loc["verify"]["intro"]),
+        "",
+        str(loc["verify"]["state_header"]),
+        state,
+        "",
+        str(loc["verify"]["questions_header"]),
     ]
-    if len(hits) != 1:
-        raise ValueError(f"正文里认不出唯一的问题类型：{hits}")
-    return hits[0]
+    for index, family in enumerate(TRACE_FAMILIES, start=1):
+        lines.append(f"{index}. {loc['fam'][family]['q'][0]}")
+        for name, desc in loc["fam"][family]["criteria"].items():
+            lines.append(str(loc["verify"]["option_line"]).format(name=name, desc=desc))
+    return "\n".join(lines)
 
 
-def elapsed_of(created: str, current: str) -> int:
-    """输入：创建时间、当前时间（`HH:MM`）。输出：已等待分钟数。
-
-    预期行为：按同一天的钟点相减；当前时间早于创建时间就报错（渲染写反了）。
-    """
-    start = dt.datetime.strptime(created, "%H:%M")
-    end = dt.datetime.strptime(current, "%H:%M")
-    minutes = int((end - start).total_seconds() // 60)
-    if minutes < 0:
-        raise ValueError(f"当前时间早于创建时间：{created!r} → {current!r}")
-    return minutes
-
-
-def recompute(ticket: parse.ParsedTicket, loc: dict[str, Any]) -> dict[str, Any]:
-    """输入：反解出来的工单、语言字典。输出：{题族: 重算出来的答案}。
-
-    预期行为：先把原文翻回键（产品域 / 等级 / 影响面 / 紧急度 / 合规标记按标签表反查，
-    问题类型按正文反查），再调用 `spec` 那套规则函数——**与构造侧同一套规则**，
-    所以「表格写错」与「渲染写歪」会暴露成同一类错误，不会两边各错一半还互相印证。
-    """
-    area = reverse(loc["area"])[ticket.area]
-    tier = reverse(loc["tier"])[ticket.tier]
-    impact = reverse(loc["impact"])[ticket.impact]
-    urgency = reverse(loc["urgency"])[ticket.urgency]
-    compliance = reverse(loc["compliance"])[ticket.compliance]
-    issue = issue_of(ticket.body, ticket.area, loc)
-    elapsed = elapsed_of(ticket.created, ticket.current)
-    severity = spec_mod.severity_of(impact, urgency)
-    limit = spec_mod.sla_limit_of(severity, tier)
-    return {
-        "severity": severity,
-        "queue": spec_mod.queue_of(issue, compliance),
-        "escalation": spec_mod.escalation_of(compliance),
-        "critical_area": spec_mod.critical_area_of(area),
-        "needs_human": spec_mod.needs_human_of(severity, compliance, tier),
-        "sla_breach": spec_mod.sla_breach_of(elapsed, limit),
-        "data_risk": spec_mod.data_risk_of(issue, compliance),
-        "priority": spec_mod.priority_of(severity, tier),
-    }
-
-
-def roundtrip_diff(
-    spec: TicketSpec, ticket: parse.ParsedTicket, loc: dict[str, Any]
-) -> list[str]:
-    """输入：真值规格、反解结果、语言字典。输出：不一致项列表（空 = 逐格一致）。"""
-    checks = (
-        ("工单号", ticket.ticket_id, spec.ticket_id),
-        ("产品域", ticket.area, loc["area"][spec.case.area]),
-        ("客户等级", ticket.tier, loc["tier"][spec.case.tier]),
-        ("影响面", ticket.impact, loc["impact"][spec.case.impact]),
-        ("紧急度", ticket.urgency, loc["urgency"][spec.case.urgency]),
-        ("合规标记", ticket.compliance, loc["compliance"][spec.case.compliance]),
-        ("创建时间", ticket.created, spec.created),
-        ("当前时间", ticket.current, spec.current),
-        ("正文", ticket.body, render.body_text(spec, loc)),
-    )
-    return [
-        f"{name}：渲染 {got!r} vs 期望 {want!r}"
-        for name, got, want in checks
-        if got != want
-    ]
+def _has_leftover(state: str) -> str:
+    """输入：state 文本。输出：命中的残留（没有就空串）。"""
+    for line in state.splitlines():
+        if line.strip() in LEFTOVER_LINES:
+            return line.strip()
+    for tag in LEFTOVER_TAGS:
+        if tag in state:
+            return tag
+    return ""
 
 
 @dataclass(frozen=True)
-class RoundtripJudge:
-    """结构判别器：工单反解后必须与真值规格逐格一致。"""
+class HygieneJudge:
+    """零 token 判别器：state 里不许有格式残留，正文还得有内容、是单行。
 
-    name: str = "roundtrip"
-    locale: str = "zh"
+    查四类：**单独成行的围栏 / HTML 换行标签**、**正文是空的**、**正文是多行**、
+    **正文里写了属性词**。口径压到最窄——宁可漏检也不误判，因为误判会直接拒掉好数据。
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
-        """输入：样本、真值 spec。输出：Verdict。预期行为：没有 spec 就跳过（不误判）。"""
-        if not isinstance(spec, TicketSpec):
-            return Verdict(True, reason="没有 spec，跳过结构判别", raw={"skipped": True})
+    字段：`locale` 语言（要按语言认那一段的段落名）。
+    """
+
+    locale: str
+    name: str = "hygiene"
+
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。预期行为：只看残留与形状，不看语义。"""
+        del spec
+        state = sample["state"]
+        if not isinstance(state, str):
+            return Verdict(True, reason="state 不是文本，跳过卫生检查")
         loc = locales.load(self.locale)
-        try:
-            ticket = parse.parse_ticket(sample["state"], parse.label_index(loc))
-        except ValueError as exc:
-            return Verdict(False, reason=f"反解失败：{exc}")
-        diff = roundtrip_diff(spec, ticket, loc)
-        return Verdict(not diff, reason="; ".join(diff[:5]), raw={"diff": diff})
+        leftover = _has_leftover(state)
+        if leftover:
+            return Verdict(False, reason=f"state 里有格式残留：{leftover!r}")
+        lines = render.body_lines(state, loc)
+        if not lines:
+            return Verdict(False, reason="state 里没有「工单正文」那一段")
+        if len(lines) > 1:
+            return Verdict(False, reason=f"「工单正文」有 {len(lines)} 行——它必须是一行")
+        leaked = render.label_leak(lines[0], loc)
+        if leaked:
+            return Verdict(False, reason=f"「工单正文」把段落名「{leaked}」也写进去了")
+        echoed = render.banned_echo(lines[0], loc)
+        if echoed:
+            return Verdict(False, reason=f"「工单正文」里写了属性行 / 表里管的事：{'、'.join(echoed)}")
+        return Verdict(True, reason="正文是单行、非空，没有格式残留")
 
 
 @dataclass(frozen=True)
-class LabelJudge:
-    """答案判别器：反解文本后独立重算金答案，逐题比对。"""
+class FrameJudge:
+    """零 token 判别器：属性行与三张表必须与代码算出来的一模一样。
 
-    name: str = "label"
-    locale: str = "zh"
-    max_problems: int = 5
+    字段：`locale` 语言。预期行为：逐格比对属性行（产品域 / 客户等级 / 合规标记），
+    再逐行比对派单表 / 优先级表 / 附加规则；任何一处对不上都判不通过——那是渲染挂错了
+    tags，标签会跟着一起错。
+    """
 
-    def judge(self, sample: dict[str, Any], spec: Any = None) -> Verdict:
-        """输入：样本、真值 spec（不用）。输出：Verdict。预期行为：答案对不上就判不通过。"""
+    locale: str
+    name: str = "frame"
+
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。预期行为：只做结构比对。"""
+        if not isinstance(spec, RoutingSpec):
+            return Verdict(True, reason="没有 spec，跳过框架比对", skipped=True)
+        state = sample["state"]
+        if not isinstance(state, str):
+            return Verdict(True, reason="state 不是文本，跳过框架比对", skipped=True)
         loc = locales.load(self.locale)
+        tags = spec.tags
+        problems: list[str] = []
+        expected_attrs = render.AttrsState(
+            area=tags.area, tier=tags.tier, compliance=tags.compliance
+        )
+        parsed_attrs = render.attrs_of(state, loc)
+        if parsed_attrs != expected_attrs:
+            problems.append(f"属性行与注入特征对不上：解析出 {parsed_attrs}，应为 {expected_attrs}")
+        checks = (
+            ("派单表", render.queue_rules_of(state, loc), render.queue_rule_rows(loc)),
+            ("优先级表", render.priority_of(state, loc), render.priority_rows(loc)),
+            ("附加规则", render.flags_of(state, loc), render.flag_rows(loc)),
+        )
+        for label, parsed, canonical in checks:
+            if parsed != canonical:
+                problems.append(f"{label}与规范表对不上：解析出 {len(parsed)} 行，应为 {len(canonical)} 行")
+        if not problems:
+            return Verdict(True, reason="属性行与三张表都与注入特征一致")
+        return Verdict(False, reason="；".join(problems), raw={"attrs": str(parsed_attrs)})
+
+
+@dataclass(frozen=True)
+class TraceJudge:
+    """模型判别器：把整条工单交回后端反解两维，必须与注入的一致。
+
+    字段：`backend` 生成后端（由 `bind_backend` 注入）；`locale` 语言。
+    """
+
+    backend: GenerationBackend
+    locale: str
+    name: str = "trace"
+
+    def judge(self, sample: dict[str, JsonValue], spec: object = None) -> Verdict:
+        """输入：样本、真值规格。输出：Verdict。
+
+        预期行为：不一致时把「注入的」与「反解出来的」列在理由里，方便人看是哪里写歪了。
+        端点故障与草稿缺字段都只算「没判成」（`skipped=True`）——记成「不通过」会把
+        端点抖动写成数据质量问题。
+        """
+        if not isinstance(spec, RoutingSpec):
+            return Verdict(True, reason="没有 spec，跳过反解", skipped=True)
+        if self.backend is None:
+            return Verdict(True, reason="没有后端，跳过反解", skipped=True)
+        loc = locales.load(self.locale)
+        task = GenerationTask(
+            task_id=spec.trace_task_id,
+            kind="text",
+            domain="ticket-triage",
+            prompt=build_trace_prompt(str(sample["state"]), loc),
+            response_model=TraceDraft,
+            spec={"tags": spec.tags.as_dict()},
+        )
         try:
-            ticket = parse.parse_ticket(sample["state"], parse.label_index(loc))
-            expected = recompute(ticket, loc)
-        except (ValueError, KeyError) as exc:
-            return Verdict(False, reason=f"重算失败：{exc}")
-        problems = self._check(sample, expected)
+            draft = self.backend.generate(task)
+        except BackendError as exc:
+            if getattr(exc, "fatal_for_run", False):
+                raise  # 全部 provider 都挂了：整批该停下（PLAN 3.1.4）
+            return Verdict(
+                True,
+                reason=f"反解没跑成（端点故障，不是数据问题）：{exc}",
+                raw={"error": type(exc).__name__},
+                skipped=True,
+            )
+        data = draft.data if isinstance(draft.data, dict) else {}
+        broken = [name for name in TRACE_FAMILIES if name not in data]
+        if broken:
+            return Verdict(
+                True,
+                reason=f"反解草稿缺字段，判不了：{'、'.join(broken)}",
+                raw={"raw_text": draft.raw_text[:500]},
+                skipped=True,
+            )
+        labels = spec.labels
+        problems = [
+            f"{family}: 注入 {getattr(labels, family)!r}，反解成 {data[family]!r}"
+            for family in TRACE_FAMILIES
+            if data[family] != getattr(labels, family)
+        ]
         return Verdict(
             not problems,
-            reason="; ".join(problems[: self.max_problems]),
-            raw={"problems": problems},
+            reason="; ".join(problems),
+            raw={"traced": {family: data[family] for family in TRACE_FAMILIES}},
         )
 
-    def _check(self, sample: dict[str, Any], expected: dict[str, Any]) -> list[str]:
-        """输入：样本、重算出来的答案。输出：问题列表（空 = 全部对得上）。"""
-        problems: list[str] = []
-        for qid, question in sample["questions"].items():
-            want = expected.get(family_of(qid))
-            if want is None:
-                problems.append(f"{qid}: 未知题族")
-                continue
-            answer = sample["answers"][qid]
-            qtype = question["type"]
-            if qtype == "choice":
-                options = list(question["criteria"])
-                index = answer["choice"]
-                if not 0 <= index < len(options):
-                    problems.append(f"{qid}: 答案编号越界（{index}）")
-                    continue
-                got = options[index]
-                if got != want:
-                    problems.append(f"{qid}: 答案指向 {got}，按工单重算是 {want}")
-            elif qtype == "noul":
-                if answer["noul"] is not want:
-                    problems.append(f"{qid}: 答案是 {answer['noul']}，按工单重算是 {want}")
-            elif answer["score"] != want:
-                problems.append(f"{qid}: 答案是 {answer['score']}，按工单重算是 {want}")
-        return problems
+
+def option_names(question: dict[str, JsonValue]) -> list[str]:
+    """输入：一道 choice 题。输出：按**产物里写的顺序**排好的选项名。
+
+    预期行为：答案编号就是在这个顺序里的下标（见 `jc.assemble`）——审计要拿它把编号
+    换回选项名，才能与纯代码重算的结果比对。
+    """
+    criteria = question.get("criteria")
+    return list(criteria) if isinstance(criteria, dict) else []

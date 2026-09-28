@@ -13,9 +13,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from . import locales
 from .spec import ACTIONS, HAULS, RESOURCES, TURNS
@@ -81,7 +82,7 @@ class ParsedBoard:
     rows: tuple[ParsedRow, ...]
 
 
-def _pairs(loc: dict[str, Any], field: str) -> dict[str, str]:
+def _pairs(loc: dict[str, JsonValue], field: str) -> dict[str, str]:
     """输入：语言字典、词表名。输出：{原文: 键}。预期行为：原文重复直接报错。"""
     table = loc[field]
     out: dict[str, str] = {}
@@ -92,7 +93,7 @@ def _pairs(loc: dict[str, Any], field: str) -> dict[str, str]:
     return out
 
 
-def labels_of(loc: dict[str, Any]) -> Labels:
+def labels_of(loc: dict[str, JsonValue]) -> Labels:
     """输入：语言字典。输出：这一门语言的反解表（每一格只有一项候选）。"""
     return Labels(
         label_texts={field: (str(loc["label"][field]),) for field in LABEL_FIELDS},

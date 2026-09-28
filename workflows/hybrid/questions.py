@@ -17,9 +17,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any, Final
+from typing import Final
 
 from jc.workflow import LabeledQuestion
 
@@ -93,7 +94,7 @@ def _choice(
     return LabeledQuestion(family, question, answer)
 
 
-def _noul(family: str, loc: dict[str, Any], phrasing: int, answer: bool) -> LabeledQuestion:
+def _noul(family: str, loc: dict[str, JsonValue], phrasing: int, answer: bool) -> LabeledQuestion:
     """输入：题族、语言字典、问法编号、金答案。输出：一道 noul 题（不打乱）。"""
     question = {
         "type": "noul",
@@ -106,7 +107,7 @@ def _noul(family: str, loc: dict[str, Any], phrasing: int, answer: bool) -> Labe
     return LabeledQuestion(family, question, answer, shuffle=False)
 
 
-def _score(family: str, loc: dict[str, Any], phrasing: int, answer: int) -> LabeledQuestion:
+def _score(family: str, loc: dict[str, JsonValue], phrasing: int, answer: int) -> LabeledQuestion:
     """输入：题族、语言字典、问法编号、金答案（等级下标）。输出：一道 score 题。"""
     question = {
         "type": "score",
@@ -116,13 +117,13 @@ def _score(family: str, loc: dict[str, Any], phrasing: int, answer: int) -> Labe
     return LabeledQuestion(family, question, answer, shuffle=False)
 
 
-def _ask_slot(family: str, loc: dict[str, Any], phrasing: int, index: int) -> str:
+def _ask_slot(family: str, loc: dict[str, JsonValue], phrasing: int, index: int) -> str:
     """输入：带「第 n 场」的题族、语言字典、问法编号、会议下标。输出：题面。"""
     return locales.pick(loc["ask"][family]["q"], phrasing).format(n=index + 1)
 
 
 def build(
-    spec: HybridSpec, loc: dict[str, Any], phrasing: int, rng: random.Random
+    spec: HybridSpec, loc: dict[str, JsonValue], phrasing: int, rng: random.Random
 ) -> list[LabeledQuestion]:
     """输入：规格、语言字典、问法编号、RNG。输出：题目 + 金答案（顺序按 `FAMILIES`）。
 
@@ -223,7 +224,7 @@ def build(
     return out
 
 
-def locate(instructions: str, loc: dict[str, Any], meeting_count: int) -> tuple[str, str] | None:
+def locate(instructions: str, loc: dict[str, JsonValue], meeting_count: int) -> tuple[str, str] | None:
     """输入：题面、语言字典、会议场数。输出：(题族, 目标槽)，或 None（认不出来）。
 
     预期行为：把题面与语言文件里的问法逐条对。判别器靠它**从题面反查**「问的是哪一场会」，

@@ -9,9 +9,10 @@
 """
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from . import locales
 from . import spec as spec_mod
@@ -54,7 +55,7 @@ class ParsedMatch:
         return self.extra.get(("left", "right")[index], {})
 
 
-def tables_of(loc: dict[str, Any]) -> Tables:
+def tables_of(loc: dict[str, JsonValue]) -> Tables:
     """输入：语言字典。输出：`Tables`。
 
     预期行为：槽位名与语言无关——栏带 `field:` 前缀、额外栏是 `extra:origin`，

@@ -1,9 +1,10 @@
 """判别器：两条独立的路（从文本重算 / 拿规格重算）都要抓得住产物里的错。"""
 
 from __future__ import annotations
+from jc.jsontypes import JsonValue
 
 import random
-from typing import Any
+
 
 import pytest
 
@@ -12,7 +13,7 @@ from workflows.functions import judges, locales, parse, questions, render, spec 
 from workflows.functions.workflow import FunctionsWorkflow
 
 
-def _built(case: sp.CallCase, lang: str = "zh", seed: int = 1) -> tuple[sp.CallSpec, dict[str, Any]]:
+def _built(case: sp.CallCase, lang: str = "zh", seed: int = 1) -> tuple[sp.CallSpec, dict[str, JsonValue]]:
     """输入：case、语言、打乱种子。输出：(规格, 契约样本)。"""
     loc = locales.load(lang)
     spec = sp.sample_spec(case, "train", 0)
@@ -40,7 +41,7 @@ def test_answer_value_reads_choice_by_option_name() -> None:
 
 
 @pytest.mark.parametrize("bad", [2, -1, "0", None, True, 1.5])
-def test_answer_value_rejects_a_bad_choice_index(bad: Any) -> None:
+def test_answer_value_rejects_a_bad_choice_index(bad: object) -> None:
     """输入：越界 / 类型不对的编号。输出：无。预期行为：给 None（对不上，不是崩）。"""
     question = {"type": "choice", "criteria": {"a": "甲", "b": "乙"}}
     assert judges.answer_value(question, {"choice": bad}) is None
