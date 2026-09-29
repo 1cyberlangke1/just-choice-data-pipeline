@@ -1,7 +1,8 @@
 """通用层测试：判别器拒掉就重渲染（PLAN 6.1 的第二道闸）。
 
-这里用「假 workflow + 假判别器」只验接线本身：**只有判别器拒掉**才重渲染；
-生成期与契约级失败不重渲染（那两类是生成器 bug，重渲染只会把 bug 藏起来）；
+这里用「假 workflow + 假判别器」只验接线本身：**判别器拒掉**重渲染；生成期里
+**自己声明了 `retryable_for_case` 的异常**（`DraftError`：后端没照契约写）也重渲染；
+其余生成期失败（`KeyError` 之类）不重渲染——那才是生成器 bug，重渲染只会把 bug 藏起来；
 渲染次数要进进度日志与统计，续跑时能原样读回来。**不发任何网络请求**。
 """
 
@@ -18,14 +19,15 @@ import pytest
 from jc import pipeline
 from jc.backend.types import GenerationBackend
 from jc.judge import Verdict
-from jc.workflow import LabeledQuestion, SplitSpec
+from jc.workflow import DraftError, LabeledQuestion, SplitSpec
 
 
 class FlakyWorkflow:
     """假 workflow：判别器按渲染次数决定放不放行。
 
     输入：`reject_until` = 渲染次数没超过它就一律拒（0 = 永不拒）；`questions` = 出几道题
-    （0 用来制造生成期失败）。
+    （0 用来制造生成期失败）；`draft_failures` = 前几次渲染直接抛异常（用来验生成期异常的
+    重渲染判据），`error` = 抛哪一种（默认 `DraftError`，可换成 `KeyError` 当生成器 bug）。
     输出：走 `jc.workflow.Workflow` 协议的最小实现。
     预期行为：`render` 每次计数并把它写进 state，判别器读计数——「到底重渲染了没有」
     是数出来的，不靠猜。
@@ -37,9 +39,17 @@ class FlakyWorkflow:
     needs = frozenset({"text"})
     judges: tuple[str, ...] = ("flaky",)
 
-    def __init__(self, reject_until: int = 1, questions: int = 1) -> None:
+    def __init__(
+        self,
+        reject_until: int = 1,
+        questions: int = 1,
+        draft_failures: int = 0,
+        error: type[Exception] = DraftError,
+    ) -> None:
         self.reject_until = reject_until
         self.questions = questions
+        self.draft_failures = draft_failures
+        self.error = error
         self.renders = 0
         self.bound = 0
         self.backend: GenerationBackend | None = None
@@ -74,8 +84,14 @@ class FlakyWorkflow:
         return split.params
 
     def render(self, spec: object, rng: random.Random, locale: str) -> str:
-        """输入：spec、RNG、语言。输出：带渲染次数的 state。预期行为：每次调用都计数。"""
+        """输入：spec、RNG、语言。输出：带渲染次数的 state。
+
+        预期行为：每次调用都计数；前 `draft_failures` 次直接抛 `error`（模拟「后端没照
+        契约写」这类生成期异常），计数照旧加上去，所以「重渲染了几次」看得出来。
+        """
         self.renders += 1
+        if self.renders <= self.draft_failures:
+            raise self.error(f"第 {self.renders} 次渲染没照契约写")
         return f"state-{spec['i']}-{self.renders}"
 
     def ask(self, spec: object, rng: random.Random, locale: str) -> list[LabeledQuestion]:
@@ -225,3 +241,43 @@ def test_render_attempts_must_be_positive(tmp_path: Path, monkeypatch: object) -
     with pytest.raises(ValueError, match="render_attempts"):
         _run(monkeypatch, tmp_path, workflow, attempts=0)
     assert workflow.renders == 0
+
+
+def test_draft_error_is_rerendered(tmp_path: Path, monkeypatch: object) -> None:
+    """输入：第一次渲染抛 `DraftError`（后端没照契约写），第二次正常。
+
+    输出：RunResult。预期行为：重渲染一次就过，`render_retries` 记 1 次、零拒绝记录——
+    「模型没照区间写」是采样抖动，重渲染正是它该走的路（契约级失败**单发**会把
+    四成的好样本白白丢掉，实测见 PLAN 10.83）。
+    """
+    workflow = FlakyWorkflow(reject_until=0, draft_failures=1)
+    result = _run(monkeypatch, tmp_path, workflow, attempts=2)
+    assert workflow.renders == 2
+    assert result.accepted == 1
+    assert result.rejected == []
+    assert result.stats["render_retries"] == 1
+
+
+def test_draft_error_stops_at_the_cap(tmp_path: Path, monkeypatch: object) -> None:
+    """输入：怎么渲染都抛 `DraftError`。输出：RunResult。
+
+    预期行为：渲染次数正好等于上限（不无限重试），最后一条进拒绝、码是 `E_ASSEMBLE`。
+    """
+    workflow = FlakyWorkflow(reject_until=0, draft_failures=99)
+    result = _run(monkeypatch, tmp_path, workflow, attempts=3)
+    assert workflow.renders == 3
+    assert result.accepted == 0
+    assert [row["code"] for row in result.rejected] == [pipeline.E_ASSEMBLE]
+    assert result.stats["render_retries"] == 2
+
+
+def test_plain_exception_is_still_not_rerendered(tmp_path: Path, monkeypatch: object) -> None:
+    """输入：生成期抛 `KeyError`（没有 `retryable_for_case` 标记）。
+
+    输出：RunResult。预期行为：只渲染一次——判据看的是**异常自己声明的标记**，
+    不是「异常是不是 ValueError」，所以生成器 bug 照旧藏不住。
+    """
+    workflow = FlakyWorkflow(reject_until=0, draft_failures=99, error=KeyError)
+    result = _run(monkeypatch, tmp_path, workflow, attempts=3)
+    assert workflow.renders == 1
+    assert result.stats["render_retries"] == 0

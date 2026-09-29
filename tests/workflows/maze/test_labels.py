@@ -12,7 +12,11 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
+import re
 from collections import deque
+from typing import Final
+
+import pytest
 
 
 from jc import assemble, pipeline, workflow as workflow_mod
@@ -21,8 +25,14 @@ from workflows.maze import questions as maze_questions
 from workflows.maze import spec as maze_spec
 from workflows.maze.workflow import ParsedMaze, parse_state, roundtrip_diff
 
-LOC = locales.load("zh")
-DIR_WORDS = ("向上", "向右", "向下", "向左")
+#: 题面里的标记字母：只认**单独一个**大写 A–D。
+#: 这里刻意与 `judges.LETTER_PATTERN` 写同一条读法（答案复算部分仍然是各写各的）：
+#: 按「第一个落在 ABCD 里的字符」读，英文题面里的 `Can` / `Does` 会撞上 C / D，
+#: 真机 en 侧 782 条拒稿就是这么来的。两条读法的一致性由下面那条模板不变量测试保证。
+LETTER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\b[A-D]\b")
+
+#: 测试要覆盖的语言：判别器读标记 / 读方向都是语言相关的，只跑一种等于留盲区。
+LANGS: Final[tuple[str, ...]] = ("zh", "en")
 
 
 def family_of(qid: str) -> str:
@@ -44,16 +54,22 @@ def dist_to_set(mask: tuple[int, ...], rows: int, cols: int, sources: set[int]) 
 
 
 def letter_in(text: str) -> str | None:
-    """题面里出现的标记字母（A~D）。"""
-    for ch in text:
-        if ch in "ABCD":
-            return ch
-    return None
+    """题面里出现的标记字母（A~D）。
+
+    预期行为：恰好一个才认；零个（读不出）或两个（题面本身有歧义）都不猜。
+    """
+    found = LETTER_PATTERN.findall(text)
+    return found[0] if len(found) == 1 else None
 
 
-def dir_in(text: str) -> int | None:
-    """题面里出现的方向（返回方向序号）。"""
-    for idx, word in enumerate(DIR_WORDS):
+def dir_in(text: str, loc: dict[str, JsonValue]) -> int | None:
+    """题面里出现的方向（返回方向序号）。
+
+    输入：题面文本、语言字典。
+    预期行为：方向词表取自 `loc["moves"]`；`loc` 没有默认值——语言必须由调用方显式给，
+    给个 zh 的默认值就等于把「另一种语言读不出方向」这个坑重新挖回来。
+    """
+    for idx, word in enumerate(loc["moves"].values()):
         if word in text:
             return idx
     return None
@@ -80,8 +96,15 @@ def expected_exits_level(mask: tuple[int, ...], rows: int, cols: int, cell: int)
     return 2
 
 
-def check_sample(sample: dict[str, JsonValue], parsed: ParsedMaze) -> list[str]:
-    """逐题独立复算，返回不一致说明列表（空 = 全部一致）。"""
+def check_sample(
+    sample: dict[str, JsonValue], parsed: ParsedMaze, loc: dict[str, JsonValue]
+) -> list[str]:
+    """逐题独立复算，返回不一致说明列表（空 = 全部一致）。
+
+    输入：样本、反解出来的迷宫、语言字典。
+    预期行为：选项文案、方向词表都从 `loc` 取——**语言必须由调用方给**，写死一种语言会让
+    另一种语言的样本读不出标记与方向（真机 en 侧就是这么错掉一半样本的）。
+    """
     problems: list[str] = []
     mask, rows, cols = parsed.mask, parsed.rows, parsed.cols
     start, exit_cell = parsed.start, parsed.exit
@@ -109,7 +132,7 @@ def check_sample(sample: dict[str, JsonValue], parsed: ParsedMaze) -> list[str]:
             if len(expected_dirs) != 1:
                 problems.append(f"{qid}: 最优下一步不唯一（{expected_dirs}）")
                 continue
-            word = DIR_WORDS[expected_dirs[0]]
+            word = str(list(loc["moves"].values())[expected_dirs[0]])
             matches = [o for o in options if o.startswith(word)]
             if len(matches) != 1:
                 problems.append(f"{qid}: 选项里找不到方向 {word} 的唯一项")
@@ -123,17 +146,17 @@ def check_sample(sample: dict[str, JsonValue], parsed: ParsedMaze) -> list[str]:
             if len(on_path) > 1:
                 problems.append(f"{qid}: 路径上有多个标记，答案不唯一")
                 continue
-            expected = on_path[0] if on_path else LOC["fam"]["path_via"]["none"]
+            expected = on_path[0] if on_path else loc["fam"]["path_via"]["none"]
             if answer_text(question, answer) != expected:
                 problems.append(f"{qid}: 金答案 {answer_text(question, answer)!r} != {expected!r}")
         elif family == "step_result":
             letter = letter_in(text)
-            d = dir_in(text)
+            d = dir_in(text, loc)
             if letter is None or d is None:
                 problems.append(f"{qid}: 题面里读不出标记或方向")
                 continue
             cell = parsed.marks[letter]
-            vocab = LOC["fam"]["step_result"]["options"]
+            vocab = loc["fam"]["step_result"]["options"]
             nxt = grid.neighbor(cell, d, rows, cols)
             if nxt is None:
                 expected = vocab[4]
@@ -150,7 +173,7 @@ def check_sample(sample: dict[str, JsonValue], parsed: ParsedMaze) -> list[str]:
                     f"{qid}: 金答案 {answer_text(question, answer)!r} != 独立复算 {expected!r}"
                 )
         elif family == "can_move":
-            letter, d = letter_in(text), dir_in(text)
+            letter, d = letter_in(text), dir_in(text, loc)
             if letter is None or d is None:
                 problems.append(f"{qid}: 题面里读不出标记或方向")
                 continue
@@ -214,17 +237,25 @@ def check_sample(sample: dict[str, JsonValue], parsed: ParsedMaze) -> list[str]:
 
 
 def generate(
-    seed: int, config: maze_spec.MazeConfig, cases: list[maze_spec.MazeCase]
+    seed: int,
+    config: maze_spec.MazeConfig,
+    cases: list[maze_spec.MazeCase],
+    lang: str = "zh",
 ) -> list[tuple[dict[str, JsonValue], maze_spec.MazeSpec, ParsedMaze, maze_spec.MazeCase]]:
-    """在内存里跑一遍「计划 → 采样 → 渲染 → 出题 → 组装」，产出 (sample, spec, parsed, case)。"""
+    """在内存里跑一遍「计划 → 采样 → 渲染 → 出题 → 组装」，产出 (sample, spec, parsed, case)。
+
+    输入：种子、采样配置、case 列表、语言。
+    预期行为：渲染与出题都用 `lang`——语言必须能换，不然「另一种语言读不出标记」这类错
+    永远只会在真机上撞见。
+    """
     workflow = workflow_mod.load("maze")
     out = []
     for seq, case in enumerate(cases):
         rng = pipeline.sample_rng(seed, workflow.name, "train", seq)
         split = workflow.plan_sample(rng, config, case, seq)
         maze = workflow.sample(rng, split)
-        state = workflow.render(maze, rng, "zh")
-        labeled = workflow.ask(maze, rng, "zh")
+        state = workflow.render(maze, rng, lang)
+        labeled = workflow.ask(maze, rng, lang)
         sample = assemble.assemble_sample(f"maze-train-{seq:07d}", state, labeled, rng)
         parsed = parse_state(state, maze.render)
         assert parsed is not None, f"{case.describe()} 无法反解"
@@ -246,21 +277,96 @@ def small_config() -> maze_spec.MazeConfig:
     )
 
 
-def test_all_labels_match_independent_recomputation() -> None:
+def templates_with(slot: str, loc: dict[str, JsonValue]) -> list[tuple[str, str]]:
+    """列出所有含某个占位符的问法。
+
+    输入：占位符名（`dir` 或 `letter`）、语言字典。
+    输出：[(题族名, 模板文本)]，按 TOML 里的顺序。
+    预期行为：不含该占位符的模板不返回。
+    """
+    found: list[tuple[str, str]] = []
+    for family, entry in loc["fam"].items():
+        for template in entry["q"]:
+            if "{" + slot + "}" in template:
+                found.append((family, template))
+    return found
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_direction_words_are_mutually_unambiguous(lang: str) -> None:
+    """方向词表必须两两互不为子串。
+
+    预期行为：`dir_in` 与判别器都是按**子串**读方向的；一旦某个方向词成了另一个
+    的子串（比如 en 里同时有 `up` 和 `upward`），子串读法就会把方向读错。
+    这条尺子把这个前提钉死——想加新词，先保证词表无包含关系。
+    """
+    loc = locales.load(lang)
+    words = [str(word) for word in loc["moves"].values()]
+    for outer_idx, outer in enumerate(words):
+        for inner_idx, inner in enumerate(words):
+            if outer_idx != inner_idx:
+                assert inner not in outer, (
+                    f"{lang}: 方向词 {inner!r} 是 {outer!r} 的子串，子串读法会读错方向"
+                )
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_placeholder_templates_read_back_exactly(lang: str) -> None:
+    """模板不变量：四个方向 / 四个字母逐个填进模板，读法必须恰好读回那一个。
+
+    输入：语言代码。
+    预期行为：
+    - 含 `{dir}` 的模板填第 i 个方向词后，`dir_in` 必须返回 i；
+    - 含 `{letter}` 的模板填第 i 个字母后，`letter_in` 必须返回该字母。
+
+    这条测试就是真机 en 侧「782 条拒稿」那个 bug 的机器可查版本：模板里任何
+    多余的独立大写字母（`Can` / `Does` 这类）或方向词子串（`end up` 里的 `up`），
+    都会在这里被抓出来。中文同理——若哪天模板把 `{letter}` 紧贴在汉字旁，
+    `\b[A-D]\b` 的边界就不再成立，这条也会红。
+    """
+    loc = locales.load(lang)
+    words = [str(word) for word in loc["moves"].values()]
+    letters = ["A", "B", "C", "D"]
+    dir_templates = templates_with("dir", loc)
+    letter_templates = templates_with("letter", loc)
+    assert dir_templates, f"{lang}: 没有任何含 {{dir}} 的模板，这条尺子失去意义"
+    assert letter_templates, f"{lang}: 没有任何含 {{letter}} 的模板，这条尺子失去意义"
+    for family, template in dir_templates:
+        for idx, word in enumerate(words):
+            text = template.replace("{letter}", "A").replace("{dir}", word)
+            read = dir_in(text, loc)
+            assert read == idx, f"{lang}/{family}: {text!r} 里的方向读成 {read}，应为 {idx}"
+    for family, template in letter_templates:
+        for letter in letters:
+            text = template.replace("{letter}", letter).replace("{dir}", words[0])
+            read = letter_in(text)
+            assert read == letter, f"{lang}/{family}: {text!r} 里的标记读成 {read!r}，应为 {letter!r}"
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_all_labels_match_independent_recomputation(lang: str) -> None:
+    """两种语言各跑全 case 矩阵。
+
+    输入：语言代码。
+    预期行为：渲染、出题、复算都用同一个 `lang`——判别器读标记 / 读方向的逻辑是
+    语言相关的，只跑一种语言会让另一种语言的读法错误永远躲在测试盲区里。
+    """
     workflow = workflow_mod.load("maze")
     config = small_config()
     cases = workflow.build_cases(config)
+    loc = locales.load(lang)
     problems: list[str] = []
-    for sample, maze, parsed, case in generate(20260924, config, cases):
+    for sample, maze, parsed, case in generate(20260924, config, cases, lang):
         diff = roundtrip_diff(maze, parsed)
         assert not diff, f"{sample['id']} 往返校验失败：{diff}"
         problems.extend(
-            f"{sample['id']} {case.describe()} {p}" for p in check_sample(sample, parsed)
+            f"{sample['id']} {case.describe()} {p}" for p in check_sample(sample, parsed, loc)
         )
     assert not problems, "金答案与独立复算不一致：\n" + "\n".join(problems[:20])
 
 
-def test_goal_required_cases_are_present() -> None:
+@pytest.mark.parametrize("lang", LANGS)
+def test_goal_required_cases_are_present(lang: str) -> None:
     """主人点名要的 case：走偏 1 格（往最优路径回走）与沿最优路径走。
 
     不只是数一数，还要从**渲染出来的 state** 反解验证：
@@ -272,7 +378,7 @@ def test_goal_required_cases_are_present() -> None:
     cases = workflow.build_cases(config)
     off_by_one = 0
     next_step_on_path = 0
-    for sample, maze, parsed, _case in generate(20260924, config, cases):
+    for sample, maze, parsed, _case in generate(20260924, config, cases, lang):
         path = grid.shortest_path(parsed.mask, parsed.rows, parsed.cols, parsed.start, parsed.exit)
         path_set = set(path or [])
         current = parsed.current if parsed.current is not None else parsed.start
@@ -289,11 +395,13 @@ def test_goal_required_cases_are_present() -> None:
     assert next_step_on_path > 0, "没有生成「沿最优路径走」的样本"
 
 
-def test_case_dimensions_are_all_exercised() -> None:
-    """七个 case 维度都要真的被覆盖到（不只是出现在矩阵里）。"""
+@pytest.mark.parametrize("lang", LANGS)
+def test_case_dimensions_are_all_exercised(lang: str) -> None:
+    """七个 case 维度都要真的被覆盖到（不只是出现在矩阵里），两种语言各验一遍。"""
     workflow = workflow_mod.load("maze")
     config = small_config()
     cases = workflow.build_cases(config)
+    loc = locales.load(lang)
     seen: dict[str, set] = {
         "format": set(),
         "symbols": set(),
@@ -303,13 +411,13 @@ def test_case_dimensions_are_all_exercised() -> None:
         "deviation": set(),
         "cut": set(),
     }
-    for sample, maze, _parsed, case in generate(20260924, config, cases):
+    for sample, maze, _parsed, case in generate(20260924, config, cases, lang):
         for name, value in workflow.stats_dimensions(case).items():
             seen[name].add(value)
         state = sample["state"]
         if case.history_len > 0 and maze.agent.moves:
             blob = str(state) + str([q.get("instructions") for q in sample["questions"].values()])
-            assert LOC["history"]["prefix"] in blob, "历史没写进 state 或 instructions"
+            assert loc["history"]["prefix"] in blob, "历史没写进 state 或 instructions"
         if case.fmt == maze_spec.FMT_BLOCK_ROWS:
             for question in sample["questions"].values():
                 assert isinstance(question["instructions"], dict), "block_rows 必须把图例塞进 instructions"

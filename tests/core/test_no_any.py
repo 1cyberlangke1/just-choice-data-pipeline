@@ -3,7 +3,7 @@
 为什么要有：`Any` 会让类型检查器在该处彻底闭嘴——等于把「没标注」伪装成「标注了」。
 用户原话：「类型标注全是 any 和没标注有什么区别」。这条把它钉死，防止再长回来。
 
-输入：`src/` `workflows/` `tests/` 下的全部 `*.py` 加仓库根的 `conftest.py`。
+输入：`src/` `workflows/` `tests/` 下的全部 `*.py` 加仓库根那一层的全部 `*.py`。
 输出：无（断言）。
 预期行为：用 **AST** 扫，不用 grep——grep 会把注释、文档、字符串里的 `Any` 也算进去，
 而 AST 只看真正的 import 与注解。想放宽时改 `EXEMPT` 并写清理由，不许整目录豁免。
@@ -29,8 +29,12 @@ from pathlib import Path
 
 import pytest
 
-#: 扫描入口：目录递归扫 `*.py`，单个文件直接扫。
-ROOTS: tuple[str, ...] = ("src", "workflows", "tests", "conftest.py")
+#: 扫描入口：这几个目录递归扫 `*.py`。
+ROOTS: tuple[str, ...] = ("src", "workflows", "tests")
+
+#: 仓库根那一层的散装脚本（`conftest.py`，以及将来可能出现的 `setup.py` / `noxfile.py`）。
+#: 用 glob 而不是写死文件名：写死的话，新加一个根脚本就等于在规则外开了个口子。
+ROOT_GLOB: str = "*.py"
 
 #: 豁免文件：键是相对路径，值是理由。空 = 一个都不豁免。
 EXEMPT: dict[str, str] = {}
@@ -45,19 +49,18 @@ _BANNED = "Any"
 def _sources() -> list[str]:
     """输入：无。输出：待检查文件的相对路径（排序后）。
 
-    预期行为：目录递归取 `*.py` 并跳过 `__pycache__`；单文件入口原样收下。
+    预期行为：目录递归取 `*.py` 并跳过 `__pycache__`；仓库根那一层的 `*.py` 也全收
+    （写死 `conftest.py` 会让新加的根脚本漏网）。
     """
     found: list[str] = []
     for entry in ROOTS:
         path = Path(entry)
-        if path.is_file():
-            found.append(path.as_posix())
-            continue
         for child in path.rglob("*.py"):
             if "__pycache__" in child.parts:
                 continue
             found.append(child.as_posix())
-    return sorted(found)
+    found.extend(path.as_posix() for path in Path().glob(ROOT_GLOB))
+    return sorted(set(found))
 
 
 def _hits_in(node: ast.AST) -> list[int]:

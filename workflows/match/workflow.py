@@ -214,8 +214,10 @@ class MatchWorkflow:
         以及**答案能不能由 state 重算出来**（复用 `judges.check_sample`，与判别器同一把尺，
         这样「老产物」也能事后查）。
         """
-        loc = locales.load(locale)
-        labels = parse.tables_of(loc)
+        locales.load(locale)  # 语言不存在就当场报错，别拖到解析阶段（判定按「任一语言」走）
+        # 用**合并表**反解：产物按 `locales[seq % len]` 轮转渲染，调用方给的语言未必是
+        # 产物那一种；拿单一语言的标签去认，另一种语言的请求会整条「反解不出来」。
+        labels = parse.merged_tables()
         known = set(questions.FAMILIES)
         report: dict[str, JsonValue] = {}
         missing: list[str] = []
@@ -240,7 +242,8 @@ class MatchWorkflow:
                 counts["samples"] += 1
                 try:
                     parsed = parse.parse_state(row["state"], labels)
-                    facts = judges_mod.recompute(parsed, loc)
+                    # 归一化也用合并同义词表（`locales.merged`），理由同上一行。
+                    facts = judges_mod.recompute(parsed, locales.merged())
                 except (ValueError, KeyError) as exc:
                     counts["label_mismatch"] += 1
                     missing.append(f"{split}: 有一条请求反解不出来（{exc}）")
@@ -259,7 +262,7 @@ class MatchWorkflow:
                         index = row["answers"][qid]["choice"]
                         if not isinstance(index, int) or not 0 <= index < len(options):
                             counts["index_bad"] += 1
-                problems = judges_mod.check_sample(row, facts, loc)
+                problems = judges_mod.check_sample_any_locale(row, facts)
                 counts["label_mismatch"] += len(problems)
                 if problems:
                     missing.append(f"{split}: {problems[0]}")

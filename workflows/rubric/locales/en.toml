@@ -1,0 +1,168 @@
+lang = "en"
+language_name = "English"
+
+# Phrases banned from the material: the table names only. The list is deliberately short — the
+# material is natural language, and words like "length" or "form" show up in ordinary prose, so
+# banning them would reject plenty of usable samples. Table names, by contrast, would never show
+# up in a real submission; a hit means the model copied the section structure in.
+banned_intent_phrases = [
+  "material to grade",
+  "material manifest",
+  "score sheet",
+  "band table",
+  "gate table",
+]
+
+[meta]
+body_label = "Material to grade"
+manifest_label = "Material manifest"
+score_label = "Score sheet"
+band_label = "Band table"
+gate_label = "Gate table"
+header = "【{title}】"
+row_prefix = "- "
+paren = " ({text})"
+colon = ": "
+# The "observed" cell prints this mark = that criterion's observed value can only be counted
+# from the material itself.
+count_mark = "count from material"
+manifest_columns = "length | form | data"
+score_columns = "criterion | weight | need | observed; the two rows whose observed cell says \"count from material\" must be counted from the material itself: one placeholder (TODO / FIXME) gives 0, none gives 4; one citation marker (a bracketed number like [1]) gives 4, none gives 1"
+band_columns = "band | low | high; total = the weights of the criteria that are met, and met = observed is at least need"
+gate_columns = "band | no redline | redline; there is exactly one redline: the grounded criterion is not met"
+
+[dims]
+placeholders = "whether the material has a placeholder left in it"
+citations = "whether the material carries citation markers"
+length = "material length"
+form = "material form"
+data = "whether the material has quantified data"
+
+[prompt]
+intro = "Below is the feature list of **one piece of material to grade**. Write the material itself — the few lines of text that get handed to a grader."
+bullet = "- {dim}: {brief} ({hint})"
+rules = [
+  "The material must read like the paragraphs of a real submission: natural {language}, only the material itself, no self-explanation and no headings",
+  "The sentence count must fall in the range the material length names: short 3-6 sentences, medium 6-12 sentences, long 10-18 sentences. A sentence is any run of text ending in a period, question mark, exclamation mark, or semicolon, and in bulleted form every line counts as one. The lower bound is a hard requirement: count your own sentences before you finish and keep writing until you reach it - in prose form you may spread the material over two or three paragraphs, in bulleted form just add more bullets (every sentence must carry real content, do not split one short clause into several just to pad)",
+  "If the material form is \"bulleted\", at least one line must start with `- `; if it is \"prose\", not a single line may start with `- `",
+  "\"Has quantified data\" only looks at Arabic digits: with data, write at least one digit; without data, write not a single Arabic digit (the digit inside a citation marker like [1] does not count)",
+  "The placeholder flag must be obvious at a glance: if yes, leave one `TODO` or `FIXME` behind (like \"TODO: fill in the load-test numbers\"); if no, leave none",
+  "The citation flag must be obvious too: if yes, write one bracketed number like `[1]` (like \"... twice as fast as the previous build[1]\"); if no, write none",
+  "Do not write Markdown fences, do not write line numbers, and do not write the names \"material to grade / material manifest / score sheet / band table / gate table\"",
+  "Do not use the name of any real company, product, or codebase — invent fictitious names",
+]
+
+[feature.placeholders.no]
+brief = "no placeholder left behind"
+hint = "not a single `TODO` / `FIXME`; the material has to look finished"
+
+[feature.placeholders.yes]
+brief = "a placeholder left behind"
+hint = "leave one unfinished trace, e.g. \"TODO: fill in the load-test numbers\""
+
+[feature.citations.no]
+brief = "no citation marker"
+hint = "not a single bracketed number like `[1]`"
+
+[feature.citations.yes]
+brief = "a citation marker"
+hint = "write one bracketed number, e.g. \"... twice as fast as the previous build[1]\""
+
+[feature.length.short]
+brief = "a short material"
+hint = "3-6 sentences"
+
+[feature.length.medium]
+brief = "a medium-length material"
+hint = "6-12 sentences"
+
+[feature.length.long]
+brief = "a long material"
+hint = "10-18 sentences; anything under 10 is discarded outright"
+
+[feature.form.prose]
+brief = "running prose"
+hint = "not a single line may start with `- `; use continuous sentences"
+
+[feature.form.bulleted]
+brief = "a bulleted list"
+hint = "at least one line starts with `- `; the other lines may be bullets too"
+
+[feature.data.none]
+brief = "no quantified data"
+hint = "not a single Arabic digit (a spelled-out number like \"three\" does not count)"
+
+[feature.data.numbers]
+brief = "quantified data"
+hint = "at least one Arabic digit, e.g. \"latency dropped from 120ms to 80ms\""
+
+[criterion]
+complete = "complete"
+grounded = "grounded"
+concise = "concise"
+formatted = "formatted"
+quantified = "quantified"
+
+[verify]
+intro = "Below is one piece of material to grade. Read **only the material itself** and reverse-solve its two features from the given options."
+state_header = "【Full state】"
+questions_header = "【Questions】"
+option_line = "   - {name}: {desc}"
+
+[trace.placeholders]
+q = "Does the material have a placeholder left in it (an unfinished trace such as `TODO` or `FIXME`)?"
+[trace.placeholders.criteria]
+yes = "yes: at least one `TODO` or `FIXME` appears"
+no = "no: not a single such trace appears"
+
+[trace.citations]
+q = "Does the material carry citation markers (a bracketed number like `[1]`)?"
+[trace.citations.criteria]
+yes = "yes: at least one bracketed number like `[1]` appears"
+no = "no: not a single such marker appears"
+
+[fam.met]
+q = [
+  "Is criterion {n} of the score sheet ({criterion}) met?",
+  "By the score sheet, does criterion {n} ({criterion}) count as met?",
+  "Is the observed value of criterion {n} ({criterion}) at least its need?",
+]
+[fam.met.criteria]
+true = "met: this criterion's observed value is at least its need"
+false = "not met: this criterion's observed value is below its need"
+
+[fam.band]
+q = [
+  "Which band does the total score of this score sheet fall in?",
+  "By total score, which band is this score sheet in?",
+  "Which band is this score sheet's total score in?",
+]
+levels = [
+  "low: total at most 5",
+  "mid: total is 6 or 7",
+  "high: total at least 8",
+]
+
+[fam.gate]
+q = [
+  "How should this score sheet be handled?",
+  "Per the band and the redline, how should this score sheet be handled?",
+  "What is the disposition of this score sheet?",
+]
+[fam.gate.criteria]
+accept = "accept: it can be taken as is"
+revise = "revise: fix it and come back"
+reject = "reject: it cannot be taken"
+
+[fam.top]
+q = [
+  "Among the criteria that are not met, which one carries the largest weight?",
+  "Which criterion should be fixed first?",
+  "Among the criteria that are not met, which one is the most severe?",
+]
+[fam.top.criteria]
+complete = "complete (criterion 1, weight 3)"
+grounded = "grounded (criterion 2, weight 3)"
+concise = "concise (criterion 3, weight 2)"
+formatted = "formatted (criterion 4, weight 2)"
+quantified = "quantified (criterion 5, weight 1)"

@@ -34,6 +34,12 @@ from workflows.compact.workflow import CompactWorkflow
 from workflows.browser.workflow import BrowserWorkflow
 from workflows.routing.workflow import RoutingWorkflow
 from workflows.review.workflow import ReviewWorkflow
+from workflows.rubric.workflow import RubricWorkflow
+from workflows.lint.workflow import LintWorkflow
+from workflows.rerank.workflow import RerankWorkflow
+from workflows.citation.workflow import CitationWorkflow
+from workflows.guardrail.workflow import GuardrailWorkflow
+from workflows.autoformat.workflow import AutoformatWorkflow
 
 
 def spans_of(workflow: object, splits: tuple[str, ...]) -> dict[str, set[str]]:
@@ -109,6 +115,12 @@ def value_spans(workflow: object, splits: tuple[str, ...]) -> dict[str, set[str]
         (BrowserWorkflow, ("screen",)),
         (RoutingWorkflow, ("area",)),
         (ReviewWorkflow, ("change_kind",)),
+        (RubricWorkflow, ("length",)),
+        (LintWorkflow, ("genre",)),
+        (RerankWorkflow, ("terms",)),
+        (CitationWorkflow, ("target",)),
+        (GuardrailWorkflow, ("decoy",)),
+        (AutoformatWorkflow, ("topic", "wrap", "variant", "code_family")),
     ],
 )
 def test_value_holdout_is_realized(factory: object, dims: tuple[str, ...]) -> None:

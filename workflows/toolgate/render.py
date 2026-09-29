@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.workflow import DraftError
 
 from . import locales
 from .features import APPROVALS, DECISIONS, POLICIES, REACHES, RULES, TagSet
@@ -125,7 +126,7 @@ def banned_echo(intent: str, loc: dict[str, JsonValue]) -> list[str]:
 
 
 def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
-    """输入：草稿字典、语言字典。输出：无；不合规就抛 `ValueError`。
+    """输入：草稿字典、语言字典。输出：无；不合规就抛 `DraftError`（管线据此重渲染）。
 
     预期行为：意图会**原样**拼进 state，拼进去就洗不掉了，所以拼之前逐条查：
     - 非空、单行、不含 Markdown 围栏；
@@ -135,17 +136,17 @@ def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
     """
     intent = str(data.get("intent", "")).strip()
     if not intent:
-        raise ValueError("草稿的「调用意图」是空的")
+        raise DraftError("草稿的「调用意图」是空的")
     if FENCE_PATTERN.search(intent):
-        raise ValueError("草稿的「调用意图」里混进了 Markdown 围栏")
+        raise DraftError("草稿的「调用意图」里混进了 Markdown 围栏")
     if "\n" in intent:
-        raise ValueError("草稿的「调用意图」是多行——它必须是一句话")
+        raise DraftError("草稿的「调用意图」是多行——它必须是一句话")
     leaked = label_leak(intent, loc)
     if leaked:
-        raise ValueError(f"草稿的「调用意图」把段落名「{leaked}」也写进去了")
+        raise DraftError(f"草稿的「调用意图」把段落名「{leaked}」也写进去了")
     echoed = banned_echo(intent, loc)
     if echoed:
-        raise ValueError(f"草稿的「调用意图」把状态行管的事写进去了：{'、'.join(echoed)}")
+        raise DraftError(f"草稿的「调用意图」把状态行管的事写进去了：{'、'.join(echoed)}")
 
 
 def state_line(tags: TagSet, loc: dict[str, JsonValue]) -> str:

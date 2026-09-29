@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 from jc.jsontypes import JsonValue
+from jc.workflow import DraftError
 
 import re
 from dataclasses import dataclass
@@ -272,7 +273,7 @@ def to_state(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> str:
 
 
 def check_official_domain(tags: TagSet, data: dict[str, JsonValue]) -> None:
-    """输入：注入特征与草稿字典。输出：无；不合规就抛 `ValueError`。
+    """输入：注入特征与草稿字典。输出：无；不合规就抛 `DraftError`。
 
     预期行为：**声称机构身份**（`known_vendor` / `forged_brand`）时「官方域名」字段必须非空，
     陌生个人必须留空。这条不能只靠提示词：实跑里模型整块漏掉了这一行，
@@ -282,6 +283,6 @@ def check_official_domain(tags: TagSet, data: dict[str, JsonValue]) -> None:
     domain = str(data.get("official_domain", "")).strip()
     claims_org = tags.sender != "unknown_personal"
     if claims_org and not domain:
-        raise ValueError("草稿声称了机构身份，却没有写「官方域名」字段——判别器看不出真伪")
+        raise DraftError("草稿声称了机构身份，却没有写「官方域名」字段——判别器看不出真伪")
     if not claims_org and domain:
-        raise ValueError("草稿不声称机构身份（陌生个人），「官方域名」字段必须留空")
+        raise DraftError("草稿不声称机构身份（陌生个人），「官方域名」字段必须留空")

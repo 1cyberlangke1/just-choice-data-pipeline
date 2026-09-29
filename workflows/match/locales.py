@@ -56,3 +56,25 @@ def reverse(table: dict[str, JsonValue]) -> dict[str, JsonValue]:
                 raise ValueError(f"写法 {word!r} 同时属于 {out[word]!r} 与 {key!r}")
             out[word] = key
     return out
+
+
+@lru_cache(maxsize=1)
+def merged() -> dict[str, JsonValue]:
+    """输入：无。输出：只够**归一化**用的合并语言字典（形状与单个语言文件不同）。
+
+    预期行为：`pack` 是各语言 `[pack]` 的并集（键 → 各语言写法），其余键照抄第一份
+    ——`judges.recompute` 从 `loc` 里只取 `pack`（栏名与侧标题是 `parse.merged_tables()` 的事）。
+
+    为什么需要它：产物按 `locales[seq % len]` 轮转渲染，审计拿到的语言未必是产物那一种；
+    拿单一语言的同义词表去归一化，另一种语言的产物会整片读成「包装不在同义词表里」。
+    判别器不受影响：它判的那条样本语言是确定的，另一种语言的写法本来就该算渲染写歪。
+    """
+    pack: dict[str, list[str]] = {}
+    for lang in available():
+        table = load(lang)["pack"]
+        for key, value in table.items():
+            bucket = pack.setdefault(str(key), [])
+            for word in value if isinstance(value, list) else [value]:
+                if str(word) not in bucket:
+                    bucket.append(str(word))
+    return {"pack": pack}

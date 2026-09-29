@@ -198,6 +198,7 @@ class _CaseOutcome:
     judges: list[tuple[str, bool]]  # (判别器名, 是否通过)，只用于统计；不含没判成的
     judge_skips: list[dict[str, JsonValue]] = field(default_factory=list)  # 没判成的（端点故障 / 不适用）
     attempts: int = 1  # 实际渲染了几次（>1 说明前面几次被判别器拒了，重渲染过）
+    retryable: bool = False  # 生成期异常自己声明的「是模型写歪了」标记（见 `_retryable`）
 
 
 def _is_fatal(exc: BaseException) -> bool:
@@ -212,13 +213,16 @@ def _is_fatal(exc: BaseException) -> bool:
 def _retryable(outcome: _CaseOutcome) -> bool:
     """输入：一次尝试的结果。输出：这条样本要不要重渲染。
 
-    预期行为：**只有判别器拒掉**才重渲染（PLAN 6.1 第二道闸「LLM 渲染重渲染，
-    仍不一致才进拒绝」）。生成期与契约级失败不重渲染——那两类是生成器 bug，
-    重渲染只会把 bug 藏起来（PLAN 6.1 第一道闸：拒绝率 >0 视为生成器 bug，要修）。
+    预期行为：**判别器拒掉**重渲染（PLAN 6.1 第二道闸「LLM 渲染重渲染，仍不一致才进拒绝」）；
+    生成期里**自己声明了 `retryable_for_case` 的异常**（`DraftError`：后端没照契约写）
+    同样重渲染——那是采样抖动，不是生成器 bug。其余生成期失败（KeyError 之类）不重渲染，
+    那才是生成器 bug，重渲染只会把 bug 藏起来（PLAN 6.1 第一道闸：拒绝率 >0 视为生成器 bug，要修）。
     """
     if outcome.sample is not None or not outcome.rejected:
         return False
-    return all(row["stage"] == "judge" for row in outcome.rejected)
+    if all(row["stage"] == "judge" for row in outcome.rejected):
+        return True
+    return outcome.retryable
 
 
 def _one_case(
@@ -282,6 +286,7 @@ def _attempt_case(
             sample=None,
             rejected=[{"id": sample_id, "stage": "generate", "code": E_ASSEMBLE, "reason": str(exc)}],
             judges=[],
+            retryable=bool(getattr(exc, "retryable_for_case", False)),
         )
 
     issues = validate.validate_sample(sample)

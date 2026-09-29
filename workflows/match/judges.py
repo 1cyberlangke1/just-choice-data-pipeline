@@ -14,6 +14,7 @@ from __future__ import annotations
 from jc.jsontypes import JsonValue
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
@@ -142,14 +143,59 @@ def expected_of(family: str, facts: Facts, loc: dict[str, JsonValue]) -> str | b
 def check_sample(sample: dict[str, JsonValue], facts: Facts, loc: dict[str, JsonValue]) -> list[str]:
     """输入：样本、从 state 重算出来的事实、语言字典。输出：问题列表（空 = 全部对得上）。
 
-    预期行为：逐题按**题族**重算再比对——choice 比选项描述原文、noul 比布尔、score 比档位。
+    预期行为：与 `check_sample_any_locale` 同一把尺，只是选项描述**只认这一种语言**的写法
+    ——判别器判的是某一条确定的样本，它的语言是确定的，另一种语言的文案就是渲染写歪了。
     做成模块级函数是为了让 `audit` 也能直接复用同一套判据（判别器与审计必须用同一把尺）。
+    """
+    return _compare(sample, facts, lambda family: (expected_of(family, facts, loc),))
+
+
+def expected_variants(family: str, facts: Facts) -> tuple[str | bool | int, ...]:
+    """输入：题族、事实。输出：该题族在**各支持语言**下可接受的答案（去重保序）。
+
+    预期行为：choice 两族的答案是**选项描述原文**（按语言各写一份），所以各语言都收一份；
+    band / noul 与语言无关，取一份即可。未知题族直接报错（与 `expected_of` 同一口径）。
+    """
+    if family in questions.CHOICE_FAMILIES:
+        out: list[str | bool | int] = []
+        for lang in locales.available():
+            text = option_text(family, facts, locales.load(lang))
+            if text not in out:
+                out.append(text)
+        return tuple(out)
+    return (expected_of(family, facts, locales.load(locales.available()[0])),)
+
+
+def check_sample_any_locale(sample: dict[str, JsonValue], facts: Facts) -> list[str]:
+    """输入：样本、从 state 重算出来的事实。输出：问题列表（空 = 全部对得上）。
+
+    预期行为：与 `check_sample` 同一把尺，只是选项描述按**任一支持语言**的写法认——
+    产物按 `locales[seq % len]` 轮转渲染，审计拿到的语言未必是产物那一种；只认一种语言
+    的文案会把另一种语言的产物整片误判成「答案指向 …，按 state 重算是 …」。
+    """
+    return _compare(sample, facts, lambda family: expected_variants(family, facts))
+
+
+def _show(want: tuple[str | bool | int, ...]) -> str:
+    """输入：可接受的答案。输出：给人看的写法（多个候选用 ` / ` 连）。"""
+    return " / ".join(str(value) for value in want)
+
+
+def _compare(
+    sample: dict[str, JsonValue],
+    facts: Facts,
+    acceptable: Callable[[str], tuple[str | bool | int, ...]],
+) -> list[str]:
+    """输入：样本、重算出来的事实、按题族给可接受答案的函数。输出：问题列表（空 = 全部对得上）。
+
+    预期行为：逐题按**题族**重算再比对——choice 比选项描述原文、noul 比布尔、score 比档位。
+    可接受的答案做成元组，是为了让审计一次给出「各语言的选项描述」（判别器只给一个）。
     """
     problems: list[str] = []
     for qid, question in sample["questions"].items():
         family = family_of(qid)
         try:
-            want = expected_of(family, facts, loc)
+            want = acceptable(family)
         except (ValueError, KeyError) as exc:
             problems.append(f"{qid}: 重算不出答案（{exc}）")
             continue
@@ -162,14 +208,14 @@ def check_sample(sample: dict[str, JsonValue], facts: Facts, loc: dict[str, Json
             if not isinstance(index, int) or not 0 <= index < len(options):
                 problems.append(f"{qid}: 答案编号越界（{index}）")
                 continue
-            if options[index] != want:
-                problems.append(f"{qid}: 答案指向 {options[index]}，按 state 重算是 {want}")
+            if options[index] not in want:
+                problems.append(f"{qid}: 答案指向 {options[index]}，按 state 重算是 {_show(want)}")
         elif question["type"] == "noul":
-            if answer["noul"] is not want:
-                problems.append(f"{qid}: 答案是 {answer['noul']}，按 state 重算是 {want}")
+            if answer["noul"] not in want:
+                problems.append(f"{qid}: 答案是 {answer['noul']}，按 state 重算是 {_show(want)}")
         elif question["type"] == "score":
-            if answer["score"] != want:
-                problems.append(f"{qid}: 答案是 {answer['score']}，按 state 重算是 {want}")
+            if answer["score"] not in want:
+                problems.append(f"{qid}: 答案是 {answer['score']}，按 state 重算是 {_show(want)}")
         else:
             problems.append(f"{qid}: 未知题型 {question['type']!r}")
     return problems

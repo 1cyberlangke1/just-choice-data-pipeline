@@ -74,23 +74,21 @@ def test_infer_symbols_reads_the_legend() -> None:
     预期行为：图例不一定在第一行（带历史时第一行是历史文本），所以要扫到第一条含 `=` 的行；
     找不到图例就返回 None（宁可不判，也不猜错符号集）。
     """
-    loc = locales.load("zh")
     # 图例是**单独一行**、条目之间用「, 」分隔（`render.legend_line` 的口径）；
     # 带历史时它不在第一行，所以反推要扫到第一条含 `=` 的行
-    assert audit.infer_symbols("已走过的最近决策（从起点 S 出发）：\n#=墙, .=通道", loc) == "hash"
-    assert audit.infer_symbols({"legend": {"█": "墙", " ": "通道"}}, loc) == "block"
-    assert audit.infer_symbols("没有图例", loc) is None
+    assert audit.infer_symbols("已走过的最近决策（从起点 S 出发）：\n#=墙, .=通道") == "hash"
+    assert audit.infer_symbols({"legend": {"█": "墙", " ": "通道"}}) == "block"
+    assert audit.infer_symbols("没有图例") is None
     assert (
-        audit.infer_symbols("x", loc, [{"legend": {"▓": "墙", "░": "通道"}}]) == "shade"
+        audit.infer_symbols("x", [{"legend": {"▓": "墙", "░": "通道"}}]) == "shade"
     )
 
 
 def test_infer_case_refuses_what_it_cannot_read() -> None:
     """认不出格式 / 符号集时必须返回 None，而不是硬凑一个变体去解析。"""
-    loc = locales.load("zh")
-    assert audit.infer_case(123, loc) is None
-    assert audit.infer_case("没有图例", loc) is None
-    case = audit.infer_case({"passages": []}, loc)
+    assert audit.infer_case(123) is None
+    assert audit.infer_case("没有图例") is None
+    case = audit.infer_case({"passages": []})
     assert case is not None
     assert case.fmt == maze_spec.FMT_PASSAGES
     # passages 不用符号，解析路径也不依赖它——审计固定按 hash 反解
@@ -125,7 +123,7 @@ def test_audit_file_counts_an_unparsable_sample() -> None:
     path = Path("unparsable.jsonl")
     path.write_text(json.dumps({"state": 7, "questions": {}}) + "\n", encoding="utf-8")
     try:
-        counts = audit.audit_file(path, locales.load("zh"))
+        counts = audit.audit_file(path)
     finally:
         path.unlink()
     assert counts["samples"] == 1

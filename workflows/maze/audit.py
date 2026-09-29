@@ -39,14 +39,31 @@ def infer_format(state: object) -> str:
     return "unknown"
 
 
-def infer_symbols(
-    state: object, loc: dict[str, JsonValue], instructions: list[JsonValue] | None = None
-) -> str | None:
+def legend_texts(field: str) -> tuple[str, ...]:
+    """输入：图例字段名（`wall` / `passage`）。输出：各语言下这一格的原文。
+
+    预期行为：图例是随语言渲染的，而审计拿到的语言未必是产物那一种（产物按
+    `locales[seq % len]` 轮转），所以反推符号集时要把各语言的原文都认一遍。
+    """
+    return tuple(str(locales.load(lang)["legend"][field]) for lang in locales.available())
+
+
+def history_prefixes() -> tuple[str, ...]:
+    """输入：无。输出：各语言「历史决策」那一段的前缀。
+
+    预期行为：与 `legend_texts` 同一个道理——拿调用方给的那一种前缀去数「带历史的样本」，
+    另一种语言的产物会被算成「没有历史」，审计就平白报缺。
+    """
+    return tuple(str(locales.load(lang)["history"]["prefix"]) for lang in locales.available())
+
+
+def infer_symbols(state: object, instructions: list[JsonValue] | None = None) -> str | None:
     """从图例反推符号集名字。
 
-    输入：state、语言字典、可选的全部 instructions（block_rows 的图例塞在 instructions 里）。
+    输入：state、可选的全部 instructions（block_rows 的图例塞在 instructions 里）。
     输出：符号集名（hash/block/shade/xo）或 None。
-    预期行为：图例不一定在第一行（带历史时第一行是历史文本），要找到第一条含 `=` 的行。
+    预期行为：图例不一定在第一行（带历史时第一行是历史文本），要找到第一条含 `=` 的行；
+    「哪一格是墙 / 通道」按 `legend_texts` 认，各语言的写法都收。
     """
     legend: dict[str, str] = {}
     if isinstance(state, dict) and isinstance(state.get("legend"), dict):
@@ -65,17 +82,17 @@ def infer_symbols(
             if isinstance(item, dict) and isinstance(item.get("legend"), dict):
                 legend = item["legend"]
                 break
-    wall = next((g for g, text in legend.items() if text == loc["legend"]["wall"]), None)
-    passage = next((g for g, text in legend.items() if text == loc["legend"]["passage"]), None)
+    walls = legend_texts("wall")
+    passages = legend_texts("passage")
+    wall = next((g for g, text in legend.items() if text in walls), None)
+    passage = next((g for g, text in legend.items() if text in passages), None)
     for name, (wall_ch, pass_ch) in maze_spec.SYMBOL_SETS.items():
         if wall == wall_ch and passage == pass_ch:
             return name
     return None
 
 
-def infer_case(
-    state: object, loc: dict[str, JsonValue], instructions: list[JsonValue] | None = None
-) -> maze_spec.RenderCase | None:
+def infer_case(state: object, instructions: list[JsonValue] | None = None) -> maze_spec.RenderCase | None:
     """从产物反推渲染变体（审计用；格式与符号集都是推断出来的）。"""
     fmt = infer_format(state)
     if fmt == "unknown":
@@ -83,7 +100,7 @@ def infer_case(
     if fmt == maze_spec.FMT_PASSAGES:
         symbols = "hash"  # passages 格式不用符号，解析路径不依赖它
     else:
-        symbols = infer_symbols(state, loc, instructions)
+        symbols = infer_symbols(state, instructions)
         if symbols is None:
             return None
     return maze_spec.RenderCase(
@@ -113,12 +130,13 @@ def family_of(qid: str) -> str:
     return "".join(ch for ch in qid if not ch.isdigit()).rstrip("_")
 
 
-def audit_file(path: Path, loc: dict[str, JsonValue]) -> dict[str, JsonValue]:
+def audit_file(path: Path) -> dict[str, JsonValue]:
     """审计一个 JSONL 文件。
 
-    输入：文件路径、语言字典。
+    输入：文件路径。
     输出：计数字典（格式分布、各 case 计数、题族计数、走偏 1 格的实测结果）。
     预期行为：解析不出来的样本计入 unparsed；走偏 1 格要重新算距离，不能只数题族。
+    「带历史」按各语言的前缀都试一遍（`history_prefixes`），不看调用方给的语言。
     """
     counts: dict[str, JsonValue] = {
         "samples": 0,
@@ -142,20 +160,20 @@ def audit_file(path: Path, loc: dict[str, JsonValue]) -> dict[str, JsonValue]:
         state = sample["state"]
         blob = str(state) + str([q.get("instructions") for q in sample["questions"].values()])
         counts["formats"][infer_format(state)] += 1
-        if loc["history"]["prefix"] in blob:
+        if any(prefix in blob for prefix in history_prefixes()):
             counts["history"] += 1
         if any("→" in option for q in sample["questions"].values() for option in (q.get("criteria") or {})):
             counts["option_cell"] += 1
         if maze_spec.GLYPH_TRAIL in str(state) or "trail" in str(state):
             counts["trail"] += 1
         instructions = [q.get("instructions") for q in sample["questions"].values()]
-        case = infer_case(state, loc, instructions)
+        case = infer_case(state, instructions)
         parsed: ParsedMaze | None = parse_state(state, case) if case else None
         if parsed is None:
             counts["unparsed"] += 1
             counts["unparsed_formats"][infer_format(state)] += 1
             counts["unparsed_symbols"][
-                str(infer_symbols(state, loc, instructions)) if case is None else "case_ok"
+                str(infer_symbols(state, instructions)) if case is None else "case_ok"
             ] += 1
             continue
         if parsed.current is None:
@@ -185,7 +203,7 @@ def audit_run(run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[dict
     输入：run 目录、切分列表、语言。
     输出：(各切分计数, 缺失项列表)。预期行为：缺失项为空才算通过。
     """
-    loc = locales.load(locale)
+    locales.load(locale)  # 语言不存在就当场报错，别拖到解析阶段（判定按「任一语言」走）
     report: dict[str, JsonValue] = {}
     missing: list[str] = []
     for split in splits:
@@ -193,7 +211,7 @@ def audit_run(run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[dict
         if not path.exists():
             missing.append(f"{split}.jsonl 不存在")
             continue
-        counts = audit_file(path, loc)
+        counts = audit_file(path)
         report[split] = counts
         if len([f for f in counts["formats"] if f != "unknown"]) < 3:
             missing.append(f"{split}：渲染格式少于 3 种（{dict(counts['formats'])}）")

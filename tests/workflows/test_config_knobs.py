@@ -27,6 +27,12 @@ from workflows.compact.workflow import CompactConfig
 from workflows.browser.workflow import BrowserConfig
 from workflows.routing.workflow import RoutingConfig
 from workflows.review.workflow import ReviewConfig
+from workflows.rubric.workflow import RubricConfig
+from workflows.lint.workflow import LintConfig
+from workflows.rerank.workflow import RerankConfig
+from workflows.citation.workflow import CitationConfig
+from workflows.guardrail.workflow import GuardrailConfig
+from workflows.autoformat.workflow import AutoformatConfig
 
 #: (config 类, 旋钮名)：每个取值表清空后都必须当场报错。
 EMPTY_POOLS: tuple[tuple[type, str], ...] = (
@@ -87,6 +93,17 @@ EMPTY_POOLS: tuple[tuple[type, str], ...] = (
     (BrowserConfig, "phrasing_pool"),
     (RoutingConfig, "phrasing_pool"),
     (ReviewConfig, "phrasing_pool"),
+    (RubricConfig, "phrasing_pool"),
+    (LintConfig, "phrasing_pool"),
+    (RerankConfig, "phrasing_pool"),
+    (CitationConfig, "phrasing_pool"),
+    (GuardrailConfig, "phrasing_pool"),
+    (AutoformatConfig, "topics"),
+    (AutoformatConfig, "wraps"),
+    (AutoformatConfig, "shapes"),
+    (AutoformatConfig, "variants"),
+    (AutoformatConfig, "code_families"),
+    (AutoformatConfig, "phrasing_pool"),
 )
 
 #: (config 类, 旋钮名)：区间类旋钮，元素个数不对时必须当场报错。
@@ -132,6 +149,12 @@ def test_bad_bounds_report_field(config_cls: type, field: str) -> None:
         BrowserConfig,
         RoutingConfig,
         ReviewConfig,
+        RubricConfig,
+        LintConfig,
+        RerankConfig,
+        CitationConfig,
+        GuardrailConfig,
+        AutoformatConfig,
     ],
 )
 def test_defaults_still_construct(config_cls: type) -> None:

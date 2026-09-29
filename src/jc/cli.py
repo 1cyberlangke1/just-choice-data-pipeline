@@ -11,11 +11,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Mapping
 from pathlib import Path
 
 
 from . import pipeline, validate
+from .jsontypes import JsonValue
 from .workflow import discover, load
 
 
@@ -32,6 +34,31 @@ def _load_backend(path: str) -> object:
     from .backend import build_backend, load_config
 
     return build_backend(load_config(path), probe=True)
+
+
+def _locale_for_split(run_dir: Path, split: str, explicit: str | None) -> str:
+    """输入：run 目录、切分名、显式指定的语言（可能为 None）。输出：读这个切分该用的语言。
+
+    预期行为：显式给了就用它；没给就读 `manifest-<split>.json` 里**这个 run 自己记的语言**
+    ——产物是哪种语言，审计就得用哪种语言读。这不是洁癖：实测 en 产物按默认的 zh 口径读，
+    `shell` 的审计在 9 条里报出 4 条**假的**「答案与原文矛盾」（判别器读得对，审计读错了）。
+    manifest 记了多种语言时说明这一份产物混了语言，单一语言口径的审计读不了它——如实提醒，
+    并退回第一种语言，不假装结果可信。没有 manifest 的老产物维持老口径（zh）。
+    """
+    if explicit:
+        return explicit
+    manifest = run_dir / f"manifest-{split}.json"
+    if not manifest.is_file():
+        return "zh"
+    meta = json.loads(manifest.read_text(encoding="utf-8"))
+    recorded = [str(item) for item in meta.get("locales", [])] if isinstance(meta, dict) else []
+    if len(recorded) > 1:
+        print(
+            f"提示：{run_dir.name}/{split} 的 manifest 记了多种语言 {recorded}——这一份产物混了语言，"
+            "逐条审计只能按单一语言口径读，结果可能包含假失败；要准确请按语言分开生成，"
+            "或用 --locale 指定一种（那时只保证那一种语言的条目可信）。"
+        )
+    return recorded[0] if recorded else "zh"
 
 
 def _add_workflow_arg(parser: argparse.ArgumentParser) -> None:
@@ -110,7 +137,9 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_workflow_arg(aud)
     aud.add_argument("--dir", required=True, help="run 目录，如 dataset/<run_id>")
     aud.add_argument("--split", action="append", dest="splits", default=None)
-    aud.add_argument("--locale", default="zh")
+    aud.add_argument(
+        "--locale", default=None, help="读产物用哪种语言；不给就读 manifest 里记的（默认 zh）"
+    )
 
     sub.add_parser("workflows", help="列出已注册的 workflow")
 
@@ -150,7 +179,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "audit":
         workflow = load(args.workflow)
         splits = tuple(args.splits) if args.splits else workflow.split_names()
-        report, missing = workflow.audit(Path(args.dir), splits, args.locale)
+        run_dir = Path(args.dir)
+        # 逐切分定语言：一个 run 目录里的不同切分可以是用不同语言生成的，按语言分组调用。
+        by_locale: dict[str, list[str]] = {}
+        for split in splits:
+            by_locale.setdefault(_locale_for_split(run_dir, split, args.locale), []).append(split)
+        report: dict[str, JsonValue] = {}
+        missing: list[str] = []
+        for locale, group in by_locale.items():
+            part, part_missing = workflow.audit(run_dir, tuple(group), locale)
+            report.update(part)
+            missing.extend(part_missing)
         for split, counts in report.items():
             print(f"=== {split}：{counts.get('samples', 0)} 条 ===")
             for key, value in counts.items():

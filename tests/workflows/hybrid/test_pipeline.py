@@ -339,3 +339,23 @@ def test_cli_lists_cases_and_audits(
     out = capsys.readouterr().out
     assert "审计通过" in out
     assert "options_bad" in out and "index_bad" in out
+
+
+def test_case_limit_truncates_after_the_split_slice() -> None:
+    """输入：带 `case_limit` 的采样参数。输出：无。
+
+    预期行为：`case_limit` 在哈希桶切片**之后**截取——小批量试跑要落在生产同一份同分布
+    切分里；先截取再切片会让「取前 N 个」随切分漂移，试跑看到的分布就不是生产那一份。
+    """
+    full = sp.HybridConfig(split="train")
+    sliced = hy_workflow.cases_for(full)
+    limited = hy_workflow.cases_for(dataclasses.replace(full, case_limit=10))
+    assert limited == sliced[:10]
+    assert len(limited) == min(10, len(sliced))
+    assert hy_workflow.cases_for(dataclasses.replace(full, case_limit=0)) == sliced
+
+
+def test_negative_case_limit_is_rejected_at_construction() -> None:
+    """输入：`case_limit=-1`。输出：无。预期行为：构造期就报人话，不拖到切片时被静默曲解。"""
+    with pytest.raises(ValueError, match="case_limit 不能为负"):
+        sp.HybridConfig(split="train", case_limit=-1)

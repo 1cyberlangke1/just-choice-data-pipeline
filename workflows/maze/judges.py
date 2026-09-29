@@ -11,8 +11,10 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
+import re
 from collections import deque
 from dataclasses import dataclass
+from typing import Final
 
 
 from jc.judge import Verdict
@@ -20,6 +22,12 @@ from jc.judge import Verdict
 from . import grid, locales
 from . import spec as maze_spec
 from .workflow import ParsedMaze, parse_state, roundtrip_diff
+
+#: 从题面文本里认「标记格」的字母：必须是**单独一个**大写 A–D。
+#: 不能用「第一个落在 ABCD 里的字符」——英文模板里的 `Can` / `Does` 会先撞上 C / D，
+#: 于是认错标记格（真机 en 侧 782 条拒稿里 273 条死胡同题就是这么来的，还撞出过 KeyError）。
+#: `\b` 对中文同样成立：中文模板里字母两侧是空格。
+LETTER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\b[A-D]\b")
 
 
 @dataclass(frozen=True)
@@ -140,8 +148,10 @@ class LabelJudge:
     ) -> object | None:
         """独立复算某题的期望答案；无法判定时返回 None（跳过）。"""
         mask, rows, cols = parsed.mask, parsed.rows, parsed.cols
-        letters = [ch for ch in text if ch in "ABCD"]
-        letter = letters[0] if letters else None
+        letters = LETTER_PATTERN.findall(text)
+        # 恰好一个才认；一个都没有（读不出）或有两个（题面本身有歧义）都不猜——返回 None 跳过，
+        # 宁可少判一条，也不要拿错标记格去比答案。
+        letter = letters[0] if len(letters) == 1 else None
         dir_idx = next((i for i, w in enumerate(loc["moves"].values()) if w in text), None)
         if family in ("next_step", "off_by_one"):
             if dist_exit[current] < 0:

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.workflow import DraftError
 
 from . import locales
 from .features import CATALOG, Candidate, Needs, TagSet
@@ -98,7 +99,7 @@ def label_leak(text: str, loc: dict[str, JsonValue]) -> str:
 
 
 def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
-    """输入：草稿字典、语言字典。输出：无；不合规就抛 `ValueError`。
+    """输入：草稿字典、语言字典。输出：无；不合规就抛 `DraftError`（管线据此重渲染）。
 
     预期行为：请求那一行会**原样**拼进 state，拼进去就洗不掉了，所以拼之前逐条查：
     - 非空、单行、不含 Markdown 围栏；
@@ -107,18 +108,18 @@ def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
     """
     request = str(data.get("request", "")).strip()
     if not request:
-        raise ValueError("草稿的「请求」是空的")
+        raise DraftError("草稿的「请求」是空的")
     if FENCE_PATTERN.search(request):
-        raise ValueError("草稿的「请求」里混进了 Markdown 围栏")
+        raise DraftError("草稿的「请求」里混进了 Markdown 围栏")
     if "\n" in request:
-        raise ValueError("草稿的「请求」是多行——它必须是一句话")
+        raise DraftError("草稿的「请求」是多行——它必须是一句话")
     leaked = label_leak(request, loc)
     if leaked:
-        raise ValueError(f"草稿的「请求」把段落名「{leaked}」也写进去了")
+        raise DraftError(f"草稿的「请求」把段落名「{leaked}」也写进去了")
     lowered = request.lower()
     named = [cand.name for cand in CATALOG if cand.name in lowered]
     if named:
-        raise ValueError(f"草稿的「请求」里出现了候选模型名：{'、'.join(named)}")
+        raise DraftError(f"草稿的「请求」里出现了候选模型名：{'、'.join(named)}")
 
 
 def catalog_line(cand: Candidate, loc: dict[str, JsonValue]) -> str:

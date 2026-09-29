@@ -94,9 +94,9 @@ def audit_run(
 ) -> tuple[dict[str, JsonValue], list[str]]:
     """输入：run 目录、切分、语言。输出：(各切分计数, 缺失项列表)。"""
     loc = locales.load(locale)  # 语言不存在就当场报错，别拖到解析阶段
-    canonical_queue = render.queue_rule_rows(loc)
+    canonical_queue = render.queue_rule_row_variants()
     canonical_priority = render.priority_rows(loc)
-    canonical_flags = render.flag_rows(loc)
+    canonical_flags = render.flag_row_variants()
     report: dict[str, JsonValue] = {}
     missing: list[str] = []
     for split in splits:
@@ -134,11 +134,11 @@ def audit_run(
             if ticket.attrs is None:
                 counts["attrs_bad"] += 1
                 continue
-            if ticket.queue_rules != canonical_queue:
+            if ticket.queue_rules not in canonical_queue:
                 counts["queue_table_bad"] += 1
             if ticket.priority != canonical_priority:
                 counts["priority_table_bad"] += 1
-            if ticket.flags != canonical_flags:
+            if ticket.flags not in canonical_flags:
                 counts["flags_bad"] += 1
             if recorded.get("queue") != queue_from(recorded.get("rule")):
                 counts["queue_bad"] += 1

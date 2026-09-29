@@ -51,6 +51,12 @@ packages = [
     "workflows.browser",
     "workflows.routing",
     "workflows.review",
+    "workflows.rubric",
+    "workflows.lint",
+    "workflows.rerank",
+    "workflows.citation",
+    "workflows.guardrail",
+    "workflows.autoformat",
 ]
 
 [tool.setuptools.package-dir]
@@ -77,6 +83,12 @@ jc = ["locales/judge/*.toml"]
 "workflows.browser" = ["locales/*.toml"]
 "workflows.routing" = ["locales/*.toml"]
 "workflows.review" = ["locales/*.toml"]
+"workflows.rubric" = ["locales/*.toml"]
+"workflows.lint" = ["locales/*.toml"]
+"workflows.rerank" = ["locales/*.toml"]
+"workflows.citation" = ["locales/*.toml"]
+"workflows.guardrail" = ["locales/*.toml"]
+"workflows.autoformat" = ["locales/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

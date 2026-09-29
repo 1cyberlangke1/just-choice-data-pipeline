@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.workflow import DraftError
 
 from . import features, locales
 from .features import TagSet
@@ -143,7 +144,7 @@ def banned_echo(text: str, loc: dict[str, JsonValue]) -> list[str]:
 
 
 def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
-    """输入：草稿字典、语言字典。输出：无；不合规就抛 `ValueError`。
+    """输入：草稿字典、语言字典。输出：无；不合规就抛 `DraftError`（管线据此重渲染）。
 
     预期行为：正文会**原样**拼进 state，拼进去就洗不掉了，所以拼之前逐条查：
     - 非空、单行、不含 Markdown 围栏；
@@ -153,17 +154,17 @@ def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
     """
     body = str(data.get("body", "")).strip()
     if not body:
-        raise ValueError("草稿的「工单正文」是空的")
+        raise DraftError("草稿的「工单正文」是空的")
     if FENCE_PATTERN.search(body):
-        raise ValueError("草稿的「工单正文」里混进了 Markdown 围栏")
+        raise DraftError("草稿的「工单正文」里混进了 Markdown 围栏")
     if "\n" in body:
-        raise ValueError("草稿的「工单正文」是多行——它必须是一行（或一段）")
+        raise DraftError("草稿的「工单正文」是多行——它必须是一行（或一段）")
     leaked = label_leak(body, loc)
     if leaked:
-        raise ValueError(f"草稿的「工单正文」把段落名「{leaked}」也写进去了")
+        raise DraftError(f"草稿的「工单正文」把段落名「{leaked}」也写进去了")
     echoed = banned_echo(body, loc)
     if echoed:
-        raise ValueError(f"草稿的「工单正文」把属性行 / 表里管的事写进去了：{'、'.join(echoed)}")
+        raise DraftError(f"草稿的「工单正文」把属性行 / 表里管的事写进去了：{'、'.join(echoed)}")
 
 
 def attr_row(tags: TagSet) -> tuple[str, str, str]:
@@ -191,6 +192,16 @@ def queue_rule_rows(loc: dict[str, JsonValue]) -> tuple[tuple[str, str, str], ..
 def queue_lines(loc: dict[str, JsonValue]) -> list[str]:
     """输入：语言字典。输出：派单表的每一行（规则名 | 条件 | 队列）。"""
     return [locales.row_line(loc, cells) for cells in queue_rule_rows(loc)]
+
+
+def queue_rule_row_variants() -> frozenset[tuple[tuple[str, str, str], ...]]:
+    """输入：无。输出：各语言下派单表规范形态的集合。
+
+    预期行为：一次 run 里语言按样本轮转（`locales[seq % len]`），所以审计拿到的 `locale`
+    未必是产物那一种；「条件」那一列是随语言渲染的文案，判定必须写「等于**任一**语言的
+    规范表」，拿调用方给的那一种去比会把另一种语言的产物误判成「派单表与规范表对不上」。
+    """
+    return frozenset(queue_rule_rows(locales.load(lang)) for lang in locales.available())
 
 
 def priority_rows(loc: dict[str, JsonValue]) -> tuple[tuple[str, ...], ...]:
@@ -232,6 +243,15 @@ def flag_rows(loc: dict[str, JsonValue]) -> tuple[tuple[str, str], ...]:
 def flag_lines(loc: dict[str, JsonValue]) -> list[str]:
     """输入：语言字典。输出：附加规则的每一行（名 | 说明）。"""
     return [locales.row_line(loc, cells) for cells in flag_rows(loc)]
+
+
+def flag_row_variants() -> frozenset[tuple[tuple[str, str], ...]]:
+    """输入：无。输出：各语言下附加规则规范形态的集合。
+
+    预期行为：与 `queue_rule_row_variants` 同一个道理——「说明」那一列随语言变
+    （关键域清单那条还把域名单按语言填进 `{areas}` 槽位），判定要走「任一语言」。
+    """
+    return frozenset(flag_rows(locales.load(lang)) for lang in locales.available())
 
 
 def to_state(data: dict[str, JsonValue], tags: TagSet, loc: dict[str, JsonValue]) -> str:

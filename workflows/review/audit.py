@@ -108,7 +108,7 @@ def audit_run(
 ) -> tuple[dict[str, JsonValue], list[str]]:
     """输入：run 目录、切分、语言。输出：(各切分计数, 缺失项列表)。"""
     loc = locales.load(locale)  # 语言不存在就当场报错，别拖到解析阶段
-    canonical_rules = render.rule_rows(loc)
+    canonical_rules = render.rule_row_variants()
     canonical_severity = render.severity_rows(loc)
     canonical_gate = render.gate_rows(loc)
     report: dict[str, JsonValue] = {}
@@ -151,7 +151,7 @@ def audit_run(
             problem = body_shape_problem(parsed.body_lines, parsed.manifest)
             if problem:
                 counts["body_shape_bad"] += 1
-            if parsed.rules != canonical_rules:
+            if parsed.rules not in canonical_rules:
                 counts["rules_bad"] += 1
             if parsed.severity != canonical_severity:
                 counts["severity_table_bad"] += 1

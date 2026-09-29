@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from pathlib import Path
 
@@ -422,3 +423,89 @@ def test_audit_passes_when_the_product_also_holds_the_contract(
     monkeypatch.setattr(cli, "load", lambda name: FakeWorkflow())
     assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 0
     assert "审计通过" in capsys.readouterr().out
+
+
+class LocaleSpy:
+    """假 workflow：记下 `audit` 每次被调用时收到的语言。
+
+    预期行为：只实现审计要用的两个方法——这条测试问的是「CLI 拿哪种语言去读产物」，
+    与产物本身无关。
+    """
+
+    name = "fake"
+    version = "0.0.1"
+
+    def __init__(self) -> None:
+        self.seen: list[str] = []
+
+    def split_names(self) -> tuple[str, ...]:
+        """输入：无。输出：一个切分名。"""
+        return ("train",)
+
+    def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[object, list[str]]:
+        """输入：目录 / 切分 / 语言。输出：(计数, 缺失项)。预期行为：把语言记下来。"""
+        self.seen.append(locale)
+        return {split: {"samples": 0} for split in splits}, []
+
+
+def write_manifest(run_dir: Path, split: str, locales: list[str]) -> None:
+    """输入：run 目录、切分、语言列表。输出：无。
+
+    预期行为：写一份最小 manifest——只放审计推断语言时要读的那个键。
+    """
+    (run_dir / f"manifest-{split}.json").write_text(
+        json.dumps({"workflow": "fake", "split": split, "locales": locales}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def test_audit_infers_the_locale_from_the_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """输入：一份 manifest 记着 `["en"]` 的 run 目录。输出：无。
+
+    预期行为：不给 `--locale` 时，审计用**产物自己记的语言**读它。产物是哪种语言就得用哪种读，
+    否则读出来是空串，会报一堆**假的**「答案与原文矛盾」（实测 en 产物按 zh 读，9 条里 4 条假）。
+    """
+    spy = LocaleSpy()
+    write_manifest(tmp_path, "train", ["en"])
+    monkeypatch.setattr(cli, "load", lambda name: spy)
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 0
+    assert spy.seen == ["en"]
+
+
+def test_audit_explicit_locale_beats_the_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """输入：manifest 记着 en，但命令行显式给了 zh。输出：无。预期行为：显式的赢。"""
+    spy = LocaleSpy()
+    write_manifest(tmp_path, "train", ["en"])
+    monkeypatch.setattr(cli, "load", lambda name: spy)
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path), "--locale", "zh"]) == 0
+    assert spy.seen == ["zh"]
+
+
+def test_audit_warns_when_the_run_mixes_locales(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """输入：manifest 记着 `["zh", "en"]` 的 run 目录。输出：无。
+
+    预期行为：混语言的产物没法用单一语言口径逐条读，CLI 要**明说**而不是给个看着像通过的结果；
+    退回第一种语言继续跑，并在提示里点出「结果可能包含假失败」。
+    """
+    spy = LocaleSpy()
+    write_manifest(tmp_path, "train", ["zh", "en"])
+    monkeypatch.setattr(cli, "load", lambda name: spy)
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 0
+    assert "混了语言" in capsys.readouterr().out
+    assert spy.seen == ["zh"]
+
+
+def test_audit_falls_back_to_zh_without_a_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """输入：没有 manifest 的老产物目录。输出：无。预期行为：维持老口径（zh），不报错。"""
+    spy = LocaleSpy()
+    monkeypatch.setattr(cli, "load", lambda name: spy)
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 0
+    assert spy.seen == ["zh"]

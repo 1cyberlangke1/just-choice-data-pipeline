@@ -18,13 +18,13 @@ CASE_LIMIT = 8
 
 
 def make_config(
-    tmp_path: Path, run_id: str, backend: object, *, split: str = "train"
+    tmp_path: Path, run_id: str, backend: object, *, split: str = "train", lang: str = "zh"
 ) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
     return pipeline.RunConfig(
         workflow="review",
         split=split,
-        locales=("zh",),
+        locales=(lang,),
         run_seed=7,
         per_case=1,
         out_root=tmp_path,
@@ -32,6 +32,23 @@ def make_config(
         config_override=review_workflow.ReviewConfig(split=split, case_limit=CASE_LIMIT),
         backend=backend,
     )
+
+
+def test_audit_accepts_the_other_locales_tables(
+    tmp_path: Path, fake_backend: type[FakeBackend]
+) -> None:
+    """输入：一份 **en** 产物，审计时故意传 zh。输出：(报告, 缺失项)。
+
+    预期行为：零缺失——审查规则表的「条件」那一列是随语言渲染的文案，审计必须按
+    「等于任一语言的规范表」判定，而不是拿调用方给的那一种语言去比。反面实测过：
+    混语言的产物按 zh 口径审计，8 条里 4 条被误判成「审查规则表与规范表对不上」；
+    这份全 en 的产物更是 8 条全中。
+    """
+    result = pipeline.run(make_config(tmp_path, "loc", fake_backend(), lang="en"))
+    assert result.accepted == CASE_LIMIT
+    report, missing = workflow_mod.load("review").audit(result.run_dir, ("train",), "zh")
+    assert missing == []
+    assert report["train"]["rules_bad"] == 0
 
 
 def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:

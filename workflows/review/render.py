@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.workflow import DraftError
 
 from . import features, locales
 from .features import TagSet
@@ -180,7 +181,7 @@ def normalize_body_lines(lines: list[str]) -> list[str]:
 
 
 def check_draft(data: dict[str, JsonValue], tags: TagSet, loc: dict[str, JsonValue]) -> None:
-    """输入：草稿字典、注入特征、语言字典。输出：无；不合规就抛 `ValueError`。
+    """输入：草稿字典、注入特征、语言字典。输出：无；不合规就抛 `DraftError`（管线据此重渲染）。
 
     预期行为：正文会**原样**拼进 state，拼进去就洗不掉了，所以拼之前逐条查（前一条
     `body.strip()` 非空就保证了 `split_body_lines` 至少给一行，所以后面不再查空）：
@@ -197,34 +198,34 @@ def check_draft(data: dict[str, JsonValue], tags: TagSet, loc: dict[str, JsonVal
     """
     body = str(data.get("body", ""))
     if not body.strip():
-        raise ValueError("草稿的「改动内容」是空的")
+        raise DraftError("草稿的「改动内容」是空的")
     if FENCE_PATTERN.search(body):
-        raise ValueError("草稿的「改动内容」里混进了 Markdown 围栏")
+        raise DraftError("草稿的「改动内容」里混进了 Markdown 围栏")
     lines = normalize_body_lines(split_body_lines(body))
     leaked = label_leak(body, loc)
     if leaked:
-        raise ValueError(f"草稿的「改动内容」把段落名「{leaked}」也写进去了")
+        raise DraftError(f"草稿的「改动内容」把段落名「{leaked}」也写进去了")
     echoed = banned_echo(body, loc)
     if echoed:
-        raise ValueError(f"草稿的「改动内容」把表名写进去了：{'、'.join(echoed)}")
+        raise DraftError(f"草稿的「改动内容」把表名写进去了：{'、'.join(echoed)}")
     low, high = features.size_line_bounds(tags.size)
     if not low <= len(lines) <= high:
-        raise ValueError(
+        raise DraftError(
             f"草稿的「改动内容」有 {len(lines)} 行，与规模 {tags.size!r} 要求的 {low}~{high} 行对不上"
         )
     marks = {features.diff_mark(line) for line in lines}
     if tags.change_kind == "added":
         if "-" in marks:
-            raise ValueError("草稿的「改动内容」是「新增」，却出现了删除行（- 前缀）")
+            raise DraftError("草稿的「改动内容」是「新增」，却出现了删除行（- 前缀）")
         if "+" not in marks:
-            raise ValueError("草稿的「改动内容」是「新增」，却一行 + 都没有")
+            raise DraftError("草稿的「改动内容」是「新增」，却一行 + 都没有")
     elif tags.change_kind == "deleted":
         if "+" in marks:
-            raise ValueError("草稿的「改动内容」是「删除」，却出现了新增行（+ 前缀）")
+            raise DraftError("草稿的「改动内容」是「删除」，却出现了新增行（+ 前缀）")
         if "-" not in marks:
-            raise ValueError("草稿的「改动内容」是「删除」，却一行 - 都没有")
+            raise DraftError("草稿的「改动内容」是「删除」，却一行 - 都没有")
     elif marks == {" "}:
-        raise ValueError("草稿的「改动内容」是「修改」，却一行都没变（既没有 + 也没有 -）")
+        raise DraftError("草稿的「改动内容」是「修改」，却一行都没变（既没有 + 也没有 -）")
 
 
 def manifest_row(tags: TagSet) -> tuple[str, str, str]:
@@ -251,6 +252,16 @@ def rule_rows(loc: dict[str, JsonValue]) -> tuple[tuple[str, str], ...]:
 def rule_lines(loc: dict[str, JsonValue]) -> list[str]:
     """输入：语言字典。输出：审查规则表的每一行（规则名 | 条件）。"""
     return [locales.row_line(loc, cells) for cells in rule_rows(loc)]
+
+
+def rule_row_variants() -> frozenset[tuple[tuple[str, str], ...]]:
+    """输入：无。输出：各语言下审查规则表规范形态的集合。
+
+    预期行为：一次 run 里语言按样本轮转（`locales[seq % len]`），所以审计拿到的 `locale`
+    未必是产物那一种；「条件」那一列是随语言渲染的文案，判定必须写「等于**任一**语言的
+    规范表」，拿调用方给的那一种去比会把另一种语言的产物误判成「规则表与规范表对不上」。
+    """
+    return frozenset(rule_rows(locales.load(lang)) for lang in locales.available())
 
 
 def severity_rows(loc: dict[str, JsonValue]) -> tuple[tuple[str, ...], ...]:

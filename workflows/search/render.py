@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.workflow import DraftError
 
 from . import locales
 from .features import AUTHORITIES, FRESHNESSES, RULES, VERDICTS, TagSet
@@ -152,7 +153,7 @@ def banned_echo(text: str, loc: dict[str, JsonValue]) -> list[str]:
 
 
 def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
-    """输入：草稿字典、语言字典。输出：无；不合规就抛 `ValueError`。
+    """输入：草稿字典、语言字典。输出：无；不合规就抛 `DraftError`（管线据此重渲染）。
 
     预期行为：三段文本会**原样**拼进 state，拼进去就洗不掉了，所以拼之前逐条查：
     - 三段都非空、单行、不含 Markdown 围栏；
@@ -164,18 +165,18 @@ def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
         text = str(data.get(field, "")).strip()
         name = FIELD_LABELS[field]
         if not text:
-            raise ValueError(f"草稿的「{name}」是空的")
+            raise DraftError(f"草稿的「{name}」是空的")
         if FENCE_PATTERN.search(text):
-            raise ValueError(f"草稿的「{name}」里混进了 Markdown 围栏")
+            raise DraftError(f"草稿的「{name}」里混进了 Markdown 围栏")
         if "\n" in text:
-            raise ValueError(f"草稿的「{name}」是多行——它必须是一行")
+            raise DraftError(f"草稿的「{name}」是多行——它必须是一行")
         leaked = label_leak(text, loc)
         if leaked:
-            raise ValueError(f"草稿的「{name}」把段落名「{leaked}」也写进去了")
+            raise DraftError(f"草稿的「{name}」把段落名「{leaked}」也写进去了")
         if field in BANNED_FIELDS:
             echoed = banned_echo(text, loc)
             if echoed:
-                raise ValueError(f"草稿的「{name}」把来源行管的事写进去了：{'、'.join(echoed)}")
+                raise DraftError(f"草稿的「{name}」把来源行管的事写进去了：{'、'.join(echoed)}")
 
 
 def source_line(tags: TagSet, loc: dict[str, JsonValue]) -> str:

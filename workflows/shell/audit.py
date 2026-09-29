@@ -5,6 +5,11 @@
 预期行为：不重新生成、不调模型——只查**题族是否齐全、题型分布**，以及
 **`destructive` / `elevated` 两个答案与命令原文是否自洽**（这两条纯代码就能重算，
 不需要 spec 就能事后查老产物）。
+
+读命令那一行用 `render.command_of_any`（逐语言试），**与判别器同一个口径**。用调用方给的
+`locale` 去读会出事：产物是 en、调用方按 zh 读时那一行认不出来，重算出来的两个布尔全是
+False，于是报一堆**假的**「答案与原文矛盾」（实测 9 条里 4 条）。同一个字段的两个读者不该有
+两种健壮度——判别器早就用 `command_of_any` 了，审计跟上。
 """
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ def audit_run(
     run_dir: Path, splits: tuple[str, ...], locale: str
 ) -> tuple[dict[str, JsonValue], list[str]]:
     """输入：run 目录、切分、语言。输出：(各切分计数, 缺失项列表)。"""
-    loc = locales.load(locale)
+    locales.load(locale)  # 语言不存在就当场报错，别拖到解析阶段才报
     report: dict[str, JsonValue] = {}
     missing: list[str] = []
     for split in splits:
@@ -47,7 +52,7 @@ def audit_run(
             continue
         for _, row in jsonio.iter_jsonl(path):
             counts["samples"] += 1
-            command = render.command_of(row["state"], loc)
+            command = render.command_of_any(row["state"])
             answers = row["answers"]
             for qid, question in row["questions"].items():
                 family = "".join(ch for ch in qid if not ch.isdigit()).rstrip("_")

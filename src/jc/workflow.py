@@ -28,6 +28,18 @@ if TYPE_CHECKING:  # 只在类型检查时引入：核心层不装 [llm] extra �
     from .backend.types import GenerationBackend
 
 
+class DraftError(ValueError):
+    """后端写出来的草稿没兑现 workflow 的契约（长度 / 标点 / 关键词 / 反解不回来）。
+
+    输入：人话的失败原因。输出：异常（继承 ValueError，历史调用方照旧能 catch）。
+    预期行为：类属性 `retryable_for_case = True` 是**唯一**的判据——管线看到它就认为
+    「这一条是模型没照契约写」，重渲染一次（采样抖动，换个说法往往就对了）；没有这个
+    标记的异常仍然一律当生成器 bug，**绝不重渲染**（重渲染只会把 bug 藏起来）。
+    """
+
+    retryable_for_case = True
+
+
 @dataclass(frozen=True)
 class LabeledQuestion:
     """一道题 + 它的金答案（组装前的内部形态）。

@@ -97,8 +97,8 @@ def audit_run(
     run_dir: Path, splits: tuple[str, ...], locale: str
 ) -> tuple[dict[str, JsonValue], list[str]]:
     """输入：run 目录、切分、语言。输出：(各切分计数, 缺失项列表)。"""
-    loc = locales.load(locale)  # 语言不存在就当场报错，别拖到解析阶段
-    gates = render.gate_rows(loc)
+    locales.load(locale)  # 语言不存在就当场报错，别拖到解析阶段（表按「任一语言」收）
+    gates = render.gate_row_variants()
     criteria = render.criteria_rows()
     report: dict[str, JsonValue] = {}
     missing: list[str] = []
@@ -139,7 +139,7 @@ def audit_run(
             if screen.elements is None:
                 counts["frame_bad"] += 1
                 continue
-            if screen.gates != gates:
+            if screen.gates not in gates:
                 counts["gates_bad"] += 1
             if screen.criteria != criteria:
                 counts["criteria_bad"] += 1

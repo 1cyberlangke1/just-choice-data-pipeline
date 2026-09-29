@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.workflow import DraftError
 
 from . import features, locales
 from .features import TagSet
@@ -144,7 +145,7 @@ def banned_echo(text: str, loc: dict[str, JsonValue]) -> list[str]:
 
 
 def check_draft(data: dict[str, JsonValue], tags: TagSet, loc: dict[str, JsonValue]) -> None:
-    """输入：草稿字典、注入特征、语言字典。输出：无；不合规就抛 `ValueError`。
+    """输入：草稿字典、注入特征、语言字典。输出：无；不合规就抛 `DraftError`（管线据此重渲染）。
 
     预期行为：那句话会**原样**拼进 state，拼进去就洗不掉了，所以拼之前逐条查：
     - 非空、单行、不含 Markdown 围栏；
@@ -155,20 +156,20 @@ def check_draft(data: dict[str, JsonValue], tags: TagSet, loc: dict[str, JsonVal
     """
     request = str(data.get("request", "")).strip()
     if not request:
-        raise ValueError("草稿的「用户请求」是空的")
+        raise DraftError("草稿的「用户请求」是空的")
     if FENCE_PATTERN.search(request):
-        raise ValueError("草稿的「用户请求」里混进了 Markdown 围栏")
+        raise DraftError("草稿的「用户请求」里混进了 Markdown 围栏")
     if "\n" in request:
-        raise ValueError("草稿的「用户请求」是多行——它必须是一行")
+        raise DraftError("草稿的「用户请求」是多行——它必须是一行")
     leaked = label_leak(request, loc)
     if leaked:
-        raise ValueError(f"草稿的「用户请求」把段落名「{leaked}」也写进去了")
+        raise DraftError(f"草稿的「用户请求」把段落名「{leaked}」也写进去了")
     echoed = banned_echo(request, loc)
     if echoed:
-        raise ValueError(f"草稿的「用户请求」把表里管的事写进去了：{'、'.join(echoed)}")
+        raise DraftError(f"草稿的「用户请求」把表里管的事写进去了：{'、'.join(echoed)}")
     label = features.wanted_label(tags)
     if label not in request:
-        raise ValueError(f"草稿的「用户请求」里没有原样出现元素名「{label}」")
+        raise DraftError(f"草稿的「用户请求」里没有原样出现元素名「{label}」")
 
 
 def _row_line(loc: dict[str, JsonValue], cells: tuple[str, ...]) -> str:
@@ -215,6 +216,16 @@ def gate_rows(loc: dict[str, JsonValue]) -> tuple[tuple[str, str], ...]:
 def gate_lines(loc: dict[str, JsonValue]) -> list[str]:
     """输入：语言字典。输出：门控表的每一行（判据 | 说明）。"""
     return [_row_line(loc, cells) for cells in gate_rows(loc)]
+
+
+def gate_row_variants() -> frozenset[tuple[tuple[str, str], ...]]:
+    """输入：无。输出：各语言下门控表规范形态的集合。
+
+    预期行为：一次 run 里语言按样本轮转（`locales[seq % len]`），所以审计拿到的 `locale`
+    未必是产物那一种；「说明」那一列是随语言渲染的文案，判定必须写「等于**任一**语言的
+    规范表」，拿调用方给的那一种去比会把另一种语言的产物误判成「门控表与规范表对不上」。
+    """
+    return frozenset(gate_rows(locales.load(lang)) for lang in locales.available())
 
 
 def criteria_rows() -> tuple[tuple[str, ...], ...]:

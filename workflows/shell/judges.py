@@ -135,8 +135,9 @@ class DialectJudge:
         """输入：样本、真值规格。输出：Verdict。预期行为：只看写法，不看语义。"""
         if not isinstance(spec, ShellSpec):
             return Verdict(True, reason="没有 spec，跳过方言判别", skipped=True)
-        loc = locales.load("zh")  # 命令那一行的标记与语言无关，取一份即可
-        command = render.command_of(sample["state"], loc)
+        # 命令那一行的标记**随语言变**（「拟执行命令：」/「Proposed command: 」），
+        # 写死一种语言会让另一种语言的样本解析出空串，所以逐语言试。
+        command = render.command_of_any(sample["state"])
         has_cmdlet = render.powershell_verb_in(command)
         if spec.tags.dialect == "bash":
             if has_cmdlet:
@@ -162,8 +163,7 @@ class DestructiveJudge:
         """输入：样本、真值规格。输出：Verdict。预期行为：数命令里的破坏性写法。"""
         if not isinstance(spec, ShellSpec):
             return Verdict(True, reason="没有 spec，跳过破坏性判别", skipped=True)
-        loc = locales.load("zh")
-        command = render.command_of(sample["state"], loc)
+        command = render.command_of_any(sample["state"])
         found = destructive_in(command)
         expected = features.is_destructive(spec.tags.goal)
         if found == expected:
@@ -188,8 +188,7 @@ class ElevatedJudge:
         """输入：样本、真值规格。输出：Verdict。预期行为：认提权写法。"""
         if not isinstance(spec, ShellSpec):
             return Verdict(True, reason="没有 spec，跳过提权判别", skipped=True)
-        loc = locales.load("zh")
-        command = render.command_of(sample["state"], loc)
+        command = render.command_of_any(sample["state"])
         found = render.elevated_in(command)
         expected = spec.tags.elevation == "elevated"
         if found == expected:

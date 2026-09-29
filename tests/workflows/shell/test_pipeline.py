@@ -389,3 +389,32 @@ def test_audit_catches_contradictions_and_unknown_families(tmp_path: Path) -> No
     assert any("destructive 答案与命令原文矛盾" in item for item in missing)
     assert any("elevated 答案与命令原文矛盾" in item for item in missing)
     assert any("未知题族" in item for item in missing)
+
+
+def _state_in(command: str, lang: str) -> str:
+    """输入：一条命令、语言。输出：该语言下的完整 state。
+
+    预期行为：给下面那条「跨语言读法」的测试用——`_state` 只会造 zh 的 state。
+    """
+    return render.to_state(
+        {"goal_line": "把这件事做掉", "command": command, "note": "客观描述"},
+        locales.load(lang),
+        "bash",
+    )
+
+
+def test_audit_reads_the_command_regardless_of_the_callers_locale(tmp_path: Path) -> None:
+    """输入：一条 **en** 产物行，审计时故意传 zh。输出：(报告, 缺失项)。
+
+    预期行为：零缺失——审计读「拟执行命令」那一行必须与判别器同一个口径（`command_of_any`，
+    逐语言试），而不是拿调用方给的 `locale` 去认标记。反面实测过：en 产物按 zh 口径读，
+    9 条里报出 4 条**假的**「答案与原文矛盾」（判别器读得对，审计读错了）。
+    """
+    jsonio.write_jsonl(
+        tmp_path / "train.jsonl",
+        [_row(_state_in("rm -rf /home/dev/build", "en"), _full_questions(), _full_answers(True, False))],
+    )
+    report, missing = workflow_mod.load("shell").audit(tmp_path, ("train",), "zh")
+    assert missing == []
+    assert report["train"]["destructive_ok"] == 1
+    assert report["train"]["elevated_ok"] == 1

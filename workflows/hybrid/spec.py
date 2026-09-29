@@ -185,7 +185,8 @@ class HybridConfig:
     """一个切分的采样参数。
 
     字段：各维度的取值表（留出时收窄）、问法编号池、主题方向编号池、
-    `ood_only` 是否只留「含没见过的取值」的 case。
+    `ood_only` 是否只留「含没见过的取值」的 case、
+    `case_limit` >0 时每个切分只取前 N 个组合（小规模试跑用，**会牺牲组合覆盖**）。
     """
 
     split: str = "train"
@@ -198,6 +199,7 @@ class HybridConfig:
     phrasings: tuple[int, ...] = (0, 1, 2)
     themes: tuple[int, ...] = THEME_IDS
     ood_only: bool = False
+    case_limit: int = 0
 
     def __post_init__(self) -> None:
         """输入：无。输出：无。预期行为：空取值表在构造期就报人话，不拖到采样阶段。
@@ -216,6 +218,8 @@ class HybridConfig:
             ("themes", self.themes),
         ):
             require_pool(field, values)
+        if self.case_limit < 0:
+            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
 
 
 def build_cases(config: HybridConfig) -> list[HybridCase]:

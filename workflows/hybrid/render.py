@@ -9,7 +9,7 @@
 
 后端交互只有一步：给它「共几场会 + 规则」，它回每场会的标题与议题。
 草稿的**结构校验**在这里（`check_draft`）：场数对不对、有没有夹带骨架事实、
-标题 / 议题是不是两两不同——不合格直接抛 `DraftInvalidError`，
+标题 / 议题是不是两两不同——不合格直接抛 `DraftError`（管线据此重渲染），
 这样它会被记成「草稿不合格」而不是 provider 故障，不会误伤熔断。
 
 输入/输出：除 `build_task` 产出的任务对象外，本模块不发网络请求、不碰全局状态。
@@ -17,12 +17,13 @@
 
 from __future__ import annotations
 from jc.jsontypes import JsonValue
+from jc.workflow import DraftError
 
 import re
 from dataclasses import dataclass
 from typing import Final
 
-from jc.backend.types import DraftInvalidError, GenerationTask
+from jc.backend.types import GenerationTask
 from pydantic import BaseModel, Field
 
 from . import locales
@@ -404,16 +405,16 @@ def check_draft(
 ) -> dict[str, MeetingText]:
     """输入：规格、语言字典、后端草稿。输出：{槽名: 文本}。
 
-    预期行为：任何不合格都抛 `DraftInvalidError`（人话说明），调用方据此拒绝这一条。
+    预期行为：任何不合格都抛 `DraftError`（人话说明），调用方据此拒绝这一条。
     四条判据：场数对得上、两段文本都干净、标题两两不同、议题两两不同——
     后两条是**题目本身的要求**：`title_of` 的选项就是全部标题，
     两个标题一样的话那道题就有两个正确答案。
     """
     raw = data.get("meetings")
     if not isinstance(raw, list):
-        raise DraftInvalidError(f"草稿里没有 meetings 数组：{data!r}")
+        raise DraftError(f"草稿里没有 meetings 数组：{data!r}")
     if len(raw) != len(spec.meetings):
-        raise DraftInvalidError(f"草稿给了 {len(raw)} 场会，日程里有 {len(spec.meetings)} 场")
+        raise DraftError(f"草稿给了 {len(raw)} 场会，日程里有 {len(spec.meetings)} 场")
     problems: list[str] = []
     written: dict[str, MeetingText] = {}
     for index, item in enumerate(raw):
@@ -428,6 +429,6 @@ def check_draft(
     if not problems:
         problems += _duplicate_problems(written)
     if problems:
-        raise DraftInvalidError("；".join(problems[:5]))
+        raise DraftError("；".join(problems[:5]))
     _ = loc  # 校验不依赖语言：词表检查用的是各语言合并后的全集
     return written

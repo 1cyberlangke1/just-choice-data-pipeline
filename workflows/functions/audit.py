@@ -54,7 +54,9 @@ def audit_run(
         for _, row in jsonio.iter_jsonl(path):
             counts["samples"] += 1
             try:
-                plan = parse.read_request(row["state"], loc)
+                # 用**合并表**反解：产物按 `locales[seq % len]` 轮转渲染，调用方给的语言
+                # 未必是产物那一种；拿单一语言的短语表去认，另一种语言的 state 会读不出工具。
+                plan = parse.read_request(row["state"], locales.merged())
             except (ValueError, KeyError) as exc:
                 counts["label_mismatch"] += 1
                 missing.append(f"{split}: 有一条 state 反解不出来（{exc}）")

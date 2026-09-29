@@ -53,7 +53,9 @@ def audit_run(
     都各记一笔。反解不出来直接记一条「对不上」，不静默跳过。
     """
     loc = locales.load(locale)
-    labels = parse.labels_of(loc)
+    # 用**合并标签表**反解：产物按 `locales[seq % len]` 轮转渲染，调用方给的语言未必是
+    # 产物那一种；拿单一语言的标签去认，另一种语言的局面会整屏「反解不出来」。
+    labels = parse.merged()
     known = set(questions.FAMILIES)
     report: dict[str, JsonValue] = {}
     missing: list[str] = []

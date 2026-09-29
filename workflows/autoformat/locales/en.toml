@@ -1,0 +1,125 @@
+# 结构恢复（autoformat）workflow 的英文文案。
+#
+# 输入：`workflows.autoformat.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为：与 `zh.toml` 同一套结构（见那边的说明）；两边的署名前缀与提示框关键词
+# **互不重叠**，`locales.merged()` 才能拿来当 `reparse` 的合并读法。
+
+[doc]
+context = "Below is a plain-text memo with its markup stripped: no hashes, no bullet characters, no quote markers, and the prose has been hard-wrapped. Every line starts with a line id such as L001. A \"content block\" means: a run of consecutive lines forms one block, blocks are separated by blank lines, and inside a list each item counts as its own block."
+intro = "You write the prose for a plain-text memo. The topic is \"{topic}\". All markup will be stripped and the prose will be hard-wrapped to a fixed width, so the text must contain **no markup at all**."
+mark_rule = "Do not use: hash (#), asterisk (*), dash plus space (- ), greater-than (> ), backticks or underscores; do not write Markdown tables or code fences."
+slot_header = "Below are the content blocks of this memo, in order. Write the text for each one:"
+list_sep = ", "
+slot_line = "- [{index}] {role}: {rule}"
+callout_role = "callout ({kind})"
+forbidden_header = "Also, the text must **not** contain any of these strings - they are the markers of other blocks. Apart from the one block that explicitly requires them, they must not appear anywhere (command lines excepted), or that block will be read wrong:"
+forbidden_line = "- {words}"
+self_check = "Before answering, check every block. Count the words of each title and each list item: if one has more than six words, cut words until it has six or fewer. Is every block inside its character range? Do the blocks that must end with punctuation end with it, and do the others avoid it? Is every forbidden string really absent?"
+output = "Output a single JSON object with the field texts: an array of strings, **in the order of the blocks above**, one string per block. No explanation, no fences."
+
+[mark]
+attribution = ["--"]
+
+[type]
+heading = "heading"
+paragraph = "paragraph"
+list_item = "list item"
+quote = "quote"
+code = "command line"
+callout = "callout"
+
+[type_desc]
+heading = "a short one-line title summarising what follows"
+paragraph = "an ordinary prose paragraph, possibly wrapped over several lines"
+list_item = "one entry of a list, usually a short phrase or a single sentence"
+quote = "somebody else's words, with an attribution at the end"
+code = "command lines that can be typed as-is"
+callout = "a passage that reminds, advises or warns the reader"
+
+[callout_kind]
+note = "note"
+tip = "tip"
+warning = "warning"
+
+[callout_word]
+note = ["Note:", "NB:"]
+tip = ["Tip:", "Suggestion:"]
+warning = ["Warning:", "Caution:"]
+
+[seq_word]
+step = ["First", "Second", "Third", "Then", "Next", "Finally"]
+
+[code_tool]
+build = ["make", "cargo", "npm", "pnpm", "bun", "cmake", "ninja"]
+vcs = ["git", "hg", "svn"]
+container = ["docker", "podman", "kubectl", "nerdctl"]
+package = ["pip", "apt", "apt-get", "brew", "uv", "gem"]
+
+[code_family]
+build = "build"
+vcs = "version control"
+container = "containers"
+package = "dependency management"
+
+[topic_name]
+# 主题名是**模型会顺手抄成标题**的那句话，所以它本身必须是一句合法的标题：长度落在
+# `[limit].heading` 里、不带结尾标点、不含步骤词与提示框关键词（由测试钉住）。
+build = "switching the build system"
+release = "this release's schedule"
+onboarding = "a newcomer's first week"
+incident = "last night's outage"
+migration = "the data migration"
+
+[limit]
+# 与 `zh.toml` 同一套键，但数值按英文放宽：同样一句话要更多字符（真机上按中文的 6~24 写英文标题，
+# 10 条里 6 条被长度判据拒掉）。标题与列表项顶在短行阈值 44 上（**贴着读法边界，不留余量**：
+# 余量只能挡住「模型本来写对却被判错」，挡不住「模型写超」——真机上 40 这个上限换来的是
+# 42/44/44/53 四连拒，把上限抬到读法真正的边界 44 才是判据该有的位置），`parse.limits` 会校验。
+heading = [8, 44]
+item = [8, 44]
+prose = [74, 280]
+quote = [32, 160]
+callout = [52, 210]
+
+[rule]
+heading = "write a short title of three to six words ({min}-{max} characters) summarising what follows; **six words at most**; do **not** end it with any punctuation"
+paragraph = "write readable prose of {min}-{max} characters; it **must end with a full stop, question mark or exclamation mark**"
+list_item_ordered = "write one item of three to six words ({min}-{max} characters), without trailing punctuation; **six words at most**; it **must contain** one of these step words: {steps}"
+list_item_bullet = "write one item of three to six words ({min}-{max} characters), without trailing punctuation; **six words at most**; it must **not** contain any of these step words: {steps}"
+code = "write {min}-{max} \"{family}\" command lines, one per line; each line **must start with** one of {tools}"
+quote = "write one sentence of {min}-{max} characters; it **must end with {mark} followed by a name**"
+callout = "write a passage that alerts the reader, {min}-{max} characters; it **must start with** one of {words} and end with a full stop"
+
+[fam.join]
+q = [
+  "Lines {a} and {b} are adjacent: does line {b} continue the sentence started on line {a}?",
+  "Lines {a} and {b}: is {b} a continuation of {a}?",
+]
+
+[fam.join.criteria]
+true = "{b} continues the sentence on {a}; both lines belong to the same content block"
+false = "{b} does not continue {a}; it starts a new sentence or a new block"
+
+[fam.block_type]
+opt = "{type}: {desc}"
+q = [
+  "Counting from the top, which kind of content block is block number {k}?",
+  "What kind of content is block number {k}, counting from the top?",
+]
+
+[fam.callout_kind]
+q = ["Which kind of callout is the one in the memo?", "Is the callout in the memo a note, a tip or a warning?"]
+
+[fam.list_ordered]
+q = [
+  "Does every entry of the list in the memo carry a step word?",
+  "Does every entry of that list carry a step word such as {steps}?",
+]
+
+[fam.list_ordered.criteria]
+true = "every entry carries a step word such as {steps}, so the entries are ordered steps"
+false = "no entry carries a step word, the entries are just parallel"
+
+[verify]
+ask = "Below is a plain-text memo with its markup stripped and its prose hard-wrapped; every line starts with a line id such as L001. Read **the text alone** and answer three things: (1) the sequence of content-block kinds, where the only allowed values are heading / paragraph / list_item / quote / code / callout; (2) if there is a callout, which kind it is (note / tip / warning), otherwise an empty string; (3) if there is a list, whether it is ordered - the test is **step words**: if every entry carries a word such as {steps} it is ordered, if no entry carries one it is not; if there is no list, false. Blocks are separated by blank lines, and inside a list each item counts as its own block."

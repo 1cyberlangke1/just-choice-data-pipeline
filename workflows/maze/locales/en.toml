@@ -66,7 +66,7 @@ levels = ["on the optimal path", "1 step off", "2 steps off", "3 or more steps o
 
 [fam.step_result]
 q = [
-  "Where do you end up if you step {dir} from marked cell {letter}?",
+  "Where do you land if you step {dir} from marked cell {letter}?",
   "One step {dir} from {letter} lands on what?",
   "What is {dir} of marked cell {letter}, one step away?",
 ]

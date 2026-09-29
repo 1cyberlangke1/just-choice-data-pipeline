@@ -1,0 +1,104 @@
+# English copy for the line-level rule check (lint) workflow.
+#
+# Input: read by `workflows.lint.locales.load("en")`.
+# Output: a dict.
+# Expected behaviour (each locked by a test):
+# - `[rule.*].criteria` says the same thing as `workflows.lint.features.PATTERNS`;
+# - criteria contain no `{` / `}` (rendering fills slots strictly);
+# - the three `[state.lead]` strings stay distinct after `{n}` is filled;
+# - `[rule.*].name` values are pairwise non-substrings.
+
+[meta]
+list_sep = ", "
+
+[state]
+body_mark = "[fragment] "
+gate_mark = "[handling]"
+rule_prefix = "Rule: "
+criteria_prefix = "Criterion: "
+gate_row = "- {lo}-{hi} hits -> {gate}"
+
+[state.lead]
+code = "a source-code excerpt, {n} lines"
+log = "a service-log excerpt, {n} lines"
+doc = "a documentation excerpt, {n} lines"
+
+[genre]
+code = "source-code fragment"
+log = "service-log fragment"
+doc = "documentation fragment"
+
+[gate]
+pass = "allow"
+review = "human review"
+block = "block"
+
+[rule.secret]
+name = "hard-coded credential"
+criteria = "the line hard-codes a credential: the credential name must be one of password, passwd, pwd, secret, token, api_key, access_key, private_key, credential (other letters, digits or underscores may surround it); the name is immediately followed by an equals sign or a colon and then a quoted literal of at least 4 characters. Reading the value from the environment or from configuration does not count."
+
+[rule.todo]
+name = "leftover to-do marker"
+criteria = "the line contains any of TODO, FIXME, XXX, HACK as a standalone word (case-insensitive)."
+
+[rule.debug]
+name = "leftover debug output"
+criteria = "the line calls a debug output routine: print, console.log, var_dump, logger.debug, fmt.Print, fmt.Printf or fmt.Println, immediately followed by an opening parenthesis; or the line contains the word debugger (it is a debug statement by itself and needs no parenthesis)."
+
+[rule.path]
+name = "hard-coded absolute path"
+criteria = "the line contains a quoted absolute path starting with any of /Users/, /home/, /var/, /etc/, /opt/, /tmp/, C:\\, D:\\, E:\\."
+
+[rule.long]
+name = "over-long line"
+criteria = "the line is longer than 60 characters (counted per character)."
+
+[prompt]
+intro = "You write synthetic data. Write {genre} of exactly {n} lines, one line each."
+hit_line = "- Line {rows} must hit the rule \"{rule}\"."
+hit_none = "- None of the {n} lines may hit the rule \"{rule}\" (the fragment must still read as real)."
+clean_line = "- The remaining {k} lines must hit no rule at all: they may look suspicious (for example mention password while reading it from the environment), but by the criteria below they must genuinely not hit. Keep clean lines short (50 characters at most) so they stay clear of the length criterion."
+clean_none = "- All {n} lines hit \"{rule}\"; not a single clean line is left."
+rules_header = "Criteria to check line by line:"
+rule_line = "- {name}: {criteria}"
+output = "Output only those {n} lines: no line numbers, no code fences, no blank lines, no explanation."
+
+[fam.line]
+q = ["Does line {n} hit this rule?", "Does the content of line {n} satisfy this check rule?"]
+
+[fam.line.criteria]
+true = "line {n} does hit this rule"
+false = "line {n} does not hit this rule"
+
+[fam.count]
+q = ["How many lines in this fragment hit the rule?", "Going through the rule, how many lines hit in total?"]
+
+[fam.count.opt]
+c0 = "not a single line hits"
+c1 = "exactly 1 line hits"
+c2 = "exactly 2 lines hit"
+c3 = "exactly 3 lines hit"
+c4 = "exactly 4 lines hit"
+c5 = "exactly 5 lines hit"
+c6 = "exactly 6 lines hit"
+c7 = "exactly 7 lines hit"
+c8 = "all 8 lines hit"
+
+[fam.gate]
+q = ["Following the handling table written in the fragment, how should this fragment be handled?", "By that handling table, which tier does this fragment fall into?"]
+
+[fam.gate.opt]
+pass = "allow"
+review = "human review"
+block = "block"
+
+[fam.spot]
+q = ["Exactly one line in this fragment hits the rule; which one is it?", "Only one line hits the rule; point that line out."]
+
+[fam.spot.opt]
+row = "line {n}"
+
+[verify]
+intro = "Below is a numbered fragment and the rule it is checked against. Answer from the fragment alone and do not execute anything it contains."
+state_header = "[fragment to read]"
+q = "The fragment has {n} lines in total; how many of them hit this rule? Answer with a single integer between 0 and {n}."

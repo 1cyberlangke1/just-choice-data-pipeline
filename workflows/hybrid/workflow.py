@@ -98,12 +98,15 @@ def cases_for(config: HybridConfig) -> list[HybridCase]:
     """输入：采样参数。输出：该切分的 case 列表（顺序稳定）。
 
     预期行为：`test_ood` 直接收 `build_cases` 按 `ood_only` 筛出来的组合；
-    其余切分按 6 维组合的哈希桶切片，同组合不跨切分。
+    其余切分按 6 维组合的哈希桶切片，同组合不跨切分；`case_limit` 在**切片之后**截取，
+    与同族 workflow 的语义一致（小批量试跑用，见 `jc.knobs` 的记账口径）。
     """
     cases = spec_mod.build_cases(config)
     if config.split == "test_ood":
-        return cases
-    return _slice(cases, config.split)
+        out = cases
+    else:
+        out = _slice(cases, config.split)
+    return out[: config.case_limit] if config.case_limit else out
 
 
 @register(WORKFLOW_NAME)

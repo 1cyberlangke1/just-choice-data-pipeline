@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.workflow import DraftError
 
 from . import locales
 from .features import TagSet
@@ -178,22 +179,22 @@ def build_task(tags: TagSet, loc: dict[str, JsonValue], task_id: str) -> Generat
 
 
 def check_command(data: dict[str, JsonValue]) -> None:
-    """输入：草稿字典。输出：无；不合规就抛 `ValueError`。
+    """输入：草稿字典。输出：无；不合规就抛 `DraftError`（管线据此重渲染）。
 
     预期行为：命令必须非空、**单行**、不含 Markdown 围栏。这三条不能只靠提示词——
     实跑里模型爱把命令包进 ``` 或写成多行脚本，那样的 state 没法当「一条命令」审。
     """
     command = str(data.get("command", "")).strip()
     if not command:
-        raise ValueError("草稿的「拟执行命令」是空的")
+        raise DraftError("草稿的「拟执行命令」是空的")
     # 先判围栏：模型爱把命令整条包进 ``` 里，围栏里的换行是它的**结果**而不是独立毛病，
     # 先报「混进围栏」才能指向真正的病因（否则只会看到一句「多行」去瞎猜）。
     if FENCE_PATTERN.search(command):
-        raise ValueError("草稿的「拟执行命令」里混进了 Markdown 围栏")
+        raise DraftError("草稿的「拟执行命令」里混进了 Markdown 围栏")
     if "\n" in command.strip():
-        raise ValueError("草稿的「拟执行命令」是多行——待审命令必须是单行")
+        raise DraftError("草稿的「拟执行命令」是多行——待审命令必须是单行")
     if command.startswith("#!"):
-        raise ValueError("草稿的「拟执行命令」以 shebang 开头——那是脚本，不是一条命令")
+        raise DraftError("草稿的「拟执行命令」以 shebang 开头——那是脚本，不是一条命令")
 
 
 def label_leak(text: str, loc: dict[str, JsonValue]) -> str:
@@ -213,7 +214,7 @@ def label_leak(text: str, loc: dict[str, JsonValue]) -> str:
 
 
 def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
-    """输入：草稿字典、语言字典。输出：无；不合规就抛 `ValueError`。
+    """输入：草稿字典、语言字典。输出：无；不合规就抛 `DraftError`（管线据此重渲染）。
 
     预期行为：三个可见字段都会**原样**拼进 state，拼进去就洗不掉了，所以拼之前逐条查：
     - 「用户目标」「备注」非空、单行，且开头不许再写一遍字段名；
@@ -227,14 +228,14 @@ def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
     note = str(data.get("note", "")).strip()
     for name, text in (("用户目标", goal), ("备注", note)):
         if not text:
-            raise ValueError(f"草稿的「{name}」是空的")
+            raise DraftError(f"草稿的「{name}」是空的")
         if "\n" in text:
-            raise ValueError(f"草稿的「{name}」是多行——它必须是单行")
+            raise DraftError(f"草稿的「{name}」是多行——它必须是单行")
         leaked = label_leak(text, loc)
         if leaked:
-            raise ValueError(f"草稿的「{name}」把字段名「{leaked}」也写进去了")
+            raise DraftError(f"草稿的「{name}」把字段名「{leaked}」也写进去了")
     if first_token(goal) == first_token(str(data.get("command", ""))):
-        raise ValueError("草稿的「用户目标」写成了命令（与命令同一个词起头）")
+        raise DraftError("草稿的「用户目标」写成了命令（与命令同一个词起头）")
 
 
 def elevated_in(command: str) -> bool:

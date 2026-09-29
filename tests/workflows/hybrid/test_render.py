@@ -9,7 +9,7 @@ import re
 
 import pytest
 
-from jc.backend.types import DraftInvalidError
+from jc.workflow import DraftError
 from workflows.hybrid import locales, render
 from workflows.hybrid import spec as sp
 
@@ -235,7 +235,7 @@ def test_check_draft_accepts_a_clean_draft(make_spec: object) -> None:
 
 
 def test_check_draft_rejects_bad_drafts(make_spec: object) -> None:
-    """输入：四种坏草稿。输出：DraftInvalidError（带人话说明）。
+    """输入：四种坏草稿。输出：DraftError（带人话说明）。
 
     预期行为：场数不对 / 不是数组 / 夹带骨架事实 / 标题重复，都要在生成期炸掉——
     炸成「草稿不合格」而不是 provider 故障，才不会误伤熔断。
@@ -243,11 +243,11 @@ def test_check_draft_rejects_bad_drafts(make_spec: object) -> None:
     spec = make_spec(5)
     loc = locales.load("zh")
     task = render.build_task(spec, loc, "t")
-    with pytest.raises(DraftInvalidError, match="没有 meetings 数组"):
+    with pytest.raises(DraftError, match="没有 meetings 数组"):
         render.check_draft(spec, loc, _fake(broken=True).generate(task).data)
-    with pytest.raises(DraftInvalidError, match="草稿给了"):
+    with pytest.raises(DraftError, match="草稿给了"):
         render.check_draft(spec, loc, _fake(count_delta=1).generate(task).data)
-    with pytest.raises(DraftInvalidError, match="夹带了时刻"):
+    with pytest.raises(DraftError, match="夹带了时刻"):
         render.check_draft(spec, loc, _fake(dirty=True).generate(task).data)
     duplicated = {
         "meetings": [
@@ -256,16 +256,16 @@ def test_check_draft_rejects_bad_drafts(make_spec: object) -> None:
             {"title": "另一个标题", "agenda": "第三条议题内容"},
         ]
     }
-    with pytest.raises(DraftInvalidError, match="标题有重复"):
+    with pytest.raises(DraftError, match="标题有重复"):
         render.check_draft(spec, loc, duplicated)
 
 
 def test_check_draft_rejects_a_non_object_meeting(make_spec: object) -> None:
-    """输入：一条不是对象的会议草稿。输出：DraftInvalidError。"""
+    """输入：一条不是对象的会议草稿。输出：DraftError。"""
     spec = make_spec(5)
     loc = locales.load("zh")
     data = {"meetings": ["不是对象", "也不是", "还不是"]}
-    with pytest.raises(DraftInvalidError, match="不是对象"):
+    with pytest.raises(DraftError, match="不是对象"):
         render.check_draft(spec, loc, data)
 
 

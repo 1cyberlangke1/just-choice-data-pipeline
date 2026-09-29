@@ -1,0 +1,128 @@
+# 结构恢复（autoformat）workflow 的中文文案。
+#
+# 输入：`workflows.autoformat.locales.load("zh")` 读取本文件。
+# 输出：字典。
+# 预期行为（每一条都有测试钉住）：
+# - `[type]` / `[type_desc]` 的键与 `features.BLOCK_KINDS` 一一对应；
+# - `[callout_kind]` / `[callout_word]` 的键与 `features.CALLOUT_KINDS` 一一对应，关键词
+#   **跨种类不重叠**（反解靠它认种类）；
+# - `[code_tool]` 的键覆盖 `features.ALL_CODE_FAMILIES` 里除 `na` 外的全部命令族；
+# - `[topic_name]` 的键与 `features.TOPICS` 一一对应；
+# - 提示词与题面模板里的占位符都被填过（渲染要经过严格填槽，漏填会当场报错）；
+# - 署名前缀与提示框关键词**不许出现在别的块里**，否则反解会把块读错（提示词里逐条禁止）。
+
+[doc]
+context = "下面是一份丢掉了排版标记的纯文本备忘：没有井号、没有列表符号、没有引用符号，正文被硬换行折断了，每一行都以 L 开头的行号起头。所谓「内容块」指：连续的若干行组成一块，块与块之间用空行隔开；同一个列表里的每一项各算一块。"
+intro = "你要替一份纯文本备忘写正文。主题是「{topic}」。这份备忘的排版标记会被全部丢掉、正文按固定宽度硬折行，所以正文里**不许**出现任何排版标记。"
+mark_rule = "不许出现：井号（#）、星号（*）、短横线加空格（- ）、大于号（> ）、反引号、下划线；也不要写 Markdown 表格或代码围栏。"
+slot_header = "下面按顺序列出这份备忘的内容块，请为每一块写文字："
+list_sep = "、"
+slot_line = "- [{index}] {role}：{rule}"
+callout_role = "提示框（{kind}）"
+forbidden_header = "另外，正文里**不许**出现下面这些词——它们是别的内容块的标记。除了上面明确要求它们的那一块，别的地方（命令行块除外）一处都不许有，否则那一块会被读错："
+forbidden_line = "- {words}"
+self_check = "输出前逐条自查：每一块的字符数落在区间里吗？该以标点结尾的结尾了吗？不该以标点结尾的没加吗？不许出现的词真的一处都没有吗？"
+output = "只输出一个 JSON 对象，字段是 texts：一个字符串数组，**按上面块的顺序**，一块一项。不要解释、不要围栏。"
+
+[mark]
+attribution = ["——"]
+
+[type]
+heading = "标题"
+paragraph = "正文段落"
+list_item = "列表项"
+quote = "引用"
+code = "命令行"
+callout = "提示框"
+
+[type_desc]
+heading = "简短的一行小标题，概括它后面的内容"
+paragraph = "普通的叙述段落，可能被折成好几行"
+list_item = "列表里的一项，通常是简短的名词短语或一句话"
+quote = "转述别人的话，结尾带署名"
+code = "可以直接照着敲的命令行"
+callout = "提醒读者注意、给建议或发出警告的一段话"
+
+[callout_kind]
+note = "备注"
+tip = "小技巧"
+warning = "警告"
+
+[callout_word]
+note = ["备注：", "说明："]
+tip = ["小技巧：", "建议："]
+warning = ["警告：", "注意："]
+
+[seq_word]
+step = ["第一步", "第二步", "第三步", "然后", "接着", "最后"]
+
+[code_tool]
+build = ["make", "cargo", "npm", "pnpm", "bun", "cmake", "ninja"]
+vcs = ["git", "hg", "svn"]
+container = ["docker", "podman", "kubectl", "nerdctl"]
+package = ["pip", "apt", "apt-get", "brew", "uv", "gem"]
+
+[code_family]
+build = "构建"
+vcs = "版本控制"
+container = "容器"
+package = "依赖管理"
+
+[topic_name]
+build = "构建系统怎么切"
+release = "这次发布怎么安排"
+onboarding = "新人第一周要做什么"
+incident = "昨晚那次故障的复盘"
+migration = "数据迁移怎么做"
+
+[limit]
+# 各类块的字符区间（含端点）：反解判据与提示词共用这一份（`parse.limits` 读并当场校验）。
+# 标题与列表项的**上限不许超过** `features.SHORT_LIMIT`（44）——超了就不是短行，那一块会被读成正文；
+# 正文的**下限必须长过最大行宽**（> 72）——否则折不成两行以上，「并段」那一族没有真话可问。
+heading = [6, 24]
+item = [6, 28]
+prose = [74, 240]
+quote = [24, 120]
+callout = [46, 160]
+
+[rule]
+heading = "写一行 {min}~{max} 个字的短标题，概括它后面那段内容；结尾**不要**加任何标点"
+paragraph = "写一段读得通的正文，{min}~{max} 个字；**结尾必须是句号、问号或感叹号**"
+list_item_ordered = "写一项，{min}~{max} 个字，结尾不要加标点；**必须包含**下面这些步骤词里的一个：{steps}"
+list_item_bullet = "写一项，{min}~{max} 个字，结尾不要加标点；**不许**出现这些步骤词：{steps}"
+code = "写 {min}~{max} 行「{family}」类的命令行，一行一条；每行**必须以** {tools} 里的一个词开头"
+quote = "写一句 {min}~{max} 个字的话；**结尾要加上「{mark}」再跟一个署名**"
+callout = "写一段提醒读者的话，{min}~{max} 个字；**必须以** {words} 里的一个开头，并以句号结尾"
+
+[fam.join]
+q = [
+  "第 {a} 行与第 {b} 行相邻：第 {b} 行是不是接着第 {a} 行那句话往下写的？",
+  "{a} 与 {b} 这两行：{b} 是 {a} 那句话的延续吗？",
+]
+
+[fam.join.criteria]
+true = "{b} 接着 {a} 那句话往下写，两行属于同一个内容块"
+false = "{b} 没有接着 {a}，它另起了一句或另起了一块"
+
+[fam.block_type]
+opt = "{type}：{desc}"
+q = [
+  "按从上到下数，第 {k} 个内容块属于哪一类？",
+  "从上往下数第 {k} 个内容块，是什么类型的内容？",
+]
+
+[fam.callout_kind]
+q = ["文档里那个提示框属于哪一类？", "文档里的提示框是备注、小技巧还是警告？"]
+
+[fam.list_ordered]
+q = [
+  "文档里那个列表，每一项都带顺序词吗？",
+  "文档里那个列表，各项都带「{steps}」这类顺序词吗？",
+]
+
+[fam.list_ordered.criteria]
+true = "每一项都带「{steps}」这类顺序词，各项按步骤排"
+false = "每一项都没有顺序词，只是并列的几项"
+
+[verify]
+ask = "下面是一份丢掉了排版标记的纯文本备忘，正文被硬换行折断了，每一行都以 L 开头的行号起头。请**只按文本本身**读，回答三件事：(1) 内容块的类型序列，可选值只有 heading / paragraph / list_item / quote / code / callout；(2) 如果有提示框，它是哪一类（note / tip / warning），没有就留空串；(3) 如果有列表，它有没有先后顺序——判据是**顺序词**：每一项都带「{steps}」这类词就算有，每一项都没有顺序词就算没有；没有列表就填 false。块与块之间用空行隔开，列表里的每一项各算一块。"
