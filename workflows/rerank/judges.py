@@ -26,7 +26,7 @@ from typing import Final
 from pydantic import BaseModel, Field
 
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
-from jc.judge import Verdict
+from jc.judge import Verdict, leftover_in
 from jc.jsontypes import JsonValue
 
 from . import features, locales, render
@@ -69,17 +69,6 @@ def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
     )
 
 
-def _has_leftover(state: str) -> str:
-    """输入：state 文本。输出：命中的残留（没有就空串）。"""
-    for line in state.splitlines():
-        if line.strip() in LEFTOVER_LINES:
-            return line.strip()
-    for tag in LEFTOVER_TAGS:
-        if tag in state:
-            return tag
-    return ""
-
-
 @dataclass(frozen=True)
 class HygieneJudge:
     """零 token 判别器：查询与候选得兑现将计划、条数得对、整段 state 不许有残留。
@@ -99,7 +88,7 @@ class HygieneJudge:
         state = sample["state"]
         if not isinstance(state, str):
             return Verdict(True, reason="state 不是文本，跳过卫生检查", skipped=True)
-        leftover = _has_leftover(state)
+        leftover = leftover_in(state, LEFTOVER_LINES, LEFTOVER_TAGS)
         if leftover:
             return Verdict(False, reason=f"state 里有格式残留：{leftover!r}")
         parsed = render.parse_state(state)
@@ -209,13 +198,3 @@ class TraceJudge:
                 raw={"traced": seen},
             )
         return Verdict(True, reason=f"反解与计划一致：相关 {seen} 条", raw={"traced": seen})
-
-
-def option_names(question: dict[str, JsonValue]) -> list[str]:
-    """输入：一道 choice 题。输出：按**产物里写的顺序**排好的选项名。
-
-    预期行为：答案编号就是在这个顺序里的下标（见 `jc.assemble`）——审计要拿它把编号换回
-    选项名与选项描述，才能与纯代码重算的结果比对。
-    """
-    criteria = question.get("criteria")
-    return list(criteria) if isinstance(criteria, dict) else []

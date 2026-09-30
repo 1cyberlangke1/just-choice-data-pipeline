@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from workflows.search import features, locales, questions, render
+from workflows.search import features, locales, render
 
 from tests.workflows.search.conftest import TEXTS
 
@@ -72,16 +72,6 @@ def test_banned_phrases_do_not_fire_on_the_fixture_texts() -> None:
         for payloads in TEXTS.values():
             for field in ("title", "snippet"):
                 assert render.banned_echo(payloads[field], loc) == [], payloads[field]
-
-
-def test_every_family_has_three_phrasings() -> None:
-    """输入：两语言文案。输出：无。预期行为：每题族三种问法，`pick` 在三个编号上都取得到。"""
-    for lang in locales.available():
-        loc = locales.load(lang)
-        for family in questions.FAMILIES:
-            assert len(loc["fam"][family]["q"]) >= 3
-            for phrasing in (0, 1, 2):
-                assert locales.pick(loc["fam"][family]["q"], phrasing)
 
 
 def test_meta_placeholders_render() -> None:

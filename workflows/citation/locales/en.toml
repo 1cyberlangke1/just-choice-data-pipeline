@@ -8,6 +8,9 @@
 # - every placeholder in the prompt templates gets filled;
 # - the three `[fam.verdict.opt]` keys line up with `features.VERDICTS`.
 
+lang = "en"
+language_name = "English"
+
 [state]
 doc_mark = "[document] "
 sec_mark = "[section {n}]"
@@ -18,11 +21,30 @@ sec_ref = "section {n}"
 
 [prompt]
 intro = "You write synthetic data. Write a short document that is **full of numbers** (like a log entry, a spec or a report): split into {sections} sections, {per} sentences each ({n} sentences in total), and every sentence must state a concrete quantity, date or identifier."
+lang_rule = "Write the whole document and its title in {language}, not in any other language."
+topic_line = "The subject of this short document is: {topic}. Make the title and every sentence concrete about it (a specific device, course, road segment, amount and so on); do not write lines that would fit any subject."
 digits_rule = "Every sentence must contain one **Arabic-numeral** number (the 0-9 kind, for example 41, 7 or 2026). Spelled-out or word forms do not count: \"centuries\", \"a few\", \"four inventions\" and \"one year\" are all treated as having no number, so write them as 300 years, 4 inventions, 1 year. **If you cannot put a number in a sentence, rewrite that sentence from a different angle** rather than leaving one without a number."
 length_rule = "Each sentence must be at least {min} characters long, on its own line, ending with punctuation; the six sentences must all be different."
 title_rule = "Give the document a short title (one line, at most 30 characters)."
 self_check = "Before you answer, check sentence by sentence: every one of the six sentences must contain an Arabic numeral (0-9); rewrite any sentence that does not."
 output = "Output a single JSON object with the fields title (the title) and sentences (an array of {n} sentences, ordered as two for section 1, two for section 2, two for section 3); no explanation, no code fences."
+
+# Subject table: the spec stores an **index**, so this table has to be the same length as the other
+# languages' (locked by test_locales.py).
+topics = [
+  "an equipment inspection log: one week of checks in a server room",
+  "a monthly finance report: income, spending and budget for one branch",
+  "a security advisory: how one vulnerability was handled",
+  "release notes: what shipped in one version",
+  "a customer-support weekly: complaints and resolutions for one product line",
+  "a lab record: one round of materials testing",
+  "a warehouse dispatch note: arrivals and shipments for one depot",
+  "a course brief: this term's schedule and assessment",
+  "an energy report: electricity and water use for one plant",
+  "a project milestone update: progress and risks",
+  "a field-weather bulletin: observations from one trial plot",
+  "a traffic count: how many vehicles passed one road segment",
+]
 
 [fam.verdict]
 q = ["Does this quote match the source it claims?", "By the document, which verdict does this quote get?"]

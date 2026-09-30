@@ -80,7 +80,7 @@ def test_cover_cases_are_all_compatible_and_cover_pairs() -> None:
     for name, values in features.DIMS.items():
         assert seen[name] == set(values), f"{name} 有取值没覆盖：{sorted(set(values) - seen[name])}"
 
-    pairs = set()
+    pairs: set[tuple[str, str]] = set()
     names = list(features.DIMS)
     for case in cases:
         values = case.as_dict()

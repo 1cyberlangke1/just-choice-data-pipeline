@@ -272,8 +272,3 @@ def test_merged_reports_a_broken_table(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.undo()
         locales.merged.cache_clear()
     assert locales.merged()["code_tool"]
-
-
-def test_pick_wraps_around() -> None:
-    """输入：越界的问法编号。输出：无。预期行为：回绕（不抛异常）。"""
-    assert locales.pick(["a", "b"], 3) == "b"

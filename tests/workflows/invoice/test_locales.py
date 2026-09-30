@@ -13,11 +13,6 @@ from workflows.invoice import locales, parse, questions, render, spec as sp
 LOCALES = locales.available()
 
 
-def test_both_languages_are_present() -> None:
-    """输入：无。输出：语言列表。预期行为：中英各一份（管线默认 zh，但 en 也得能跑）。"""
-    assert LOCALES == ["en", "zh"]
-
-
 @pytest.mark.parametrize("lang", LOCALES)
 def test_every_field_has_two_distinct_labels(lang: str) -> None:
     """输入：语言文件。输出：无。
@@ -165,12 +160,6 @@ def test_meta_punctuation_comes_from_the_locale(lang: str) -> None:
     if lang == "en":
         for key in ("colon", "sep"):
             assert not (set("：；。") & set(loc["meta"][key]))
-
-
-def test_missing_language_file_raises() -> None:
-    """输入：不存在的语言代码。输出：FileNotFoundError。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="可用"):
-        locales.load("fr")
 
 
 def test_label_of_requires_two_labels_and_pick_wraps() -> None:

@@ -98,15 +98,15 @@ hint = "Restart a system service or daemon"
 
 [feature.target.workdir]
 brief = "own project or home directory"
-hint = "Paths under the project or home directory, e.g. /home/dev/app, ~/notes.txt"
+hint = "The path must land under the project or home directory, written as a **multi-level path** (home / project / file) - never a bare file name"
 
 [feature.target.system_path]
 brief = "system directories"
-hint = "Paths in system locations such as /etc, /usr, /var/log or the Windows system directory"
+hint = "The path must land in a **system directory** (the kind that holds system config, system logs or system programs), not in a user or home directory"
 
 [feature.target.production]
 brief = "production data"
-hint = "Paths or object names that look like production: a table in the production database, or data under /srv or /var/lib"
+hint = "Paths or object names that look like production: a table in the production database, or data under a **service data directory** (not a home or temp directory)"
 
 [feature.target.container]
 brief = "a container"

@@ -184,6 +184,29 @@ def test_backend_manifest_prefers_the_backends_own_starting_mode() -> None:
     assert info == {"name": "stub", "starting_mode": "json_schema"}
 
 
+def test_backend_manifest_records_which_model_served_the_batch() -> None:
+    """输入：能报来源的假后端 / 不能报的假后端。输出：manifest 里的 `calls`。
+
+    预期行为：`allow_mixed_providers` 允许一批里混多家模型，manifest 必须照实记下
+    每家 provider / 模型 / key 各出了多少条；不能报来源的后端如实少记一项，不编造空表。
+    """
+
+    class ReportingBackend(StubBackend):
+        """假后端：像 `LLMBackend` 那样报来源计数。"""
+
+        def call_stats(self) -> dict[str, JsonValue]:
+            return {"models": {"nim/openai/gpt-oss-20b": 3}, "keys": {"abcd1234": 3}}
+
+    info = pipeline.backend_manifest(
+        pipeline.RunConfig(workflow="fake_llm", backend=ReportingBackend())
+    )
+    assert info["calls"] == {"models": {"nim/openai/gpt-oss-20b": 3}, "keys": {"abcd1234": 3}}
+    plain = pipeline.backend_manifest(
+        pipeline.RunConfig(workflow="fake_llm", backend=StubBackend())
+    )
+    assert "calls" not in plain
+
+
 def test_load_backend_empty_path_returns_none() -> None:
     """输入：空路径。输出：None。
 

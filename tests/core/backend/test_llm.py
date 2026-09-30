@@ -60,6 +60,70 @@ def test_generate_returns_draft_with_full_provenance(
     assert backend.providers == ["a"]
 
 
+def test_call_log_names_the_model_that_served_each_task(
+    fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
+) -> None:
+    """输入：两次调用（第二次顺延到另一家）。输出：逐条流水。
+
+    预期行为：每条都写清 task_id → provider / 模型 / 档位 / key 指纹 / 尝试次数 / 用量，
+    并且按 task_id 排序——汇总计数不够用，脏数据要能**按来源切片**，落成 jsonl 才有意义。
+    """
+    first = provider_factory(fake_engine(script=[TransportError("500")] * 2), name="a", model="m1")
+    second = provider_factory(fake_engine(script=[result_factory()] * 2), name="b", model="m2")
+    backend = LLMBackend(ProviderChain([first, second]))
+    backend.generate(task_factory("t1"))
+    backend.generate(task_factory("t2"))
+    log = backend.call_log()
+    assert [row["task_id"] for row in log] == ["t1", "t2"]
+    assert [(row["provider"], row["model"]) for row in log] == [("b", "m2"), ("b", "m2")]
+    assert log[0]["mode"] == "json_schema"
+    assert log[0]["key_fingerprint"] == fingerprint("k1")
+    assert log[0]["usage"] == {"total_tokens": 3}
+    # 流水是副本：外部改它不该动到后端内部记账
+    log.clear()
+    assert len(backend.call_log()) == 2
+
+
+def test_call_stats_records_which_provider_model_and_key_served(
+    fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
+) -> None:
+    """输入：两家 provider（前一家真挂了）+ 两次调用。输出：来源计数。
+
+    预期行为：只统计**成功产出草稿**的那一家（挂掉的那家不该有记录）；key 指纹分开记，
+    多 key 负载均衡才核得出来。一次都没调时两张表都是空的，不编造。
+    """
+    # 第一家的脚本给两份：两次调用都会先撞上它，再顺延到第二家
+    first = provider_factory(fake_engine(script=[TransportError("500")] * 2), name="a", model="m1")
+    second = provider_factory(fake_engine(script=[result_factory()] * 2), name="b", model="m2")
+    backend = LLMBackend(ProviderChain([first, second]))
+    assert backend.call_stats() == {"models": {}, "keys": {}}
+    backend.generate(task_factory("t1"))
+    backend.generate(task_factory("t2"))
+    assert backend.call_stats() == {
+        "models": {"b/m2": 2},
+        "keys": {fingerprint("k1"): 2},
+    }
+
+
+def test_call_stats_splits_by_key_when_a_provider_has_several(
+    fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
+) -> None:
+    """输入：一家 provider、两把 key、四次调用。输出：来源计数。
+
+    预期行为：key 按轮转分摊（2 + 2），模型那一栏是 `provider/model`——`allow_mixed_providers`
+    下同一批可能混多家模型，不记就没人知道这批数据混了来源。
+    """
+    provider = provider_factory(
+        fake_engine(script=[result_factory()] * 4), name="a", keys=("k1", "k2")
+    )
+    backend = LLMBackend(ProviderChain([provider]))
+    for index in range(4):
+        backend.generate(task_factory(f"t{index}"))
+    stats = backend.call_stats()
+    assert stats["models"] == {"a/fake-model": 4}
+    assert stats["keys"] == {fingerprint("k1"): 2, fingerprint("k2"): 2}
+
+
 def test_mode_degrades_when_the_server_rejects_the_schema(
     fake_engine: object, provider_factory: object, task_factory: object, result_factory: object
 ) -> None:

@@ -297,6 +297,16 @@ class LintWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：空表（这一族没有「模型写的自然语言正文」）。
+
+        预期行为：state 是「一行中文抬头 + 一段源码」，**模型写的是那段代码**——代码与语言无关
+        （真机 zh 侧汉字占比低到 0.099 全是正常产物）。抬头由代码按语言表写，天然一致。
+        所以这里报空表：把代码喂给语言判据只会把好数据当坏数据。
+        """
+        del sample
+        return {}
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

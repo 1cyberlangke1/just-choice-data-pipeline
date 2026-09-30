@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from jc.backend.types import AllProvidersDown, TransportError
+from jc.judge import leftover_in
 from jc.jsontypes import JsonValue
 
 from workflows.rubric import features, judges, locales, render
@@ -86,12 +86,6 @@ def test_hygiene_still_checks_shape_without_a_spec() -> None:
     assert not judges.HygieneJudge("zh").judge(sample(fenced), None).ok
 
 
-def test_frame_passes_a_clean_state() -> None:
-    """输入：干净 state。输出：无。预期行为：通过。"""
-    verdict = judges.FrameJudge("zh").judge(sample(state_of()), spec())
-    assert verdict.ok and not verdict.skipped
-
-
 def test_frame_catches_a_swapped_manifest_row() -> None:
     """输入：清单行挂错了 tags。输出：无。预期行为：判不通过，理由点出清单行。"""
     broken = state_of().replace("- short | prose | none", "- long | prose | none")
@@ -121,13 +115,6 @@ def test_frame_catches_a_score_row_that_prints_a_number_for_a_body_dimension() -
     assert "评分单" in verdict.reason
 
 
-def test_frame_skips_without_spec_or_text() -> None:
-    """输入：没有 spec / 非文本 state。输出：无。预期行为：都记成「没判成」。"""
-    judge = judges.FrameJudge("zh")
-    assert judge.judge(sample(state_of()), None).skipped
-    assert judge.judge(sample({"not": "text"}), spec()).skipped
-
-
 def test_trace_passes_when_the_model_reads_it_right() -> None:
     """输入：答对的假后端。输出：无。预期行为：通过，并把反解结果记进 raw。"""
     verdict = judges.TraceJudge(FakeBackend(), "zh").judge(sample(state_of()), spec())
@@ -142,24 +129,6 @@ def test_trace_catches_a_misread_dimension(switch: str) -> None:
     verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
     assert not verdict.ok and not verdict.skipped
     assert "注入" in verdict.reason and "反解成" in verdict.reason
-
-
-def test_trace_records_a_transport_failure_as_skipped() -> None:
-    """输入：反解时端点故障。输出：无。
-
-    预期行为：记成「没判成」——记成「不通过」会把端点抖动写成数据质量问题。
-    """
-    backend = FakeBackend(trace_raises=TransportError("端点抖动"))
-    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
-    assert verdict.ok and verdict.skipped
-    assert "端点故障" in verdict.reason
-
-
-def test_trace_reraises_a_fatal_failure() -> None:
-    """输入：全部 provider 都挂了。输出：无。预期行为：整批该停下，异常往上抛。"""
-    backend = FakeBackend(trace_raises=AllProvidersDown("全挂了"))
-    with pytest.raises(AllProvidersDown):
-        judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
 
 
 def test_trace_records_a_missing_field_as_skipped() -> None:
@@ -203,17 +172,10 @@ def test_trace_options_are_named_after_the_feature_values() -> None:
     assert set(holders.__args__) == set(features.PLACEHOLDERS)
 
 
-def test_option_names_reads_the_shipped_order() -> None:
-    """输入：两道 choice 题。输出：无。预期行为：按产物里写的顺序给出选项名。"""
-    assert judges.option_names({"criteria": {"a": "甲", "b": "乙"}}) == ["a", "b"]
-    assert judges.option_names({"criteria": ["不是字典"]}) == []
-    assert judges.option_names({}) == []
-
-
 def test_leftover_lines_are_the_fence_variants() -> None:
     """输入：残留清单。输出：无。预期行为：围栏的常见变体都在，HTML 换行标签也在。"""
     assert "```" in judges.LEFTOVER_LINES
     assert "```json" in judges.LEFTOVER_LINES
-    assert judges._has_leftover("```\n正文") == "```"
-    assert judges._has_leftover("正文<br>更多") == "<br>"
-    assert judges._has_leftover("干净的正文") == ""
+    assert leftover_in("```\n正文", judges.LEFTOVER_LINES, judges.LEFTOVER_TAGS) == "```"
+    assert leftover_in("正文<br>更多", judges.LEFTOVER_LINES, judges.LEFTOVER_TAGS) == "<br>"
+    assert leftover_in("干净的正文", judges.LEFTOVER_LINES, judges.LEFTOVER_TAGS) == ""

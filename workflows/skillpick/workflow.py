@@ -213,6 +213,14 @@ class SkillPickWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：roundtrip / label）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：空表（纯构造族，没有「模型写的正文」）。
+
+        预期行为：`needs` 为空，state 全由代码按语言模板拼，天然一致。
+        """
+        del sample
+        return {}
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

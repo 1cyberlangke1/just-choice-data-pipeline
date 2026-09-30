@@ -16,7 +16,7 @@ from jc import contract, jsonio, validate
 from jc.jsontypes import JsonValue
 
 
-def good_sample() -> dict:
+def good_sample() -> dict[str, JsonValue]:
     """一份合法样本（各负例都由它变形而来）。"""
     return {
         "id": "maze-train-0000001",
@@ -120,6 +120,41 @@ def test_negative_cases_report_expected_code(
     sample = good_sample()
     mutate(sample)
     assert expected in codes(validate.validate_sample(sample))
+
+
+def test_option_names_reads_the_recorded_order() -> None:
+    """输入：几道题面。输出：断言结果。
+
+    预期行为：选项名按**产物里写的顺序**（判据表的键序）给——答案编号就是这个顺序的下标，
+    审计才敢拿它把编号换回选项名与选项描述。判据表缺失或类型不对一律给空表，不抛异常。
+    """
+    assert contract.option_names({"type": "choice", "criteria": {"b": "x", "a": None}}) == ["b", "a"]
+    assert contract.option_names({"type": "noul"}) == []
+    assert contract.option_names({"type": "choice", "criteria": ["甲", "乙"]}) == []
+    assert contract.option_names({}) == []
+
+
+def test_recorded_value_and_text_read_the_artifact_order() -> None:
+    """输入：三种题型的题面与答案。输出：断言结果。
+
+    预期行为：choice 的编号是**产物里那个顺序**的下标（见 `jc.assemble`），`recorded_value`
+    换回选项名、`recorded_text` 换回选项描述；score 一种给原值（范围由校验器管）、一种给等级
+    描述；noul 原样给布尔。choice 编号越界或判据表类型不对给 None（那是对不上，不是崩）——
+    审计全靠它把产物里的编号换回可读值。
+    """
+    choice: dict[str, JsonValue] = {"type": "choice", "criteria": {"a": "甲", "b": "乙"}}
+    score: dict[str, JsonValue] = {"type": "score", "criteria": ["低", "中", "高"]}
+    assert contract.recorded_value(choice, {"type": "choice", "choice": 1}) == "b"
+    assert contract.recorded_text(choice, {"type": "choice", "choice": 1}) == "乙"
+    assert contract.recorded_value(choice, {"type": "choice", "choice": 9}) is None
+    assert contract.recorded_text(choice, {"type": "choice", "choice": 9}) is None
+    assert contract.recorded_value(score, {"type": "score", "score": 2}) == 2
+    assert contract.recorded_text(score, {"type": "score", "score": 2}) == "高"
+    assert contract.recorded_value(score, {"type": "score", "score": 9}) == 9
+    assert contract.recorded_text(score, {"type": "score", "score": 9}) is None
+    assert contract.recorded_value({}, {"type": "noul", "noul": True}) is True
+    assert contract.recorded_text({}, {"type": "noul", "noul": False}) is False
+    assert contract.recorded_text({"type": "choice"}, {"type": "choice", "choice": 0}) is None
 
 
 def test_duplicate_id_is_reported() -> None:

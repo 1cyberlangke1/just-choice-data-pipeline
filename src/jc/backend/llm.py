@@ -19,6 +19,7 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 
@@ -69,6 +70,15 @@ class LLMBackend:
         self._sink = sink
         self.capabilities = capabilities or BackendCapabilities()
         self._clock = clock
+        #: 成功草稿的来源计数（`{"models": {"<provider>/<model>": n}, "keys": {"<指纹>": n}}`）。
+        #: 多 provider / 多 key 负载均衡是配置的承诺（`allow_mixed_providers`），事后必须能
+        #: 从产物里核出来——否则一批数据混了两家模型，谁也不知道。并发下用锁保护。
+        self._provenance: dict[str, dict[str, int]] = {"models": {}, "keys": {}}
+        self._provenance_lock = threading.Lock()
+        #: 逐条调用流水：每条成功草稿一行 {task_id, provider, model, mode, key_fingerprint,
+        #: attempts, usage}。只有汇总计数不够——脏数据要能**按来源切片**（哪几条是某家出的），
+        #: 这是 `Draft` 带 provider/model 的本意。管线把它落成 `calls-<split>.jsonl`。
+        self._call_log: list[dict[str, JsonValue]] = []
 
     @property
     def providers(self) -> list[str]:
@@ -85,6 +95,51 @@ class LLMBackend:
         """
         first = next(iter(self._chain), None)
         return first.modes()[0] if first is not None else ""
+
+    def call_stats(self) -> dict[str, JsonValue]:
+        """输入：无。输出：成功草稿的来源计数。
+
+        预期行为：返回 `{"models": {"<provider>/<model>": 次数}, "keys": {"<指纹>": 次数}}`，
+        键名排序固定（写进 manifest 后逐字节可复现）。只统计**成功产出草稿**的调用——
+        被拒的草稿由拒绝码记账，这里不重复。没有调用时两张表都是空的。
+        """
+        with self._provenance_lock:
+            return {
+                "models": {key: self._provenance["models"][key] for key in sorted(self._provenance["models"])},
+                "keys": {key: self._provenance["keys"][key] for key in sorted(self._provenance["keys"])},
+            }
+
+    def _record(self, task: GenerationTask, draft: Draft) -> None:
+        """输入：任务与草稿。输出：无。预期行为：记一笔汇总计数 + 一行逐条流水。
+
+        并发安全（管线可以并发跑样本）；key 只记 sha256 前 8 位，**不记明文**。
+        """
+        with self._provenance_lock:
+            models = self._provenance["models"]
+            name = f"{draft.provider}/{draft.model}"
+            models[name] = models.get(name, 0) + 1
+            if draft.key_fingerprint:
+                keys = self._provenance["keys"]
+                keys[draft.key_fingerprint] = keys.get(draft.key_fingerprint, 0) + 1
+            self._call_log.append(
+                {
+                    "task_id": task.task_id,
+                    "provider": draft.provider,
+                    "model": draft.model,
+                    "mode": draft.mode,
+                    "key_fingerprint": draft.key_fingerprint,
+                    "attempts": draft.attempts,
+                    "usage": draft.usage,
+                }
+            )
+
+    def call_log(self) -> list[dict[str, JsonValue]]:
+        """输入：无。输出：逐条调用流水（副本，按 task_id 排序）。
+
+        预期行为：排序固定，写出来的 jsonl 逐字节可复现。没有调用时是空列表。
+        """
+        with self._provenance_lock:
+            return sorted(self._call_log, key=lambda row: str(row["task_id"]))
 
     def generate(self, task: GenerationTask) -> Draft:
         """输入：一个任务。输出：草稿。
@@ -110,6 +165,7 @@ class LLMBackend:
                 junk = exc  # 这家活着，只是没给出合格草稿：换下一家，但不算「挂了」
                 continue
             if draft is not None:
+                self._record(task, draft)
                 return draft
             last = ProviderUnavailable(f"{provider.name} 这次没成")
         if junk is not None:

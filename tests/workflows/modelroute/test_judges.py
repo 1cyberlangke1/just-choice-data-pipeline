@@ -210,10 +210,3 @@ def test_trace_judge_skips_an_out_of_range_value(fake_backend: GenerationBackend
 
 
 # ---------- 选项反解 ----------
-
-
-def test_option_names_follows_the_artifact_order() -> None:
-    """输入：一道 choice 题。输出：按产物里写的顺序排好的选项名（审计靠它把编号换回来）。"""
-    question = {"type": "choice", "instructions": "x", "criteria": {"b": None, "a": None}}
-    assert judges_mod.option_names(question) == ["b", "a"]
-    assert judges_mod.option_names({"type": "noul", "instructions": "x"}) == []

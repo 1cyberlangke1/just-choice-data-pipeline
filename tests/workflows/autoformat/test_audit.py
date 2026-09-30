@@ -168,13 +168,6 @@ def test_unknown_family_is_counted(tmp_path: Path) -> None:
     assert report["train"]["unknown_families"]["nonsense"] == 1
 
 
-def test_missing_split_is_reported(tmp_path: Path) -> None:
-    """输入：只审一个没跑过的切分。输出：无。预期行为：缺失项里点名那个切分。"""
-    run_dir = _run(tmp_path, "t-missing")
-    _, missing = _audit(run_dir, ("val",))
-    assert any("val" in item for item in missing)
-
-
 def test_missing_family_is_reported(tmp_path: Path) -> None:
     """输入：把某一族的题全删掉。输出：无。预期行为：缺失项里点名那一族一条都没出。"""
     run_dir = _run(tmp_path, "t-nofam")

@@ -18,6 +18,7 @@
 """
 
 from __future__ import annotations
+from jc.assemble import choice
 from jc.jsontypes import JsonValue
 
 from collections.abc import Sequence
@@ -87,20 +88,11 @@ def _instructions(loc: dict[str, JsonValue], family: str, phrasing: int, **slots
 def _choice(
     family: str, instructions: str, options: dict[str, str], answer: str
 ) -> LabeledQuestion:
-    """输入：题族、题面、选项、金答案（选项名）。输出：一道 choice 题。
+    """输入：题族、题面、选项、金答案。输出：一道 choice 题（选项有自然顺序，不打乱）。
 
-    预期行为：选项描述重复直接报错——两个选项看起来一样，考生没法分辨，是构造 bug，
-    必须在生成时炸掉而不是产出一条坏数据。
-
-    `shuffle=False`：候选选项自带**自然顺序**（第 1 个到第 3 个），按契约不许打乱。
-    附带的好处是答案编号就等于选项名的分布（构造出来就是均匀的），不再带一层打乱的随机抖动。
+    预期行为：校验与构造在通用层（`jc.assemble.choice`），这里只钉住本族的 `shuffle=False`。
     """
-    if len(set(options.values())) != len(options):
-        raise ValueError(f"{family} 的选项描述重复：{options}")
-    if answer not in options:
-        raise ValueError(f"{family} 的答案 {answer!r} 不在选项里：{sorted(options)}")
-    question = {"type": "choice", "instructions": instructions, "criteria": options}
-    return LabeledQuestion(family, question, answer, shuffle=False)
+    return choice(family, instructions, options, answer, shuffle=False)
 
 
 def _noul(

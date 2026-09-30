@@ -34,13 +34,6 @@ def test_families_are_fixed_and_typed() -> None:
         assert families[family].question["type"] == "score"
 
 
-def test_question_shape_matches_the_contract() -> None:
-    """输入：一组特征。输出：无。预期行为：每道题只有契约允许的三个字段，且题面非空。"""
-    for item in questions.build(TAGS, locales.load("zh"), 0):
-        assert set(item.question) == {"type", "instructions", "criteria"}
-        assert str(item.question["instructions"]).strip()
-
-
 def test_answers_match_the_labels() -> None:
     """输入：一组特征。输出：无。预期行为：每族金答案等于特征层算出来的那一格。"""
     labels = TAGS.label()

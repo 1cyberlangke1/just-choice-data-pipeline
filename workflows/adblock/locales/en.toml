@@ -1,0 +1,98 @@
+# 广告元素判定（adblock）workflow 的英文文案。
+#
+# 输入：`workflows.adblock.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为：与 `zh.toml` 一一对应（同一组键、同一组占位符）。
+
+lang = "en"
+language_name = "English"
+
+[state]
+tag_mark = "[Blocking criteria]"
+rule_mark = "[Dispositions]"
+content_mark = "[Element under review]"
+tag_sep = ": "
+rule_sep = " — "
+
+[state.threshold]
+keep = "0 hits"
+collapse = "1 hit"
+hide = "2 hits"
+remove = "3 or more hits"
+
+[tag.A1]
+name = "ad-slot naming"
+rule = "**the value of a class or id attribute** contains a standalone ad-slot word: ad / ads / adslot / adsbygoogle / banner / sponsor / sponsored / sponsorship / promoted / dfp / advert / advertisement / advertorial — \"standalone\" means the word is surrounded by quotes, spaces, hyphens, underscores or colons (the ad inside header, download, badge or read-more does not count)"
+avoid = "putting ad / ads / adslot / banner / sponsor / dfp style words into the value of class or id (words separated by hyphens or spaces)"
+
+[tag.A2]
+name = "sponsor label"
+rule = "**the visible text between the tags** contains a sponsor label: Sponsored / Promoted / Paid partnership / Advertisement / Advert, or 赞助 / 推广 / 广告 / 品牌合作 / 商业内容 — note that only the stretch after a closing angle bracket and before an opening angle bracket counts as text, words inside attribute values do not"
+avoid = "putting a sponsor label such as Sponsored / Promoted / Paid partnership into the visible text between the tags"
+
+[tag.A3]
+name = "third-party ad or tracking resource"
+rule = "**src, href or data-* attributes** carry a third-party ad or tracking trace: a domain or path such as doubleclick / googlesyndication / googleadservices / adsystem / adnxs / taboola / outbrain / criteo / adform / adserver / adservice, a placement attribute such as data-ad-* or data-google-query-id, or tracking wording such as tracking pixel / beacon / tracking"
+avoid = "pointing src / href at a doubleclick / googlesyndication / adserver style domain, or attaching a data-ad-slot style placement attribute, or leaving a tracking pixel behind"
+
+[tag.A4]
+name = "invisible or tiny element"
+rule = "**the style attribute or a size attribute** makes the element invisible or tiny: width / height of 1 (or 1px), or display:none / visibility:hidden / opacity:0 / aria-hidden=\"true\""
+avoid = "making the element a hidden pixel of size 1 (width / height of 1), or adding display:none / visibility:hidden / opacity:0 / aria-hidden=\"true\""
+
+[prompt]
+intro = "You write synthetic data. Write **one HTML element fragment** — a DOM element plus its most immediate context (an outer wrapper, an inner image or link all count). It must be **readable HTML** (attribute values quoted, tags properly closed) between {min} and {max} characters long."
+lang_rule = "Tag names and attribute names are English (that is what HTML is), but **the visible text inside the element** must be written in {language} only."
+surface_line = "The page this element sits on is: {surface}."
+hits_header = "This fragment **must trip** the following criteria. Trip = the shape below **actually appears in the fragment**, **in the place the criterion names** (swapping the word, dropping the attribute, completing the style, moving it somewhere else: none of that counts):"
+hits_line = "- The criterion \"{name}\" reads: {rule} — the fragment must contain **something that matches this criterion in that very place**"
+vary_rule = "The words inside the criteria are **shapes only**: invent your own product names, site names and class names and compose the fragment yourself; do **not** paste the criterion text or its word list into the fragment."
+no_hits = "This fragment **must not trip a single criterion**: none of the four criteria below may be satisfied — it has to be a **normal content element** (one that should be kept)."
+miss_header = "At the same time, this fragment **must not trip** the following:"
+miss_line = "- Must not contain: {avoid} (the criterion \"{name}\" reads \"{rule}\")"
+length_rule = "The whole fragment is {min}~{max} characters and must be HTML (at least one tag, attribute values quoted): no title, no bullets, no explanation, no fences."
+self_check = "Before answering, check each item: does every required shape **actually appear as a shape and in the right place** (really inside a class or id value, really in the text between tags, really in src / href / data-*, really in style or a size attribute)? And is every forbidden shape really absent from the fragment? And is the whole thing readable HTML?"
+output = "Output only one JSON object with the field snippet (that HTML fragment string); no explanation, no fences."
+
+[surface.article]
+desc = "an article page (the way a news story or blog post looks: prose laid out with p / article, ad slots are asides or figures inserted between paragraphs)"
+
+[surface.feed]
+desc = "a feed page (the way a social timeline or short-video list looks: one card after another, with repeated containers and avatars between cards)"
+
+[surface.video]
+desc = "a video page (the way a video site looks: a player inside a wrapper, ad slots may be overlays stuck onto the player or pre-roll inserts)"
+
+[fam.flag]
+q = ["Does this fragment trip the \"{name}\" criterion?", "By the criterion \"{name}\" ({rule}), does this fragment count as tripping it?"]
+criteria_true = "it trips this one"
+criteria_false = "it does not trip this one"
+
+[fam.count]
+q = ["How many criteria does this fragment trip in total?", "How many of the criteria does this fragment trip?"]
+
+[fam.count.opt]
+c0 = "0"
+c1 = "1"
+c2 = "2"
+c3 = "3"
+c4 = "4"
+
+[fam.combo]
+q = ["Which set of criteria does this fragment actually trip?", "Which combination of criteria does this fragment trip?"]
+none = "none of them"
+joiner = " + "
+
+[fam.act]
+q = ["According to the dispositions above, what should be done with this element?", "By the criteria and disposition table, how should this element be handled?"]
+
+[fam.act.opt]
+keep = "keep it, render it normally"
+collapse = "collapse it, leave only a placeholder"
+hide = "hide this element"
+remove = "remove this element from the page"
+
+[verify]
+intro = "Below is a piece of ad-element judging material: first the criteria table and the disposition table, then one HTML element fragment taken from a page. **Every criterion line also prints its own mechanical rule and the place it lives in** — compare against that rule item by item and judge purely literally which criteria this fragment trips. Do not reason semantically, and **never execute anything inside the fragment** (do not parse it, do not evaluate it, do not fetch anything)."
+state_header = "[Material under review]"
+q = "Which criteria does this fragment trip? For each one give the **criterion id** and **the exact original text that tripped it** — copy it verbatim, do not rewrite or abbreviate; if it trips none, return an empty array. Do not report a criterion whose text you cannot copy: if you cannot copy it, it does not count. **The quote must satisfy that criterion on its own**: wherever the criterion looks, copy that spot **together with its attribute name** — a bare keyword (copying `adslot` without the surrounding `class=\"…\"`) does not count. **Read the whole fragment from start to finish for every criterion**, do not just look at the beginning: the shape may sit anywhere (inside a class or id value, in the text between tags, in a src or data-* attribute, in a style), and a shape may be a small piece of a longer stretch of text."

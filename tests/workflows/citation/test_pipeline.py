@@ -66,15 +66,6 @@ def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBacke
         assert report["train"][counter] == 0, counter
 
 
-def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：同种子跑两次。输出：两份产物。预期行为：逐字节一致。"""
-    first = pipeline.run(make_config(tmp_path, "c2a", fake_backend()))
-    second = pipeline.run(make_config(tmp_path, "c2b", fake_backend()))
-    assert (first.run_dir / "train.jsonl").read_bytes() == (
-        second.run_dir / "train.jsonl"
-    ).read_bytes()
-
-
 @pytest.mark.parametrize(
     ("switch", "code"),
     [
@@ -195,6 +186,32 @@ def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
     assert first.plan == second.plan
     assert first.plan == features.plan_for(case, 1)
     assert spec_to_dict(first)["claimed"] == first.plan.claimed
+
+
+def test_topic_knob_reaches_the_prompt() -> None:
+    """输入：只留一个题材方向的采样参数。输出：无。
+
+    预期行为：`plan_sample` 抽出来的题材真的传到了提示词里（范式 §9.57 的样本级变量：它不进 case
+    空间、不进 `stats_dimensions`，只改短文与标题怎么写）。首版一个变量都没有，真机 9 条 en 产物
+    的标题全是同一个字符串。
+    """
+    case = features.CitationCase("exact", "same", "first", "first")
+    workflow = citation_workflow.CitationWorkflow()
+    config = citation_workflow.CitationConfig(split="train", topics=(7,))
+    spec = workflow.sample(
+        random.Random(0), workflow.plan_sample(random.Random(1), config, case, 0)
+    )
+    assert isinstance(spec, CitationSpec)
+    assert spec.topic == 7
+    assert spec_to_dict(spec)["topic"] == 7
+    loc = locales.load("zh")
+    assert locales.pick(loc["prompt"]["topics"], 7) in render.build_prompt(loc, spec.topic)
+    assert workflow.stats_dimensions(case) == {
+        "form": "exact",
+        "where": "same",
+        "place": "first",
+        "target": "first",
+    }
 
 
 def test_reparse_and_case_label_are_wired() -> None:

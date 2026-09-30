@@ -48,20 +48,7 @@ def families_for(plan: LintPlan) -> tuple[str, ...]:
     return FAMILIES
 
 
-def _choice(
-    family: str, instructions: str, options: dict[str, str], answer: str
-) -> LabeledQuestion:
-    """输入：题族、题面、选项、金答案（选项名）。输出：一道 choice 题。
-
-    预期行为：选项描述重复直接报错——两个选项看起来一样，考生没法分辨，是构造 bug。
-    """
-    if len(set(options.values())) != len(options):
-        raise ValueError(f"{family} 的选项描述重复：{options}")
-    if answer not in options:
-        raise ValueError(f"{family} 的答案 {answer!r} 不在选项里：{sorted(options)}")
-    return LabeledQuestion(
-        family, {"type": "choice", "instructions": instructions, "criteria": options}, answer
-    )
+from jc.assemble import choice as _choice
 
 
 def _line_questions(

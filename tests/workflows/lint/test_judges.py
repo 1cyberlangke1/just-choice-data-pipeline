@@ -174,10 +174,3 @@ def test_trace_skips_without_spec_or_backend() -> None:
     spec, sample = faithful(MANY)
     assert judges.TraceJudge(FakeBackend(), "zh").judge(sample, object()).skipped
     assert judges.TraceJudge(None, "zh").judge(sample, spec).skipped
-
-
-def test_option_names_reads_the_written_order() -> None:
-    """输入：一道 choice 题。输出：无。预期行为：按产物里写的顺序给选项名。"""
-    question: dict[str, JsonValue] = {"type": "choice", "criteria": {"b": "2", "a": "1"}}
-    assert judges.option_names(question) == ["b", "a"]
-    assert judges.option_names({"type": "noul"}) == []

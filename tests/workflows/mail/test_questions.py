@@ -9,7 +9,7 @@ from workflows.mail import features, locales, questions
 LOCALES = locales.available()
 
 
-def _build(case: features.TagSet, lang: str = "zh"):  # noqa: ANN202 —— 测试内部小工具
+def _build(case: features.TagSet, lang: str = "zh") -> list[questions.LabeledQuestion]:
     """输入：一组特征、语言。输出：该特征下的题目列表。"""
     return questions.build(case, locales.load(lang), phrasing=0)
 

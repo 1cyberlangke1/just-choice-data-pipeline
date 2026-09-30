@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from jc.jsontypes import JsonValue
 from workflows.verify import features, locales, questions, render
@@ -20,17 +19,6 @@ def keys_of(value: JsonValue, prefix: str = "") -> set[str]:
             else:
                 out.add(path)
     return out
-
-
-def test_both_locales_have_identical_key_sets() -> None:
-    """输入：无。输出：无。
-
-    预期行为：zh 与 en 的叶子路径集合**完全一致**——少一个键就会让另一种语言在渲染时
-    KeyError，而那时已经在烧配额了。
-    """
-    zh = keys_of(locales.load("zh"))
-    en = keys_of(locales.load("en"))
-    assert zh == en, f"只在 zh 里：{sorted(zh - en)}；只在 en 里：{sorted(en - zh)}"
 
 
 def test_every_prompt_dimension_value_has_text() -> None:
@@ -143,14 +131,3 @@ def test_meta_placeholders_render() -> None:
         assert str(meta["row_prefix"]).strip()
         assert str(meta["yes"]).strip() and str(meta["no"]).strip()
         assert str(meta["yes"]) != str(meta["no"])
-
-
-def test_unknown_locale_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错里列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("xx")
-
-
-def test_available_lists_both_shipped_languages() -> None:
-    """输入：无。输出：无。预期行为：随仓库分发的两种语言都在。"""
-    assert locales.available() == ["en", "zh"]

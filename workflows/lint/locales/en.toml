@@ -8,6 +8,9 @@
 # - the three `[state.lead]` strings stay distinct after `{n}` is filled;
 # - `[rule.*].name` values are pairwise non-substrings.
 
+lang = "en"
+language_name = "English"
+
 [meta]
 list_sep = ", "
 
@@ -55,6 +58,7 @@ criteria = "the line is longer than 60 characters (counted per character)."
 
 [prompt]
 intro = "You write synthetic data. Write {genre} of exactly {n} lines, one line each."
+lang_rule = "Make it read like real {genre}: write comments, strings and prose in {language}, keep identifiers, commands and paths in ASCII."
 hit_line = "- Line {rows} must hit the rule \"{rule}\"."
 hit_none = "- None of the {n} lines may hit the rule \"{rule}\" (the fragment must still read as real)."
 clean_line = "- The remaining {k} lines must hit no rule at all: they may look suspicious (for example mention password while reading it from the environment), but by the criteria below they must genuinely not hit. Keep clean lines short (50 characters at most) so they stay clear of the length criterion."

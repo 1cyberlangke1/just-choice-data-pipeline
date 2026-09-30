@@ -1,0 +1,141 @@
+lang = "en"
+language_name = "English"
+
+[meta]
+finding_label = "Review finding"
+fix_label = "Suggested fix"
+record_label = "Change record"
+rules_label = "Triage rules"
+header = "[{title}]"
+row_prefix = "- "
+paren = " ({text})"
+colon = ": "
+record_columns = "no. | line | change | symbol"
+row_ref = "row {n}"
+no_cite = "none"
+cite_pattern = 'line\s+(\d+)'
+cite_hint = "line 42"
+
+[rules.baseless]
+text = "Baseless: the symbol the finding quotes is nowhere in the record -> the finding has no ground, triage drop."
+
+[rules.attribution]
+text = "Attribution: the line is in the record and its change column is untouched -> not this change's fault, triage log_only."
+
+[rules.unknown]
+text = "Unknown: the line is not in the record at all -> attribution is unclear, triage log_only."
+
+[rules.fix]
+text = "Fix: the suggested fix names no concrete symbol -> it cannot be acted on, triage log_only."
+
+[rules.else]
+text = "Fallback: none of the above applies -> triage must_fix."
+
+[dims]
+cite = "the line the finding points at"
+fix = "the suggested fix"
+
+[prompt]
+intro = "Below is a code-review scenario. Write **one review finding** and **one suggested fix** (one line each)."
+bullet = "- {dim}: {brief} ({hint})"
+cite_line = "The finding points at **line {n}**: use exactly that line number, do not switch to another line that is in the record."
+symbol_line = "The symbol the finding quotes is {symbol}: wrap it in backticks inside the finding, and quote only that one."
+fix_symbol_line = "The symbol the suggested fix must name is {symbol}: wrap it in backticks on the fix line."
+fix_vague_line = "The suggested fix must be **vague only** (e.g. \"needs further investigation\"): name no symbol at all on that line, and use no backticks there."
+rules = [
+  "Write exactly one finding line and one fix line; no line breaks, no Markdown fences",
+  "The finding line must state which line it points at, in the form \"line 42\"",
+  "The finding line must wrap the quoted symbol in backticks (`symbol_name`), only that one",
+  "On the fix line, wrap any named symbol in backticks; if told to stay vague, use no backticks there",
+  "Do not use names of real projects, companies or code libraries; invent a name instead",
+  "Write everything in {language}",
+]
+
+[feature.cite.touched]
+brief = "the line it points at **was touched by this change** (added or modified)"
+hint = "write it as a problem this change just introduced"
+
+[feature.cite.untouched]
+brief = "the line it points at **was not touched by this change**"
+hint = "write it as an old problem that predates the change"
+
+[feature.cite.missing]
+brief = "the line number it points at **cannot be found in the record**"
+hint = "use exactly that line number, do not switch to a line that is in the record"
+
+[feature.fix.concrete]
+brief = "the suggested fix **names a concrete symbol**"
+hint = "write a fix someone could apply directly"
+
+[feature.fix.vague]
+brief = "the suggested fix **names no symbol at all**"
+hint = "write something like \"needs further investigation\" that cannot be acted on"
+
+[verify]
+intro = "Below is a finding-triage item. Reverse-solve three things from the text alone: which record row the finding points at, which symbol it quotes, and whether the suggested fix names a concrete symbol."
+state_header = "[full item]"
+questions_header = "[questions]"
+option_line = "   - {name}: {desc}"
+symbol_q = "Which symbol does the finding wrap in backticks? (copy it verbatim, without the backticks)"
+
+[fam.cite]
+q = [
+  "The line number written in the finding -- which row of the change record is it?",
+  "Given the line number written in the finding, which row of the record is it?",
+  "Which entry of the record does the finding target (by the line number it writes)?",
+]
+[fam.cite.opt]
+none = "the record has no such line number"
+
+[fam.introduced]
+q = [
+  "Was the problem this finding reports introduced by this change?",
+  "According to the record, was the line it points at touched this time?",
+  "Should this problem be blamed on this change?",
+]
+[fam.introduced.criteria]
+yes = "yes: the line it points at was added or modified this time"
+no = "no: the line it points at was not touched this time"
+unknown = "unknown: that line number is not in the record"
+
+[fam.supported]
+q = [
+  "Is the symbol the finding quotes on the record row it points at?",
+  "Where does the finding's evidence sit?",
+  "According to the record, how strong is the finding's evidence?",
+]
+[fam.supported.criteria]
+strong = "strong: the quoted symbol is on the row it points at"
+weak = "weak: the symbol sits on a different entry of the record"
+none = "none: the symbol is nowhere in the record"
+
+[fam.actionable]
+q = [
+  "Does the suggested fix name a concrete symbol to change?",
+  "Could someone act on this fix directly?",
+  "Is the fix actionable (does it name a concrete symbol)?",
+]
+[fam.actionable.criteria]
+true = "yes: the fix names a concrete symbol"
+false = "no: the fix is vague and names no symbol"
+
+[fam.triage]
+q = [
+  "Under the triage rules, which bucket does this finding land in?",
+  "What should be done with this finding?",
+  "Computing from the record and the rules, which triage bucket applies?",
+]
+[fam.triage.criteria]
+must_fix = "must_fix: introduced here, evidence strong, fix actionable"
+log_only = "log_only: note it and do not act this time"
+drop = "drop: not this change's business"
+
+[fam.decoy]
+q = [
+  "Does the record hold an entry whose symbol is almost, but not quite, the quoted one?",
+  "Is there an entry whose symbol looks nearly identical to the quoted symbol?",
+  "Does the record contain a symbol one letter away from the quoted symbol?",
+]
+[fam.decoy.criteria]
+true = "yes: one entry's symbol is the near form of the quoted symbol"
+false = "no: the record has no such near-form symbol"

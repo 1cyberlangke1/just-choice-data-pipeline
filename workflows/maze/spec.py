@@ -56,6 +56,10 @@ PATH_LENGTH_BUCKETS: Final[tuple[tuple[int, int], ...]] = (
     (8, 10**9),
 )
 
+#: 要问 `exits` 时至少放几个标记格：角色顺序是「路径上 → 死胡同 → 拐角 → 路口」，
+#: 三个档位占后三个角色，少一个就有档位在样本里恒取不到。
+MARKS_FOR_EXITS: Final[int] = 4
+
 # 固定标记符（不参与符号集随机，避免歧义）
 GLYPH_START: Final[str] = "S"
 GLYPH_EXIT: Final[str] = "E"
@@ -236,31 +240,19 @@ def _pick_start_exit(
     mask: tuple[int, ...],
     rows: int,
     cols: int,
-    target: tuple[tuple[int, int], ...] | None = None,
 ) -> tuple[int, int]:
     """挑起点与出口：出口在「距离 ≥ 2 的格子」里均匀取，保证路径有长度又不过度偏长。
 
-    输入：RNG、mask、行列数、可选的候选距离桶（给 path_length 题族定答案用）。
+    输入：RNG、mask、行列数。
     输出：(start, exit)。
     预期行为：最短距离 ≥ 2（小迷宫会退化，此时放宽到 ≥1）。这里刻意不做「只取最远格」的偏置：
-    否则路径长度会全挤进长桶，path_length 题族的答案分布必然失衡。
-    给了 target 时，只在**当前迷宫真的能实现**的桶里均匀挑一个，再在该桶内选格子；
-    一个都实现不了就退回默认策略（不硬凑，避免造不出样本）。
+    否则路径长度会全挤进长桶，`path_length` 题族的答案分布必然失衡。要**按桶定答案**的
+    走 `_pick_start_exit_in_bucket`。
     """
     total = rows * cols
     for _ in range(64):
         start = rng.randrange(total)
         dist = grid.distances(mask, rows, cols, start)
-        if target is not None:
-            # 只在「这个迷宫真的能实现」的桶里挑：否则目标桶恒不可达，答案分布会失真
-            achievable = [
-                bucket for bucket in target if any(bucket[0] <= d <= bucket[1] for d in dist)
-            ]
-            if achievable:
-                low, high = rng.choice(achievable)
-                hit = [c for c in range(total) if low <= dist[c] <= high]
-                if hit:
-                    return start, rng.choice(hit)
         pool = [c for c in range(total) if dist[c] >= 2]
         if not pool:
             pool = [c for c in range(total) if dist[c] >= 1]
@@ -268,6 +260,29 @@ def _pick_start_exit(
             continue
         return start, rng.choice(pool)
     return 0, total - 1
+
+
+def _pick_start_exit_in_bucket(
+    rng: random.Random, mask: tuple[int, ...], rows: int, cols: int, bucket: tuple[int, int]
+) -> tuple[int, int] | None:
+    """挑一对起止格，使最短距离落在 `bucket` 里。
+
+    输入：RNG、mask、行列数、目标距离桶 (low, high)。
+    输出：(start, exit)，或 None（这个迷宫实现不了该桶，调用方**带着同一个桶**换迷宫重试）。
+    预期行为：起点洗牌后逐个试，第一个能走进桶里的起点就定下来。**不退回别的桶**——
+    `path_length` 题族是「先定答案（桶）再挑输入」（范式 §5.2），退回就等于让迷宫来决定
+    答案分布（实测那样第 3 档只剩 0.25）。
+    """
+    low, high = bucket
+    total = rows * cols
+    starts = list(range(total))
+    rng.shuffle(starts)
+    for start in starts:
+        dist = grid.distances(mask, rows, cols, start)
+        hit = [c for c in range(total) if low <= dist[c] <= high]
+        if hit:
+            return start, rng.choice(hit)
+    return None
 
 
 def _pick_marks(
@@ -289,7 +304,7 @@ def _pick_marks(
     on_path = [c for c in (path or []) if c not in banned]
     others = [c for c in range(rows * cols) if c not in banned and c not in set(on_path)]
     if marks_on_path == 0:
-        on_path = []
+        on_path.clear()  # 全部标记放路径外：清空「路径上」这个候选池（重新绑定会让类型悬空）
     elif marks_on_path == 1 and not on_path:
         marks_on_path = None  # 路径太短、放不下「路径上的标记」→ 退回默认策略
     dead_ends = [
@@ -412,6 +427,16 @@ def _random_walk(
     return tuple(moves)
 
 
+def exit_level(mask: tuple[int, ...], rows: int, cols: int, cell: int) -> int:
+    """输入：mask、行列数、格子。输出：该格可走方向数的档位（0 死胡同 / 1 拐角 / 2 路口）。
+
+    预期行为：与出题那一侧同一把尺——挑标记时要保证三档都有候选（否则 `exits` 的第 3 档
+    在样本里恒取不到），出题时要按同一把尺定答案。只分三档，因为「0 个方向」在迷宫里
+    结构性不可能，「4 个方向」在小迷宫里极罕见。
+    """
+    return min(2, max(0, len(grid.open_neighbors(mask, cell, rows, cols)) - 1))
+
+
 def sample_spec(
     rng: random.Random,
     config: MazeConfig,
@@ -422,12 +447,14 @@ def sample_spec(
     phrasing_pool: tuple[int, ...] | None = None,
     force_cut: bool = False,
     marks_on_path: int | None = None,
+    path_bucket: int | None = None,
 ) -> MazeSpec | None:
     """采样一份迷宫 spec。
 
     输入：RNG、配置、case 组合、切分名、本题样本要出的题族、问法编号池（None 用配置默认）、
     是否强制砍断（force_cut=True 时必定造出「出口不可达」样本）、
-    最优路径上要放几个标记（给 path_via 定答案用）。
+    最优路径上要放几个标记（给 path_via 定答案用）、
+    path_length 的答案桶下标（None = 当场抽一个；给值时调用方必须保证跨重试不变）。
     输出：MazeSpec 或 None（该 case 在当前参数下构造不出来，调用方换参数重试）。
     预期行为：
     - 先造迷宫（算法 + 可选 braid），再施加随机对称变换；
@@ -450,11 +477,22 @@ def sample_spec(
     transform = rng.choice(grid.TRANSFORMS)
     mask, rows, cols = grid.apply_transform(transform, mask, rows, cols)
 
-    # path_length 题族：把候选桶交给选点函数，由它在「可实现的桶」里均匀挑一个
-    target_steps = None
+    # path_length 题族：**先定答案（桶）再挑输入**，挑不到就换迷宫重试。
+    # 桶由计划层给定（`path_bucket`）并跨重试保持不变：桶在重试循环里重抽的话，
+    # 「抽到短桶 → 下游约束（智能体 / 标记 / exits 三档）构造失败 → 重试又抽到长桶」
+    # 会让各桶的接受率不等（实测 0.67 / 0.94 / 0.97），短桶被系统性挤掉（第 1 档 0.259 vs 1/3）。
     if "path_length" in families:
-        target_steps = PATH_LENGTH_BUCKETS
-    start, exit_cell = _pick_start_exit(rng, mask, rows, cols, target_steps)
+        bucket = (
+            PATH_LENGTH_BUCKETS[path_bucket]
+            if path_bucket is not None
+            else rng.choice(PATH_LENGTH_BUCKETS)
+        )
+        pair = _pick_start_exit_in_bucket(rng, mask, rows, cols, bucket)
+        if pair is None:
+            return None
+        start, exit_cell = pair
+    else:
+        start, exit_cell = _pick_start_exit(rng, mask, rows, cols)
     path = grid.shortest_path(mask, rows, cols, start, exit_cell)
     if path is None:
         return None
@@ -486,6 +524,12 @@ def sample_spec(
 
     # 标记格必须在智能体定下来之后再挑，并避开当前位置（否则 @ 会盖掉字母标记）
     current = grid.apply_moves(mask, rows, cols, start, agent.moves)[-1]
+    # exits 的三档（死胡同 / 拐角 / 路口）要**都有标记**，否则那一档在样本里恒取不到
+    # （实测第 3 档只剩 0.29）。角色顺序是「路径上 → 死胡同 → 拐角 → 路口」，三档占后三个
+    # 角色，所以标记数至少 `MARKS_FOR_EXITS`。
+    mark_count = rng.randint(*config.marks_range)
+    if "exits" in families:
+        mark_count = max(mark_count, MARKS_FOR_EXITS)
     marks = _pick_marks(
         rng,
         mask,
@@ -493,10 +537,14 @@ def sample_spec(
         cols,
         start,
         exit_cell,
-        rng.randint(*config.marks_range),
+        mark_count,
         exclude={current},
         marks_on_path=marks_on_path,
     )
+    if "exits" in families and len(
+        {exit_level(mask, rows, cols, cell) for cell in marks.values()}
+    ) < 3:
+        return None  # 三档凑不齐（迷宫太小或没有拐角）→ 换迷宫重试
 
     pool = phrasing_pool if phrasing_pool else config.phrasing_pool
     return MazeSpec(

@@ -1,7 +1,6 @@
 """语言文件：形状一致、短语互不包含、取值短语全局唯一、模板填得满。"""
 
 from __future__ import annotations
-from collections.abc import Callable
 from jc.jsontypes import JsonValue
 
 
@@ -10,6 +9,8 @@ import pytest
 
 from workflows.functions import locales, parse, render, spec as sp
 from workflows.functions.workflow import FunctionsWorkflow
+
+from tests.workflows.functions.conftest import MakeCase
 
 LANGS = tuple(locales.available())
 
@@ -265,7 +266,7 @@ def test_merged_phrase_groups_stay_unambiguous() -> None:
                 assert other not in phrase, (key, other_value, other, value, phrase)
 
 
-def test_merged_table_reads_both_languages(make_case: Callable[..., sp.CallCase]) -> None:
+def test_merged_table_reads_both_languages(make_case: MakeCase) -> None:
     """输入：合并表。输出：无。
 
     预期行为：两种语言渲染出来的文本都能被同一张合并表读回来，且意图短语是并集。

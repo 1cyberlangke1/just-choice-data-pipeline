@@ -210,3 +210,26 @@ def test_label_flip_axes_are_single_dimension_neighbours() -> None:
         assert other != case
         diff = [k for k, v in other.as_dict().items() if case.as_dict()[k] != v]
         assert len(diff) == 1
+
+
+def test_link_address_pools_are_usable_and_unique() -> None:
+    """链接地址池：非空、去重、IP 全落在 RFC 5737 的文档网段里。
+
+    输入：无。输出：无。
+    预期行为：池子里的取值不许重复（重复等于池子比看起来小）；IP 只许取 192.0.2.0/24、
+    198.51.100.0/24、203.0.113.0/24 这三个文档网段——合成数据不该指向真实主机。
+    """
+    assert len(set(features.LINK_PATHS)) == len(features.LINK_PATHS)
+    assert len(set(features.LINK_IPS)) == len(features.LINK_IPS)
+    assert all(path and "/" not in path for path in features.LINK_PATHS)
+    for ip in features.LINK_IPS:
+        assert ip.startswith(("192.0.2.", "198.51.100.", "203.0.113.")), ip
+
+
+def test_link_address_pickers_wrap_around() -> None:
+    """输入：越界的样本序号。输出：无。预期行为：按池长回绕，不抛异常、且序号相邻时取值不同。"""
+    assert features.link_path_at(0) == features.LINK_PATHS[0]
+    assert features.link_path_at(len(features.LINK_PATHS)) == features.LINK_PATHS[0]
+    assert features.link_ip_at(len(features.LINK_IPS) + 3) == features.LINK_IPS[3]
+    assert features.link_path_at(0) != features.link_path_at(1)
+    assert features.link_ip_at(0) != features.link_ip_at(1)

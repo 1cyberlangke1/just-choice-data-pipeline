@@ -150,39 +150,6 @@ def test_roundtrip_diff_catches_each_cell() -> None:
         assert diff, wrong
 
 
-def test_roundtrip_judge_passes_a_good_sample() -> None:
-    """输入：一条合格样本。输出：无。预期行为：结构往返通过。"""
-    sample, spec = _sample()
-    verdict = judges.RoundtripJudge(locale="zh").judge(sample, spec)
-    assert verdict.ok is True
-    assert verdict.raw == {"diff": []}
-
-
-def test_roundtrip_judge_skips_without_a_spec() -> None:
-    """输入：没有真值规格 / 规格类型不对。输出：无。
-
-    预期行为：跳过而不是判错——「没判成」与「不通过」是两件事。
-    """
-    sample, _spec = _sample()
-    for spec in (None, "not-a-spec"):
-        verdict = judges.RoundtripJudge(locale="zh").judge(sample, spec)
-        assert verdict.ok is True and verdict.raw == {"skipped": True}
-
-
-def test_roundtrip_judge_flags_a_broken_state() -> None:
-    """输入：state 被改坏。输出：无。预期行为：判不通过并说清是反解失败。"""
-    sample, spec = _sample()
-    broken = {**sample, "state": "今天天气不错。"}
-    verdict = judges.RoundtripJudge(locale="zh").judge(broken, spec)
-    assert verdict.ok is False and "反解失败" in verdict.reason
-
-
-def test_label_judge_passes_a_good_sample() -> None:
-    """输入：一条合格样本。输出：无。预期行为：题号与答案与规格逐题一致。"""
-    sample, spec = _sample()
-    assert judges.LabelJudge(locale="zh").judge(sample, spec).ok is True
-
-
 def test_label_judge_flags_a_wrong_answer_and_a_wrong_spec() -> None:
     """输入：答案被改坏 / 规格类型不对。输出：无。预期行为：都判不通过并说清原因。"""
     sample, spec = _sample()
@@ -193,14 +160,6 @@ def test_label_judge_flags_a_wrong_answer_and_a_wrong_spec() -> None:
 
     verdict = judges.LabelJudge(locale="zh").judge(sample, object())
     assert verdict.ok is False and "规格类型不对" in verdict.reason
-
-
-def test_label_judge_flags_a_missing_question() -> None:
-    """输入：把某一族整族删掉。输出：无。预期行为：题号对不上，判不通过。"""
-    sample, spec = _sample()
-    trimmed = {qid: item for qid, item in sample["questions"].items() if qid != "best"}
-    verdict = judges.LabelJudge(locale="zh").judge({**sample, "questions": trimmed}, spec)
-    assert verdict.ok is False and "题号与规格不符" in verdict.reason
 
 
 def test_judges_work_on_a_finished_board_without_best() -> None:

@@ -241,10 +241,3 @@ def test_an_unknown_family_is_counted(tmp_path: Path) -> None:
     assert any("题族 gate 一条都没出" in item for item in missing)
 
 
-def test_recorded_reads_every_answer_shape() -> None:
-    """输入：三种题型的题面与答案。输出：无。预期行为：choice 换回选项名，其余原样。"""
-    question = {"type": "choice", "criteria": {"allow": "放行", "block": "拦下"}}
-    assert audit._recorded(question, {"type": "choice", "choice": 1}) == "block"
-    assert audit._recorded(question, {"type": "choice", "choice": 9}) is None
-    assert audit._recorded({"type": "score"}, {"type": "score", "score": 2}) == 2
-    assert audit._recorded({"type": "noul"}, {"type": "noul", "noul": True}) is True

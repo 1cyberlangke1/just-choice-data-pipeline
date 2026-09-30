@@ -28,7 +28,7 @@ from jc.jsontypes import JsonValue
 from jc.workflow import DraftError
 
 from . import features, locales
-from .features import LintCase, LintPlan
+from .features import LintPlan
 from .spec import LintSpec
 
 #: 行号前缀。**这是 state 格式的一部分，不是文案**，所以不进语言文件：渲染与解析共用
@@ -111,6 +111,9 @@ def build_prompt(plan: LintPlan, loc: dict[str, JsonValue]) -> str:
     name = rule_name(loc, plan.rule)
     lines = [
         str(loc["prompt"]["intro"]).format(genre=loc["genre"][plan.genre], n=features.SIZE),
+        str(loc["prompt"]["lang_rule"]).format(
+            genre=loc["genre"][plan.genre], language=loc["language_name"]
+        ),
         (
             str(loc["prompt"]["hit_none"]).format(n=features.SIZE, rule=name)
             if plan.hits == 0

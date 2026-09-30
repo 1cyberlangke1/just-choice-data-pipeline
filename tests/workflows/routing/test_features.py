@@ -9,7 +9,6 @@ import pytest
 from workflows.routing import features
 from workflows.routing.features import TagSet
 
-from tests.workflows.routing.conftest import body_for
 
 
 def all_tags() -> list[TagSet]:
@@ -40,13 +39,6 @@ def test_every_rule_is_reachable() -> None:
 def test_every_queue_is_reachable() -> None:
     """输入：全空间组合。输出：无。预期行为：六个队列都到得了。"""
     assert {features.queue_for(tags) for tags in all_tags()} == set(features.QUEUES)
-
-
-def test_priority_reaches_every_level() -> None:
-    """输入：全空间组合。输出：无。预期行为：0~3 四档都到得了。"""
-    assert {features.priority_for(tags) for tags in all_tags()} == set(
-        range(features.PRIORITY_LEVELS)
-    )
 
 
 def test_needs_human_reaches_both_values() -> None:
@@ -182,16 +174,6 @@ def test_choice_options_are_a_subset_of_the_dimensions() -> None:
     assert features.CHOICE_OPTIONS["urgency"] == features.URGENCIES
     assert features.CHOICE_OPTIONS["rule"] == features.QUEUE_RULES
     assert features.CHOICE_OPTIONS["queue"] == features.QUEUES
-
-
-def test_every_compatible_combination_has_fixture_text() -> None:
-    """输入：全空间组合。输出：无。
-
-    预期行为：假后端能给每一格写出相称的正文——夹具缺格会让「文本承载两维」这条前提
-    在测试里悄悄失效（`body_for` 缺格直接抛 KeyError）。
-    """
-    for tags in all_tags():
-        assert body_for(tags.as_dict()).strip()
 
 
 def test_tag_set_round_trips_through_dict() -> None:

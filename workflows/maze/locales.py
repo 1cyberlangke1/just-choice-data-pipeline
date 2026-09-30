@@ -6,33 +6,19 @@
 """
 
 from __future__ import annotations
-from jc.jsontypes import JsonValue
-
-import tomllib
-from functools import lru_cache
 from pathlib import Path
 from typing import Final
+
+from jc import locale_files
+from jc.jsontypes import JsonValue
+
 
 LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")
 
 
-def available() -> list[str]:
-    """列出可用语言（按文件名）。"""
-    return sorted(p.stem for p in LOCALE_DIR.glob("*.toml"))
-
-
-@lru_cache(maxsize=8)
-def load(lang: str) -> dict[str, JsonValue]:
-    """读取并缓存一个语言文件。
-
-    输入：语言代码。
-    输出：字典。预期行为：文件不存在时抛 FileNotFoundError 并给出可用列表。
-    """
-    path = LOCALE_DIR / f"{lang}.toml"
-    if not path.exists():
-        raise FileNotFoundError(f"没有语言文件 {path.name}；可用：{', '.join(available())}")
-    with path.open("rb") as handle:
-        return tomllib.load(handle)
+#: 三个函数由通用层按本包目录绑好（读取 / 缓存 / 报错 / 回绕只在那里有一份），见 `jc.locale_files.make`。
+_api = locale_files.make(LOCALE_DIR)
+available, load = _api.available, _api.load
 
 
 def phrasing(loc: dict[str, JsonValue], family: str, index: int, **kwargs: str) -> str:

@@ -77,14 +77,6 @@ def test_clean_products_pass_the_audit(tmp_path: Path) -> None:
         assert report["train"][counter] == 0, counter
 
 
-def test_missing_product_is_reported(tmp_path: Path) -> None:
-    """输入：一个空目录。输出：无。预期行为：报「产物不存在」。"""
-    empty = tmp_path / "empty"
-    empty.mkdir()
-    _, missing = audit_mod.audit_run(empty, ("train",), "zh")
-    assert missing and "产物不存在" in missing[0]
-
-
 def _flip_choice(row: dict[str, JsonValue], qid: str) -> None:
     """输入：一行产物、题号。输出：无。预期行为：把该题的编号换成另一个（原地改）。"""
     answers = row["answers"]
@@ -159,12 +151,6 @@ def test_dropped_candidate_line_is_caught(tmp_path: Path) -> None:
     rows[0]["state"] = "\n".join(line for line in lines if not line.startswith("5. "))
     report, _ = audit_mod.audit_run(_rewrite(tmp_path, rows), ("train",), "zh")
     assert report["train"]["candidates_bad"] == 1
-
-
-def test_unknown_locale_is_rejected_up_front(tmp_path: Path) -> None:
-    """输入：不存在的语言。输出：无。预期行为：当场抛（不拖到解析阶段）。"""
-    with pytest.raises(FileNotFoundError):
-        audit_mod.audit_run(tmp_path, ("train",), "nope")
 
 
 def test_family_and_pair_index_helpers() -> None:

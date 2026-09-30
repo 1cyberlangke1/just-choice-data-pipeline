@@ -260,6 +260,15 @@ class ShellWorkflow:
                 )
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：空表（这一族没有「模型写的自然语言正文」）。
+
+        预期行为：**模型写的是命令行**（PowerShell / bash 的调用本身），命令与语言无关；说明行
+        与风险提示由代码按语言表写。把命令喂给语言判据只会把好数据当坏数据。
+        """
+        del sample
+        return {}
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

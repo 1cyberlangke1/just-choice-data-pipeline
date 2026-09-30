@@ -8,6 +8,9 @@
 # - `[clause.*]` lines up with `features.CLAUSE_IDS`, each with name / rule / example / avoid;
 # - every placeholder in the prompt and question templates gets filled.
 
+lang = "en"
+language_name = "English"
+
 [state]
 clause_mark = "[policy clauses]"
 rule_mark = "[disposition thresholds]"
@@ -46,6 +49,7 @@ avoid = "three or more exclamation marks in a row"
 
 [prompt]
 intro = "You write synthetic data. Write **one piece of text to be moderated** - a forum post, a product review, a support ticket or a chat message, any topic - but it must read as **natural language** and be between {min} and {max} characters long."
+lang_rule = "Write the whole text in {language}, not in any other language."
 hits_header = "The text **must break** each of these clauses. Breaking a clause means the forbidden shape below **really appears** in the text - writing around it does **not** count (spelling digits out as words, dropping one of the three exclamation marks, replacing the @ sign all fail the requirement):"
 hits_line = "- must contain **one** fragment like: {example} - that fragment is exactly what breaks the \"{name}\" clause, whose rule is: {rule}"
 vary_rule = "Every fragment above is only an **example**: invent your own number, domain and mailbox name instead of copying it verbatim (for runs of exclamation marks there is nothing to swap, just keep the shape)."

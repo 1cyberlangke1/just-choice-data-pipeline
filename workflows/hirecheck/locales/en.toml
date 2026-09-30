@@ -1,0 +1,170 @@
+# English copy for the recruiting screen gate (hirecheck) workflow.
+#
+# Input: read by `workflows.hirecheck.locales.load("en")`.
+# Output: a dict.
+# Expected behaviour (every point is pinned by a test):
+# - the four section marks are pairwise non-prefixes (fact_mark / rule_mark / act_mark / content_mark);
+# - `[level.*]` keys line up with `features.LEVELS`, `[act.*]` keys with `features.ACTS`;
+# - `[fact.*]` keys line up with `features.TAG_IDS`, each with name / rule / avoid / require;
+# - `[channel.*]` keys line up with `features.CHANNELS`;
+# - no mark's `avoid` copy trips a **different** mark (test_locales scans them one by one);
+# - the criterion text and the avoid copy contain no braces at all (they get pasted into the prompt,
+#   where braces are slot markers);
+# - every placeholder in the prompt and question templates is filled (rendering is strict).
+
+lang = "en"
+language_name = "English"
+
+[state]
+fact_mark = "[Screen criteria]"
+rule_mark = "[Level rule]"
+act_mark = "[Dispositions]"
+content_mark = "[Candidate under review]"
+tag_sep = ": "
+rule_sep = " -- "
+rule_formula = "level = 1 + the weights of the criteria that hit, capped at {max} (whether a criterion hits is decided by its own criterion above)"
+
+[fact.H1]
+name = "not enough years"
+rule = "the `years:` line holds a number **below 3** (written as a single digit, 0 / 1 / 2) -- **that line only**, numbers elsewhere do not count"
+avoid = "writing fewer than three years on the `years:` line (`years: 0` / `years: 1` / `years: 2` of that kind)"
+require = "writing 3 or more on the `years:` line (this person has the years)"
+
+[fact.H2]
+name = "missing the required skill"
+rule = "the `skills:` line **does not** contain the word `kubernetes` (the skill table lacks the hard requirement of this role) -- **that line only**, the same word elsewhere does not count"
+avoid = "a skill table that is missing the hard skill this role asks for (the `skills:` line does not carry it)"
+require = "the `skills:` line carries `kubernetes` (the table has the hard skill this role asks for)"
+
+[fact.H3]
+name = "no work permit"
+rule = "the `permit:` line says `none` (this person has no local work permit and the employer would have to sort it out) -- **that line only**"
+avoid = "writing `permit: none` on that line (no local work permit)"
+require = "writing `citizen` / `pr` / `visa` on the `permit:` line (a permit this person already holds)"
+
+[fact.H4]
+name = "degree does not match"
+rule = "the `degree:` line is **not** one of `bs` / `ms` / `phd` (the degree code does not match what the role asks for) -- **that line only**"
+avoid = "a degree code that does not match what the role asks for (the `degree:` line carries one of the other codes)"
+require = "the `degree:` line carries one of `bs` / `ms` / `phd`"
+
+[level.L1]
+name = "level 1 (interview now)"
+
+[level.L2]
+name = "level 2 (phone screen)"
+
+[level.L3]
+name = "level 3 (human review)"
+
+[level.L4]
+name = "level 4 (reject)"
+
+[level.L5]
+name = "level 5 (reject)"
+
+[act.interview]
+name = "goes straight into the interview loop"
+
+[act.screen]
+name = "a phone screen first, then decide"
+
+[act.hold]
+name = "handed to the hiring team for a human review"
+
+[act.reject]
+name = "not moved forward this round"
+
+[channel.referral]
+desc = "an internal referral: a teammate passed the material in, so the note says who referred them and why"
+
+[channel.board]
+desc = "a job board: the candidate applied on their own, so the note says what situation they are looking in"
+
+[channel.campus]
+desc = "campus recruiting: the material came in with the campus batch, so the note says when they graduate and what they did at school"
+
+[prompt]
+intro = "You write synthetic data. Write **one screen of candidate material** -- the few lines a recruiting system leaves behind when a resume enters the first screen, six lines, and it has to read naturally: copy the key names and colons from the format spec below, and keep the whole screen between {min} and {max} characters."
+lang_rule = "Write the key names and the **values** such as `none` / `bs` in plain English exactly as given (they are machine format), but write the `note:` line in {language}."
+text_only = "This screen is **text only**: do not actually look this person up, contact any recruiting system or run a background check (the criteria only read the literal text -- checking changes nothing)."
+channel_line = "This material came in through: {channel}."
+role_line = "The role they are applying for is: {role}. Both the `skills:` line and the `note:` have to land on it; do not write a sentence that would fit any role."
+name_line = "Write the `candidate:` line as **{name}** -- **copy that value verbatim** (names are written the way the target language does it); do not swap in another name and do not use a placeholder."
+years_line = "Write the `years:` line as **{years}** (a decimal integer -- the years of relevant experience; no word \"years\", no range, no \"+\")."
+format_header = "**Format spec** (six lines; copy each key name and colon, invent the values):"
+hits_header = "This screen **must trip** the following screen criteria. Tripping one means the shape below **really appears on the line it names** (moving the shape to another line, rewording it, or dropping a character does not count):"
+hits_line = "- The criterion for \"{name}\" is: {rule} -- the material must really contain **content that satisfies this criterion, on its own line**"
+vary_rule = "The words in the criteria are only **examples of the shape**: invent the skill list, the permit status, the degree code and the note; organise the material yourself. But **the shape the criterion asks for must appear verbatim** (the codes and the wording are written as given, not \"put another way\") -- just **do not** paste the criterion text itself into the material."
+no_hits = "This screen **must not trip any** of the criteria: none of the four criteria below may hold -- it has to be an **unremarkable candidate who can go straight into the interview loop**."
+miss_header = "At the same time, this screen **must not trip** the following:"
+miss_line = "- Must not contain: {avoid} (the criterion \"{name}\" reads \"{rule}\") -- write the opposite instead: {require}"
+length_rule = "The whole screen is {min}~{max} characters and all six keys must **sit on their own line followed by a colon**: no title, no bullets, no explanation, no fences."
+self_check = "Before answering, check each item: does every required shape **really appear as a shape and on the required line** (really on the `years:` line, really on the `skills:` line, really on the `permit:` line, really on the `degree:` line)? And is every forbidden shape really absent from the material (whatever the \"write the opposite instead\" line names **must appear verbatim**, not \"put another way\")? Is the `note:` line in {language}? Does it describe **this person themselves** (what they do now, what they are good at, why they are applying, which channel the material came through) rather than restating the criteria, and does it **avoid passing a screen verdict** (no mention of \"not enough years\", \"missing the required skill\", \"no work permit\" or \"degree does not match\") and naming any criterion? Does it really land on the **role direction** named above (rather than being a sentence that would fit any role)? Is the `candidate:` line written with the **name** named above? Is the `years:` line written with the **number** named above? Are all six keys present, each on its own line, each followed by a colon?"
+output = "Output only one JSON object with the field packet (that six-line material string); no explanation, no fences."
+
+# Role-direction table: the spec stores an **index**, so this table has to be the same length as the
+# other languages' (locked by test_locales.py). Every entry is a direction any channel can carry, so
+# it never fights with `channel`.
+roles = [
+  "backend services: HTTP services, task queues and database access",
+  "data engineering: data pipelines, batch jobs and scheduling",
+  "client apps: mobile or desktop UI plus local storage",
+  "infrastructure: container orchestration, CI and observability",
+  "algorithms: training and serving models, offline evaluation",
+  "security: vulnerability response, access control and auditing",
+]
+
+# Name table: the spec stores an **index**, so this table has to be the same length as the other
+# languages' (locked by test_locales.py). Every entry is a distinct real-looking name, so one batch
+# never repeats a name.
+names = [
+  "Dana Whitfield",
+  "Marcus Ellery",
+  "Priya Raghavan",
+  "Tomas Lindqvist",
+  "Aisha Bello",
+  "Evan Kowalski",
+  "Nadia Farouk",
+  "Julian Reyes",
+  "Mei-Ling Chou",
+  "Oliver Brandt",
+  "Sofia Marchetti",
+  "Kwame Osei",
+]
+
+[prompt.format]
+candidate = "`candidate: <name>` -- this person's name (use the one named above, no placeholders)"
+years = "`years: <years of experience>` -- write a plain decimal integer (**no** word \"years\", no range, no \"+\")"
+skills = "`skills: <skill list>` -- comma-separated technical skills (lower case, written in plain English, e.g. the names of languages, frameworks and databases), at least four of them"
+permit = "`permit: <work permit>` -- this person's local work permit status: write `none` (no permit, the employer would have to sort it out), `citizen` (local citizen), `pr` (permanent resident) or `visa` (already holds a transferable work visa)"
+degree = "`degree: <highest degree>` -- the degree **code**: write `bs` (bachelor), `ms` (master), `phd` (doctorate), `associate` (associate degree) or `bootcamp` (bootcamp graduate)"
+note = "`note: <one line of notes>` -- one line in the target language that **the screener** can act on, about **this candidate only**: what they do now, what they are good at, why they are applying for this role, and which channel the material came through. Do **not** pass a screen verdict on this line: do not say whether they \"have enough years\", \"have the hard skill this role asks for\", \"have a work permit\" or \"match the degree\", and do **not** name any criterion or mention this screen's format requirements. This line is material only -- the criteria read nothing but the structured keys above."
+
+[fam.flag]
+q = ["Does this material trip the \"{name}\" criterion?", "By the criterion \"{name}\" ({rule}), does this material count as tripping it?"]
+criteria_true = "it trips this one"
+criteria_false = "it does not trip this one"
+
+[fam.grade]
+q = ["By the level rule above, what level does this material get?", "Put the criteria that hit into the weight formula: what screen level does this material get?"]
+
+[fam.combo]
+q = ["Which screen criteria does this material actually trip?", "Which set of screen criteria does it trip?"]
+none = "none of them"
+joiner = " + "
+
+[fam.act]
+q = ["According to the dispositions above, which disposition does this material take?", "By the level and the disposition table, what should be done with this candidate?"]
+
+[verify]
+intro = "Below is one screen of candidate material: first the screen-criteria table, the level rule and the disposition table, then the material itself. **Every criterion line also prints its own mechanical criterion and the line it looks at** -- compare against that criterion line by line and judge purely literally which criteria this material trips, then run the weight formula once for the level. Do not reason semantically, and **do not actually look this person up, contact any recruiting system or run a background check**."
+state_header = "[Material under grading]"
+q = "Which screen criteria does this material trip? For each one give the **criterion id** and **the exact original text that tripped it** -- copy it verbatim, do not rewrite or abbreviate; if it trips none, return an empty array. Do not report a criterion whose text you cannot copy: if you cannot copy it, it does not count. **The quote must satisfy that criterion on its own**: wherever the criterion looks, copy that spot **together with its key name** (copying a bare value without the line it sits on does not count). **Read the whole material from start to finish for every criterion**, do not just look at the beginning. Finally, answer the screen level once more (an integer from 1 to 5, the one the weight formula gives)."
+
+[hygiene]
+# Screen-verdict words that must not appear on the `note:` line (case-insensitive substring match).
+# The table is per language because each language phrases a verdict differently; `render.check_draft`
+# and `judges.HygieneJudge` share this one copy. Only verdict words are listed, never the required
+# content -- so "good at" is absent while "not enough" is present.
+verdict_words = ["insufficient", "not enough", "does not meet", "doesn't meet", "fails to meet", "ineligible", "does not qualify", "disqualif", "not a fit", "meets the requirement", "qualifies", "rejected", "screened out"]

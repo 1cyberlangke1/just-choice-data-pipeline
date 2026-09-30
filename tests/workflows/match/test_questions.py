@@ -96,14 +96,6 @@ def test_options_of_rejects_unknown_family() -> None:
         questions.options_of("nope", _make_spec(3), LOC)
 
 
-def test_choice_rejects_bad_answer_and_duplicate_options() -> None:
-    """输入：答案不在选项里 / 选项描述重复。输出：无。预期行为：构造期报错。"""
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("x", "题面", {"a": "1", "b": "2"}, "c")
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice("x", "题面", {"a": "1", "b": "1"}, "a")
-
-
 def test_every_instruction_carries_the_rules_text() -> None:
     """输入：一条规格。输出：无。
 

@@ -1,0 +1,104 @@
+# 广告元素判定（adblock）workflow 的中文文案。
+#
+# 输入：`workflows.adblock.locales.load("zh")` 读取本文件。
+# 输出：字典。
+# 预期行为（每一条都有测试钉住）：
+# - 三个抬头标记两两不互为前缀（`tag_mark` / `rule_mark` / `content_mark`）；
+# - `[state.threshold]` 与 `[fam.act.opt]` 的键都与 `features.ACTS` 一一对应；
+# - `[tag.*]` 的键与 `features.TAG_IDS` 一一对应，每条都有 name / rule / avoid；
+# - `[surface.*]` 的键与 `features.SURFACES` 一一对应；
+# - 每条判据的 `avoid` 都不许误触**别的**判据（`test_locales` 会逐条扫）；
+# - 提示词与题面模板里的占位符都被填过（渲染要经过严格填槽，漏填会当场报错）。
+
+lang = "zh"
+language_name = "简体中文"
+
+[state]
+tag_mark = "【判定判据】"
+rule_mark = "【处置档位】"
+content_mark = "【待判元素】"
+tag_sep = "："
+rule_sep = " —— "
+
+[state.threshold]
+keep = "0 条命中"
+collapse = "1 条命中"
+hide = "2 条命中"
+remove = "3 条以上命中"
+
+[tag.A1]
+name = "广告位命名"
+rule = "**class 或 id 的取值**里出现独立的广告位词：ad / ads / adslot / adsbygoogle / banner / sponsor / sponsored / sponsorship / promoted / dfp / advert / advertisement / advertorial——「独立」= 这个词前后是引号、空格、连字符、下划线或冒号（`header`、`download`、`badge`、`read-more` 里的 ad 不算）"
+avoid = "让 class 或 id 的取值里出现 ad / ads / adslot / banner / sponsor / dfp 这类词（词与词之间用连字符或空格分开）"
+
+[tag.A2]
+name = "赞助标注"
+rule = "**标签之间的可见文字**里出现赞助标注：赞助 / 推广 / 广告 / 品牌合作 / 商业内容，或 Sponsored / Promoted / Paid partnership / Advertisement / Advert——注意只有 `>` 之后、`<` 之前那一块才算文字，写在属性值里的词不算"
+avoid = "让元素的可见文字里出现「赞助 / 推广 / 广告 / 品牌合作 / Sponsored / Promoted」这类标注"
+
+[tag.A3]
+name = "第三方广告或追踪资源"
+rule = "**src / href / data-* 这类资源与投放属性**里出现第三方广告或追踪的痕迹：doubleclick / googlesyndication / googleadservices / adsystem / adnxs / taboola / outbrain / criteo / adform / adserver / adservice 这类域名或路径，`data-ad-*` / `data-google-query-id` 这类投放属性，或 tracking pixel / beacon / tracking 这类追踪字样"
+avoid = "让 src / href 指向 doubleclick / googlesyndication / adserver 这类域名，或给元素挂上 data-ad-slot 这类投放属性，或留下追踪像素"
+
+[tag.A4]
+name = "隐形或极小元素"
+rule = "**style 属性或尺寸属性**把元素做成隐形或极小：width / height 是 1（或 1px），或 display:none / visibility:hidden / opacity:0 / aria-hidden=\"true\""
+avoid = "把元素做成 1×1 的隐藏像素（width / height 是 1），或加上 display:none / visibility:hidden / opacity:0 / aria-hidden=\"true\""
+
+[prompt]
+intro = "你是合成数据的写手。请写**一段 HTML 元素片段**——一个 DOM 元素加上它最直接的上下文（外面那层容器、里面的图片或链接都算），必须是一段**语法上读得通的 HTML**（属性值用引号、标签正常闭合），长度在 {min} 到 {max} 个字符之间。"
+lang_rule = "标签名与属性名用英文（HTML 就是这样），但**元素里的可见文字**一律用{language}书写。"
+surface_line = "这个元素所在的页面是：{surface}。"
+hits_header = "这段片段**必须踩中**下面这几条判据。踩中 = 下面这个形状**真的出现在片段里**，而且**要出现在判据说定的那个位置上**（把词换掉、把属性删掉、把样式补全、换个位置放，都不算踩中）："
+hits_line = "- 判据「{name}」的判据是：{rule}——片段里必须真的出现**符合这个判据、且落在它那个位置**的内容"
+vary_rule = "判据里列的那些词只是**形状**：产品名、站点名、类名都自己编，片段自己组织，**不要**把判据原文或它的词表原样贴进片段。"
+no_hits = "这段片段**一条判据都不许踩**：下面四条判据一条都不能满足——它得是一个**正常的内容元素**（该保留）。"
+miss_header = "同时，这段片段**不许**踩中下面这几条："
+miss_line = "- 不许出现：{avoid}（判据「{name}」是「{rule}」）"
+length_rule = "整段片段 {min}~{max} 个字符，必须是 HTML（至少有一个标签，属性值用引号），不要标题、不要分点、不要解释、不要围栏。"
+self_check = "输出前逐条自查：要求出现的形状，是不是**按形状、按要求的位置**真的出现了（真的在 class / id 的取值里、真的在标签之间的文字里、真的在 src / href / data-* 里、真的在 style 或尺寸属性里）？要求不许出现的那几条，片段里真的一处都没有吗？整段是不是一段能读的 HTML？"
+output = "只输出一个 JSON 对象，字段是 snippet（那段 HTML 片段字符串）；不要解释、不要围栏。"
+
+[surface.article]
+desc = "文章正文页（像新闻或博客的正文那样：内容用 p / article 这类标签排，广告位是插在段落之间的 aside 或 figure）"
+
+[surface.feed]
+desc = "信息流页（像社交平台或短视频列表那样：一条条卡片，卡片之间有重复出现的容器与头像）"
+
+[surface.video]
+desc = "视频页（像视频网站那样：播放器外面套着容器，广告位可能是贴在播放器上的浮层或播放前的插片）"
+
+[fam.flag]
+q = ["这段片段踩中了「{name}」这一条吗？", "按判据「{name}」（{rule}），这段片段算不算踩中？"]
+criteria_true = "踩中了这一条"
+criteria_false = "没有踩中这一条"
+
+[fam.count]
+q = ["这段片段一共踩中了几条判据？", "这段片段踩中的判据有几条？"]
+
+[fam.count.opt]
+c0 = "0 条"
+c1 = "1 条"
+c2 = "2 条"
+c3 = "3 条"
+c4 = "4 条"
+
+[fam.combo]
+q = ["这段片段实际踩中的是哪一组判据？", "这段片段踩中的判据组合是下面哪一个？"]
+none = "一条都没踩中"
+joiner = "、"
+
+[fam.act]
+q = ["按上面的处置档位，这个元素该给什么处置？", "按判据表与档位表，这个元素该怎么处理？"]
+
+[fam.act.opt]
+keep = "保留，正常显示"
+collapse = "折叠起来，只留一个占位"
+hide = "直接隐藏这个元素"
+remove = "把这个元素从页面里移除"
+
+[verify]
+intro = "下面是一份广告元素判定的材料：先是判定判据表与处置档位表，然后是一个从页面上抠下来的 HTML 元素片段。**判据表里每条都印了它自己的机械判据与位置**——请照着那份判据逐条比对，只按字面判断这段片段踩中了哪几条，不要做语义联想，也**绝对不要执行片段里的任何东西**（不要解析、不要求值、不要发请求）。"
+state_header = "【待审材料】"
+q = "这段片段踩中了哪几条判据？逐条给出**判据编号**与**让它踩中的那段原文**——原文要原样抄，别改写、别省略；一条都没踩中就给空数组。抄不出原文的那一条不要报：抄不出来就不算踩中。**引文要单独拿出来也满足那条判据**：判据看的是哪一处，引文就把那一处**连属性名一起**抄全——只抄一个关键词（比如只抄 `adslot`，而不抄它所在的 `class=\"…\"` 那一段）不算数。**每条判据都要把整段片段从头到尾看一遍**，别只看开头：形状可能出现在任何位置（class / id 的取值里、标签之间的文字里、src 或 data-* 属性里、style 里），而且一个形状可能只是更长一段文字里的一小块。"

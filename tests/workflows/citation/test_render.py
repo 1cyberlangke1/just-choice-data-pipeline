@@ -127,7 +127,7 @@ def test_make_quote_reports_bad_inputs(sentence: str, form: str, match: str) -> 
 def test_prompt_spells_out_the_document_requirements(lang: str) -> None:
     """输入：一种语言。输出：无。预期行为：节数、每节句数、数字、长度四条硬要求都在。"""
     loc = locales.load(lang)
-    prompt = render.build_prompt(loc)
+    prompt = render.build_prompt(loc, 0)
     assert "{" not in prompt and "}" not in prompt
     assert str(features.SENTENCE_COUNT) in prompt
     assert str(render.MIN_SENTENCE_CHARS) in prompt
@@ -142,7 +142,7 @@ def test_prompt_carries_a_sentence_by_sentence_self_check(lang: str) -> None:
     理由（模型写了「一年」「四大发明」这种汉字数字），这条自查就是照那个加的。
     """
     loc = locales.load(lang)
-    prompt = render.build_prompt(loc)
+    prompt = render.build_prompt(loc, 0)
     assert str(loc["prompt"]["self_check"]) in prompt
 
 

@@ -210,6 +210,16 @@ class BenchWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：roundtrip / label）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：空表（纯构造族，没有「模型写的正文」）。
+
+        预期行为：`needs` 为空——这一族的 state 全由代码按语言模板拼，天然与声明语言一致，
+        没有「模型写歪」这回事。留着这条是为了让「每个 workflow 都声明自己的正文」这件事
+        由协议统一要求（`tests/workflows/test_protocol.py` 会查）。
+        """
+        del sample
+        return {}
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

@@ -7,6 +7,8 @@ import pytest
 from workflows.toolgate import features, locales, questions
 from workflows.toolgate.features import TagSet
 
+from jc.jsontypes import JsonValue
+
 CASE = TagSet(tool="write_file", reach="host", payload="sensitive", policy="balanced", approval="absent")
 
 
@@ -111,7 +113,7 @@ def test_phrasing_rotates_the_instructions() -> None:
     否则整批数据的题面一模一样。
     """
     loc = locales.load("zh")
-    texts = []
+    texts: list[list[JsonValue]] = []
     for phrasing in (0, 1, 2):
         items = questions.build(CASE, loc, phrasing)
         texts.append([item.question["instructions"] for item in items])

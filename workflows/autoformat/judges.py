@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from jc.contract import option_names
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
 from jc.judge import Judge, Verdict
 from jc.jsontypes import JsonValue
@@ -58,16 +59,6 @@ def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
     """
     steps = str(loc["doc"]["list_sep"]).join(parse.seq_words(loc))
     return "\n".join([str(loc["verify"]["ask"]).format(steps=steps), "", state])
-
-
-def option_names(question: dict[str, JsonValue]) -> list[str]:
-    """输入：一道 choice 题。输出：按**产物里写的顺序**排好的选项名。
-
-    预期行为：答案编号就是在这个顺序里的下标（见 `jc.assemble`）——审计要拿它把编号换回选项名与
-    选项描述，才能与纯代码重算的结果比对。
-    """
-    criteria = question.get("criteria")
-    return list(criteria) if isinstance(criteria, dict) else []
 
 
 def answer_value(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> JsonValue:

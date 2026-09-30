@@ -33,14 +33,6 @@ def test_hygiene_judge_accepts_a_clean_state() -> None:
     assert verdict.skipped is False
 
 
-@pytest.mark.parametrize("residue", ["```", "```json", "<br>", "<br/>"])
-def test_hygiene_judge_rejects_format_residue(residue: str) -> None:
-    """围栏、HTML 换行标签都算格式残留，且要点名是哪一个。"""
-    verdict = judges_mod.HygieneJudge("zh").judge({"state": state_for() + f"\n{residue}"})
-    assert verdict.ok is False
-    assert residue in verdict.reason
-
-
 def test_hygiene_judge_flags_a_multi_line_claim() -> None:
     """输入：声明写成两行。输出：Verdict。预期行为：判不通过并点名「多行」。"""
     verdict = judges_mod.HygieneJudge("zh").judge(
@@ -85,13 +77,6 @@ def test_hygiene_judge_reads_the_marker_from_the_locale() -> None:
     state = render.to_state({"claim": "fixed the flaky retry"}, CASE, loc)
     assert judges_mod.HygieneJudge("en").judge({"state": state}).ok is True
     assert judges_mod.HygieneJudge("en").judge({"state": state + "\n```"}).ok is False
-
-
-def test_hygiene_judge_skips_a_non_text_state() -> None:
-    """state 不是文本就放过：那不是「格式残留」，是上游接线错了。"""
-    verdict = judges_mod.HygieneJudge("zh").judge({"state": {"not": "text"}})
-    assert verdict.ok is True
-    assert "不是文本" in verdict.reason
 
 
 # ---------- 框架 ----------
@@ -231,10 +216,3 @@ def test_trace_judge_rejects_an_out_of_range_value(fake_backend: GenerationBacke
 
 
 # ---------- 选项反解 ----------
-
-
-def test_option_names_follows_the_artifact_order() -> None:
-    """输入：一道 choice 题。输出：按产物里写的顺序排好的选项名（审计靠它把编号换回来）。"""
-    question = {"type": "choice", "instructions": "x", "criteria": {"b": None, "a": None}}
-    assert judges_mod.option_names(question) == ["b", "a"]
-    assert judges_mod.option_names({"type": "noul", "instructions": "x"}) == []

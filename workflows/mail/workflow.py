@@ -246,7 +246,11 @@ class MailWorkflow:
         if self.backend is None:
             raise RuntimeError("mail workflow 需要生成后端，但还没被 bind_backend 注入")
         loc = locales.load(locale)
-        draft = self.backend.generate(render.build_task(spec.tags, loc, spec.render_task_id))
+        draft = self.backend.generate(
+            render.build_task(
+                spec.tags, loc, spec.render_task_id, link_path=spec.link_path, link_ip=spec.link_ip
+            )
+        )
         render.check_official_domain(spec.tags, draft.data)
         return render.to_state(draft.data, loc)
 
@@ -278,6 +282,16 @@ class MailWorkflow:
                     f"（可用：link / link_text / sender_identity / hygiene / trace）"
                 )
         return tuple(out)
+
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：必须与声明语言一致的正文（整封信）。
+
+        预期行为：**整封信都是模型写的**（发件人 / 主题 / 正文 / 落款 / 链接行 / 官方域名），
+        代码只往里插抬头标记，所以整段 state 就是那段自然语言正文，不必再拆字段。地址与网址是
+        ASCII，本来就不参与判据（只数汉字与拉丁字母），混在里面稀释不了多少。
+        """
+        state = sample.get("state")
+        return {"整封信": state} if isinstance(state, str) and state.strip() else {}
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str

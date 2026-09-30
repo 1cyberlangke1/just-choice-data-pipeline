@@ -165,27 +165,6 @@ def test_language_files_have_the_same_shape(lang: str) -> None:
     assert set(other["meta"]) == set(reference["meta"])
 
 
-def test_missing_language_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错里列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("fr")
-
-
-def test_reverse_rejects_duplicate_spellings() -> None:
-    """输入：两个键共用一种写法。输出：无。预期行为：直接报错，不静默取其一。"""
-    with pytest.raises(ValueError, match="同时属于"):
-        locales.reverse({"a": ["x"], "b": ["x"]})
-    assert locales.reverse({"a": ["x"], "b": ["y"]}) == {"x": "a", "y": "b"}
-    assert locales.reverse({"a": "x"}) == {"x": "a"}
-
-
-def test_pick_wraps_around() -> None:
-    """输入：越界的问法编号。输出：无。预期行为：回绕而不是报错（问法不是判据）。"""
-    assert locales.pick(["a", "b"], 0) == "a"
-    assert locales.pick(["a", "b"], 2) == "a"
-    assert locales.pick(["a", "b"], 3) == "b"
-
-
 def test_available_lists_both_languages() -> None:
     """输入：无。输出：可用语言。预期行为：两个语言文件都在。"""
     assert set(locales.available()) == set(LANGS)

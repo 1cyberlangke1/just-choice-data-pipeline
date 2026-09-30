@@ -33,9 +33,28 @@ from workflows.rerank.workflow import RerankConfig
 from workflows.citation.workflow import CitationConfig
 from workflows.guardrail.workflow import GuardrailConfig
 from workflows.autoformat.workflow import AutoformatConfig
+from workflows.alertrisk.workflow import AlertRiskConfig
+from workflows.depcheck.workflow import DepCheckConfig
+from workflows.hirecheck.workflow import HireCheckConfig
+from workflows.sqlreview.workflow import SqlReviewConfig
+from workflows.subqa.workflow import SubQaConfig
+from workflows.promptinject.workflow import PromptInjectConfig
+from workflows.memorygate.workflow import MemoryGateConfig
+from workflows.logtriage.workflow import LogTriageConfig
+from workflows.turntake.workflow import TurnTakeConfig
+from workflows.adblock.workflow import AdBlockConfig
+from workflows.debugstep.workflow import DebugStepConfig
+from workflows.receiptcat.workflow import ReceiptCatConfig
+from workflows.clipcut.spec import ClipConfig
+from workflows.quoteread.spec import QuoteConfig
+from workflows.sourceselect.workflow import SourceSelectConfig
+from workflows.findtriage.workflow import FindTriageConfig
+from workflows.elementpick.workflow import ElementConfig
 
 #: (config 类, 旋钮名)：每个取值表清空后都必须当场报错。
-EMPTY_POOLS: tuple[tuple[type, str], ...] = (
+#: 类那一格写 `type[object]` 是**如实**的：这些 config 各是独立的 dataclass，没有共同基类，
+#: 这里要的只是「类对象」这一点（构造期故意喂坏取值，所以调用点不能写具体参数类型）。
+EMPTY_POOLS: tuple[tuple[type[object], str], ...] = (
     (MazeConfig, "algos"),
     (MazeConfig, "formats"),
     (MazeConfig, "symbols"),
@@ -97,6 +116,7 @@ EMPTY_POOLS: tuple[tuple[type, str], ...] = (
     (LintConfig, "phrasing_pool"),
     (RerankConfig, "phrasing_pool"),
     (CitationConfig, "phrasing_pool"),
+    (CitationConfig, "topics"),
     (GuardrailConfig, "phrasing_pool"),
     (AutoformatConfig, "topics"),
     (AutoformatConfig, "wraps"),
@@ -104,10 +124,40 @@ EMPTY_POOLS: tuple[tuple[type, str], ...] = (
     (AutoformatConfig, "variants"),
     (AutoformatConfig, "code_families"),
     (AutoformatConfig, "phrasing_pool"),
+    (SqlReviewConfig, "phrasing_pool"),
+    (AlertRiskConfig, "phrasing_pool"),
+    (AlertRiskConfig, "directions"),
+    (DepCheckConfig, "phrasing_pool"),
+    (DepCheckConfig, "categories"),
+    (DepCheckConfig, "versions"),
+    (DepCheckConfig, "licenses"),
+    (HireCheckConfig, "phrasing_pool"),
+    (HireCheckConfig, "roles"),
+    (HireCheckConfig, "years"),
+    (HireCheckConfig, "names"),
+    (SubQaConfig, "phrasing_pool"),
+    (SubQaConfig, "timecodes"),
+    (PromptInjectConfig, "phrasing_pool"),
+    (MemoryGateConfig, "phrasing_pool"),
+    (LogTriageConfig, "phrasing_pool"),
+    (TurnTakeConfig, "phrasing_pool"),
+    (AdBlockConfig, "phrasing_pool"),
+    (DebugStepConfig, "phrasing_pool"),
+    (ReceiptCatConfig, "phrasing_pool"),
+    (ClipConfig, "phrasings"),
+    (QuoteConfig, "phrasings"),
+    (SourceSelectConfig, "phrasing_pool"),
+    (FindTriageConfig, "phrasing_pool"),
+    (ElementConfig, "labels"),
+    (ElementConfig, "layouts"),
+    (ElementConfig, "shapes"),
+    (ElementConfig, "extras"),
+    (ElementConfig, "shadows"),
+    (ElementConfig, "phrasings"),
 )
 
 #: (config 类, 旋钮名)：区间类旋钮，元素个数不对时必须当场报错。
-BOUNDS: tuple[tuple[type, str], ...] = (
+BOUNDS: tuple[tuple[type[object], str], ...] = (
     (MazeConfig, "size"),
     (MazeConfig, "marks_range"),
     (MazeConfig, "questions_range"),
@@ -115,14 +165,14 @@ BOUNDS: tuple[tuple[type, str], ...] = (
 
 
 @pytest.mark.parametrize(("config_cls", "field"), EMPTY_POOLS)
-def test_empty_pool_reports_field(config_cls: type, field: str) -> None:
+def test_empty_pool_reports_field(config_cls: type[object], field: str) -> None:
     """输入：把某个取值表清空。输出：无。预期行为：构造期 ValueError，且报错点名字段。"""
     with pytest.raises(ValueError, match=field):
         config_cls(**{field: ()})
 
 
 @pytest.mark.parametrize(("config_cls", "field"), BOUNDS)
-def test_bad_bounds_report_field(config_cls: type, field: str) -> None:
+def test_bad_bounds_report_field(config_cls: type[object], field: str) -> None:
     """输入：把某个区间旋钮清空。输出：无。预期行为：构造期 ValueError，且报错点名字段。"""
     with pytest.raises(ValueError, match=field):
         config_cls(**{field: ()})
@@ -155,9 +205,26 @@ def test_bad_bounds_report_field(config_cls: type, field: str) -> None:
         CitationConfig,
         GuardrailConfig,
         AutoformatConfig,
+        SqlReviewConfig,
+        AlertRiskConfig,
+        DepCheckConfig,
+        HireCheckConfig,
+        SubQaConfig,
+        PromptInjectConfig,
+        MemoryGateConfig,
+        LogTriageConfig,
+        TurnTakeConfig,
+        AdBlockConfig,
+        DebugStepConfig,
+        ReceiptCatConfig,
+        ClipConfig,
+        QuoteConfig,
+        SourceSelectConfig,
+        FindTriageConfig,
+        ElementConfig,
     ],
 )
-def test_defaults_still_construct(config_cls: type) -> None:
+def test_defaults_still_construct(config_cls: type[object]) -> None:
     """输入：全默认参数。输出：无。预期行为：默认值都合法，校验不会误伤正常配置。"""
     config_cls()
 

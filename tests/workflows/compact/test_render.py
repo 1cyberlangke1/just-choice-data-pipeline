@@ -30,15 +30,6 @@ def test_prompt_lists_only_the_text_dimensions() -> None:
     assert "{" not in prompt
 
 
-def test_prompt_rotates_rules() -> None:
-    """输入：三个问法编号。输出：无。预期行为：规则顺序轮换，但条数不变。"""
-    loc = locales.load("zh")
-    first = render.build_prompt(TAGS, loc, 0).splitlines()
-    second = render.build_prompt(TAGS, loc, 1).splitlines()
-    assert first != second
-    assert len(first) == len(second)
-
-
 def test_build_task_carries_the_response_model_and_tags() -> None:
     """输入：一组特征、语言字典、任务 id。输出：无。
 

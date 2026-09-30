@@ -91,7 +91,7 @@ def test_phrasing_rotates_the_instruction() -> None:
     """输入：同一条样本的三种问法编号。输出：无。预期行为：问法各不相同、都是非空字符串。"""
     tags = all_tags()[0]
     loc = locales.load("zh")
-    seen = set()
+    seen: set[tuple[str, str]] = set()
     for phrasing in (0, 1, 2):
         for item in questions.build(tags, loc, phrasing):
             seen.add((item.family, str(item.question["instructions"])))

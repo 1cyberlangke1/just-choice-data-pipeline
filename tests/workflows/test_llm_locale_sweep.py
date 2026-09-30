@@ -33,9 +33,11 @@ from jc import pipeline
 from jc import workflow as workflow_mod
 
 from tests.workflows._contract import (
+    LLM_WITHOUT_PROSE,
     assert_audit_ignores_the_callers_locale,
     assert_audit_reads_a_mixed_file,
     assert_contract,
+    assert_language_texts_are_declared,
 )
 
 
@@ -55,6 +57,17 @@ LLM_WORKFLOWS: tuple[str, ...] = tuple(llm_workflows())
 def test_llm_workflows_are_found() -> None:
     """输入：无。输出：无。预期行为：至少扫到若干走 LLM 的 workflow，否则这把闸名存实亡。"""
     assert len(LLM_WORKFLOWS) >= 10, f"只找到 {LLM_WORKFLOWS}"
+
+
+def test_the_prose_exemption_list_names_real_llm_workflows() -> None:
+    """输入：无。输出：无。
+
+    预期行为：`LLM_WITHOUT_PROSE` 里的名字必须都是**真的**走 LLM 的 workflow——写错名字（或某个
+    workflow 后来改成了纯构造）时这条会红，清单就不会腐烂成「谁都不管」的摆设。
+    """
+    unknown = sorted(set(LLM_WITHOUT_PROSE) - set(LLM_WORKFLOWS))
+    assert not unknown, f"豁免清单里的这些名字不是走 LLM 的 workflow：{unknown}"
+    assert LLM_WITHOUT_PROSE, "豁免清单空了？那 lint / review / shell 就该报出正文了"
 
 
 def config_for(name: str, tmp_path: Path, locale: str, split: str) -> pipeline.RunConfig:
@@ -107,5 +120,12 @@ def test_every_locale_runs_end_to_end(name: str, split: str, tmp_path: Path) -> 
         run_dirs.append(result.run_dir)
         assert_audit_ignores_the_callers_locale(wf, result.run_dir, split, f"{name}/{locale}/{split}")
         assert_contract(result.run_dir, split, f"{name}/{locale}/{split}")
+        assert_language_texts_are_declared(
+            wf,
+            result.run_dir,
+            split,
+            f"{name}/{locale}/{split}",
+            prose=name not in LLM_WITHOUT_PROSE,
+        )
     assert len(set(counts.values())) == 1, f"{name}/{split} 各语言出的条数不一致：{counts}"
     assert_audit_reads_a_mixed_file(wf, run_dirs, split, f"{name}/{split}", tmp_path)

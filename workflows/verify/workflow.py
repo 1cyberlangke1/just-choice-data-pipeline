@@ -273,6 +273,14 @@ class VerifyWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：必须与声明语言一致的正文（「声明」）。
+
+        预期行为：只报模型写的那句声明；「自报事实」那一行由代码写，不报。
+        """
+        parsed = render.parse_state(sample.get("state"))
+        return {"声明": parsed.claim} if parsed.claim.strip() else {}
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

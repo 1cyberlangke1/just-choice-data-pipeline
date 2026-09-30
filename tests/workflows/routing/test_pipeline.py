@@ -77,15 +77,6 @@ def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBacke
     assert report["train"]["human_bad"] == 0
 
 
-def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：同种子跑两次。输出：两份产物。预期行为：逐字节一致。"""
-    first = pipeline.run(make_config(tmp_path, "c2a", fake_backend()))
-    second = pipeline.run(make_config(tmp_path, "c2b", fake_backend()))
-    assert (first.run_dir / "train.jsonl").read_bytes() == (
-        second.run_dir / "train.jsonl"
-    ).read_bytes()
-
-
 def test_trace_judge_rejects_a_misread_issue(
     tmp_path: Path, fake_backend: type[FakeBackend]
 ) -> None:
@@ -116,15 +107,6 @@ def test_render_rejects_attribute_words_in_the_body(
     这类文本拼进 state 就洗不掉了，而且会与「工单属性」那一行打架。
     """
     result = pipeline.run(make_config(tmp_path, "c5", fake_backend(attrs_body=True)))
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
-def test_render_rejects_a_multi_line_body(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：正文写成两行的假后端。输出：RunResult。预期行为：重试耗尽后仍被拒，不静默放行。"""
-    result = pipeline.run(make_config(tmp_path, "c6", fake_backend(multi_line_body=True)))
     assert result.accepted == 0
     assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
 

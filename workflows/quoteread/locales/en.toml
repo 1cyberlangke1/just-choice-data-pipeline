@@ -1,0 +1,69 @@
+# 行情读数判读（quoteread）workflow 的英文文案。
+#
+# 输入：`workflows.quoteread.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为（与 zh.toml 逐项对齐）：抬头 / 区块抬头两两不互为前缀且不与中文撞车；
+# `[name.*]` 与 `features` 的标的名键一一对应；`[unit.*]` 只有 pct / bp；
+# 四个题族的问法模板互不相同；题族的键集合与中文版完全一致。
+
+lang = "en"
+language_name = "English"
+
+[meta]
+request = "Market readout request id"
+table = "Readout table"
+sep = "|"
+
+[name]
+I1 = "broad index"
+I2 = "large-cap basket"
+I3 = "small-cap basket"
+A1 = "commodity futures"
+A2 = "foreign exchange"
+A3 = "government bonds"
+
+[unit]
+pct = "%"
+bp = "bp"
+
+[rules]
+lines = [
+  "Conversion rule: each row of the readout table may use a different unit (percent % or basis points bp); always convert to basis points before comparing. 1% = 100 basis points.",
+  "Tier table (by absolute basis points): below 20 is flat; 20 ~ 49 is a small move; 50 ~ 99 is a medium move; 100 ~ 199 is a large move; 200 and above is a violent move.",
+  "The alert line is 150 basis points: a reading triggers it when its absolute value reaches or exceeds it.",
+  "On a tie, take the instrument with the smaller row number.",
+]
+
+[fam.tier]
+q = [
+  "After converting to basis points, which tier does the reading with the largest absolute value fall into?",
+  "By the tier table, which tier does the most volatile reading on this screen fall into?",
+]
+levels = [
+  "flat (below 20 basis points)",
+  "small move (20 ~ 49 basis points)",
+  "medium move (50 ~ 99 basis points)",
+  "large move (100 ~ 199 basis points)",
+  "violent move (200 basis points and above)",
+]
+
+[fam.leader]
+q = [
+  "After converting to basis points, which instrument gained the most?",
+  "Compared in basis points, which instrument on this screen rose the most?",
+]
+criteria = { I1 = "broad index", I2 = "large-cap basket", I3 = "small-cap basket", A1 = "commodity futures", A2 = "foreign exchange", A3 = "government bonds" }
+
+[fam.alert]
+q = [
+  "After converting to basis points, does any reading on this screen reach or exceed the 150-basis-point alert line?",
+  "Is there an instrument on this screen whose absolute reading hits the alert line of 150 basis points?",
+]
+criteria = { true = "yes", false = "no" }
+
+[fam.divergent]
+q = [
+  "Does this screen contain both a rising reading and a falling one?",
+  "Is this screen divergent, with one reading up and another down?",
+]
+criteria = { true = "yes", false = "no" }

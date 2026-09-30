@@ -112,14 +112,6 @@ def test_two_label_paths_agree_on_every_faithful_text() -> None:
         assert features.has_decoy(text) == (case.decoy == features.DECOY_DASHED)
 
 
-def test_build_cases_order_is_stable() -> None:
-    """输入：同一份维度表两次。输出：无。预期行为：顺序逐格一致、覆盖全部命中组合。"""
-    first = features.build_cases(512)
-    second = features.build_cases(512)
-    assert [case.as_dict() for case in first] == [case.as_dict() for case in second]
-    assert {case.hits for case in first} == set(features.HIT_SETS)
-
-
 def test_case_describe_and_fingerprint() -> None:
     """输入：一个空命中的 case。输出：无。预期行为：指纹与可读描述都稳定。"""
     case = features.GuardrailCase("", features.DECOY_NONE)

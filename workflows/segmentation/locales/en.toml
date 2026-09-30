@@ -1,0 +1,107 @@
+# English copy for the document-packet segmentation workflow.
+#
+# Read by `workflows.segmentation.locales.load("en")`.
+# Invariants pinned by tests (mirror of the zh file):
+# - the three section marks are pairwise non-prefixes, and the page-order mark
+#   (`page_prefix` + digits + `page_suffix`) shares no shape with them;
+# - `[fam.count.opt]` matches `features.MAX_PACKET_CLASSES`, `[fam.route.opt]` matches
+#   `features.ROUTE_LEVELS`, `[class.*]` matches `features.CLASS_IDS`, `[source.*]`
+#   matches `features.SOURCES`;
+# - every prompt / question template placeholder gets filled at render time.
+
+lang = "en"
+language_name = "English"
+
+[state]
+table_mark = "[Document types]"
+rule_mark = "[Splitting rules]"
+order_mark = "[Page order]"
+class_sep = ": "
+rule_sep = " -- "
+page_prefix = "[Page "
+page_suffix = "]"
+# Single-page length bounds, calibrated per language: the same sheet of paper holds
+# noticeably more characters in English than in Chinese (real-run medians: zh 131, en 212).
+page_min = 90
+page_max = 380
+
+[state.rules]
+cross = "Two adjacent pages of different types: always two different documents"
+merge = "Two adjacent pages of the same type among {names}: they merge into one document"
+each = "Two adjacent pages of the same type among {names}: one page per document"
+joiner = " / "
+
+[class.form]
+name = "form"
+rule = "the page shows a header such as \"Form No / Form ID / Application Form / Applicant Name\""
+avoid = "headers such as \"Form No / Form ID / Application Form / Applicant Name\""
+
+[class.letter]
+name = "letter"
+rule = "the page shows a header such as \"Dear Sir / Dear Madam / Yours sincerely / Sincerely yours\""
+avoid = "headers such as \"Dear Sir / Dear Madam / Yours sincerely / Sincerely yours\""
+
+[class.receipt]
+name = "receipt"
+rule = "the page shows a header such as \"Receipt No / Paid in full / Amount received / Cashier\""
+avoid = "headers such as \"Receipt No / Paid in full / Amount received / Cashier\""
+
+[class.contract]
+name = "contract"
+rule = "the page shows a header such as \"Contract No / Party A / Party B / Signed on\""
+avoid = "headers such as \"Contract No / Party A / Party B / Signed on\""
+
+[source.scan]
+desc = "a stack of sheets that came out of a document scanner"
+trace = "the first line of every page must carry a scanner trace (e.g. \"Scanned: page 1 of 3\")"
+
+[source.fax]
+desc = "a stack of sheets that came in over a fax machine"
+trace = "the first line of every page must carry a fax trace (e.g. \"FAX 021-0000 2026-09-30 09:12\")"
+
+[source.photo]
+desc = "a stack of sheets that someone photographed with a phone"
+trace = "the first line of every page must carry a photo trace (e.g. \"Taken at: IMG_20260930_091233.jpg\")"
+
+[prompt]
+intro = "You write synthetic data. Write the body of **one packet of paperwork** -- {pages} pages in total, every page a readable sheet of material (like a real application form / letter / receipt / contract), each page between {min} and {max} characters long."
+lang_rule = "Write the whole packet in {language}, not in any other language (the few English markers inside the criteria are the only exception)."
+source_line = "This packet came from {source}: {trace}."
+assign_header = "Page-by-page requirements (**which type each page belongs to is fixed; do not change it**):"
+assign_line = "- Page {index}: belongs to \"{name}\" -- the body must contain **one of the wordings listed in this criterion** (use it as written): {rule}"
+forbid_header = "Every page must **not** carry a header from these types (a page carrying one is counted as that other type):"
+forbid_line = "- do not use: {avoid} (that is the \"{name}\" header)"
+vary_rule = "The words inside the criteria are only a **shape**: invent the headers, numbers, amounts, addresses, names and dates yourself, and write your own sentences -- do **not** paste the criterion text or its word list into the body (keep the shape, do not copy the list)."
+length_rule = "Every page must be {min}~{max} characters long (punctuation included), {pages} pages in total; no title, no code fence, no page-number line of your own."
+self_check = "Before answering, check each point: does every page really carry the header of its own type? does every page really avoid the headers of the other types? does every page carry the source trace?"
+output = "Output a single JSON object with the field pages (an array of strings, exactly {pages} long, in page order); no explanation, no code fence."
+
+[fam.flag]
+q = ["Does this packet contain any page of type \"{name}\"?", "Given the criterion ({rule}), is there a page of type \"{name}\" in this packet?"]
+criteria_true = "there is a page of this type"
+criteria_false = "there is no page of this type"
+
+[fam.count]
+q = ["How many document types appear in this packet in total?", "How many kinds of document does this packet contain?"]
+
+[fam.count.opt]
+n1 = "1 kind"
+n2 = "2 kinds"
+n3 = "3 kinds"
+
+[fam.combo]
+q = ["Which document types actually appear in this packet?", "Which of the following sets of types actually appears in this packet?"]
+joiner = ", "
+
+[fam.route]
+q = ["Following the splitting rules above, how many documents should this packet be split into?", "What is the splitting verdict for this packet?"]
+
+[fam.route.opt]
+one = "1 document"
+two = "2 documents"
+many = "3 or more documents"
+
+[verify]
+intro = "Below is a packet of paperwork to be split: first the document-type table and the splitting rules, then every page body in page order. **Each type in the table prints its own mechanical criterion** -- compare page by page against those criteria and judge, purely by the wording, which types appear in this packet (the criteria are mechanical header shapes). Do not read anything into the text beyond the wording."
+state_header = "[Material under review]"
+q = "Which document types appear in this packet? For each type give the **type id** and **the exact quote that makes it appear** -- copy the quote verbatim, do not paraphrase or shorten it; if no type appears, give an empty array. Do not report a type whose quote you cannot copy: no quote, no appearance."

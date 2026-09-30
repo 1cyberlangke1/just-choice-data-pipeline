@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import cover_dims, row_allowed
 
 #: 声称做完的事。**每一档都必须是一件「活儿」，不能是「事实行管的那三件事」**——
 #: 第一版这里写的是 `tests_pass`（说测试跑通了），结果提示词自己跟自己打架：一边要它说
@@ -260,13 +260,7 @@ def build_cases(max_full: int, dims: dict[str, tuple[str, ...]] | None = None) -
 
 def compatible(tags: TagSet) -> bool:
     """输入：一组特征。输出：这组特征写得出来吗（没有任何被禁的取值对）。"""
-    values = tags.as_dict()
-    names = list(DIMS)
-    for index, left in enumerate(names):
-        for right in names[index + 1 :]:
-            if not allow_pair(left, values[left], right, values[right]):
-                return False
-    return True
+    return row_allowed(list(DIMS), tags.as_dict(), allow_pair)
 
 
 def label_flip_axes(tags: TagSet) -> list[TagSet]:

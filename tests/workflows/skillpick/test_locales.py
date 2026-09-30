@@ -12,24 +12,6 @@ LANGS = locales.available()
 VOCAB_TABLES = ("tag", "scope", "resource", "grant")
 
 
-def test_available_locales_are_sorted_and_nonempty() -> None:
-    """输入：无。输出：无。预期行为：至少两种语言，顺序稳定。"""
-    assert LANGS == sorted(LANGS)
-    assert {"zh", "en"} <= set(LANGS)
-
-
-def test_unknown_locale_reports_available_ones() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="没有语言文件"):
-        locales.load("xx")
-
-
-def test_pick_wraps_around() -> None:
-    """输入：长度为 2 的池、编号 3。输出：无。预期行为：回绕到第 1 个（不报错）。"""
-    assert locales.pick(["a", "b"], 3) == "b"
-    assert locales.pick(["a", "b"], 4) == "a"
-
-
 @pytest.mark.parametrize("lang", LANGS)
 def test_locales_share_the_same_shape(lang: str) -> None:
     """输入：每种语言。输出：无。

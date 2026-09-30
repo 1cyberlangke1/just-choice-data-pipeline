@@ -8,6 +8,9 @@
 # - every placeholder in the prompt templates gets filled;
 # - the five `[fam.count.opt]` tiers line up with `features.RELEVANT`.
 
+lang = "en"
+language_name = "English"
+
 [meta]
 list_sep = ", "
 cand = "candidate {n}"
@@ -27,6 +30,7 @@ rule_rows = [
 
 [prompt]
 intro = "You write synthetic data. Write one search query and the text of {n} candidate results."
+lang_rule = "Write everything in {language}: the query, the keywords and every candidate text must be in {language}, not in any other language."
 terms_rule = "The query must contain {k} distinctive keywords (at least {min} characters each, no keyword a substring of another) and you must list them separately; every keyword must appear in the query verbatim and in one piece - do not abbreviate, expand or reword it."
 req_header = "Per-candidate requirements (\"hits\" = the keyword appears in that candidate's text):"
 req_full = "- candidate {pos}: must include all {n} keywords."

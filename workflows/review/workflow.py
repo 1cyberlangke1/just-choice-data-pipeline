@@ -265,6 +265,15 @@ class ReviewWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：空表（这一族没有「模型写的自然语言正文」）。
+
+        预期行为：**模型写的是那段代码改动**（`ReviewDraft.body` 就是 diff 本身），代码与语言
+        无关；段落名、行数区间这些由代码写。把代码喂给语言判据只会把好数据当坏数据。
+        """
+        del sample
+        return {}
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

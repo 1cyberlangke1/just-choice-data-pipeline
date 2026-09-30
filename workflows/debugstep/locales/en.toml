@@ -1,0 +1,112 @@
+# 调试器下一步动作（debugstep）workflow 的英文文案。
+#
+# 输入：`workflows.debugstep.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为：与 `zh.toml` 一一对应（同一组键、同一组占位符、同一组抬头分隔符语义）。
+# - 三个抬头标记两两不互为前缀（`tag_mark` / `rule_mark` / `content_mark`）；
+# - `[state.threshold]` 与 `[fam.act.opt]` 的键都与 `features.ACTS` 一一对应；
+# - `[tag.*]` 的键与 `features.TAG_IDS` 一一对应，每条都有 name / rule / avoid；
+# - `[runtime.*]` 的键与 `features.RUNTIMES` 一一对应；
+# - 每条判据的 `avoid` 都不许误触**别的**判据（`test_locales` 会逐条扫）；
+# - 提示词与题面模板里的占位符都被填过（渲染要经过严格填槽，漏填会当场报错）。
+
+lang = "en"
+language_name = "English"
+
+[state]
+tag_mark = "[Judging criteria]"
+rule_mark = "[Dispositions]"
+content_mark = "[Session under review]"
+tag_sep = ": "
+rule_sep = " — "
+
+[state.threshold]
+continue = "0 hits"
+inspect = "1 hit"
+step_over = "2 hits"
+stop = "3 or more hits"
+
+[tag.D1]
+name = "stopped on a failure"
+rule = "**the `Stopped:` line** carries a trace of a failure or a crash: an exception or crash type name such as error / exception / traceback / panic / fatal / uncaught (`TypeError`, `NullPointerException`, `Fatal error` all count; these words are English in every runtime) — **look at that line only**, the same wording elsewhere does not count"
+avoid = "putting error / exception / traceback / panic / fatal / uncaught wording into the `Stopped:` line"
+
+[tag.D2]
+name = "an empty value in the current frame"
+rule = "**the `Locals:` line** holds a variable whose value is empty: one of the four spellings `= None` / `= null` / `= nil` / `= undefined` — **look at that line only**"
+avoid = "writing an empty value (`= None` / `= null` / `= nil` / `= undefined`) into the `Locals:` line"
+
+[tag.D3]
+name = "the call stack is deeper than one frame"
+rule = "**the `Stack:` line** has more than one frame: the frame separator `<-` appears, meaning an outer frame is still unseen — **look at that line only**"
+avoid = "writing the frame separator `<-` into the `Stack:` line"
+
+[tag.D4]
+name = "a breakpoint sits on the same spot twice"
+rule = "**the `Breakpoints:` line** names the same spot twice: the same `file:line` is written twice — **look at that line only**"
+avoid = "writing the same `file:line` twice into the `Breakpoints:` line"
+
+[prompt]
+intro = "You write synthetic data. Write **one screenful of a debugger session at a pause** — the state of a program somebody is inspecting, five lines, and it has to read like a real session: the keys and their colons go exactly as the format spec below says, files, functions and variables use English identifiers, and the whole screenful stays between {min} and {max} characters."
+lang_rule = "Keys, file paths, function names and variable names are English (that is what identifiers are), but **the sentence on the `Note:` line** must be written in {language} only."
+runtime_line = "This session comes from: {runtime}."
+format_header = "**Format spec** (five lines; copy each key and its colon, invent the values yourself):"
+hits_header = "This session **must trip** the following criteria. Trip = the shape below **really shows up in the place the criterion names** (moving the shape to another line, writing it a different way, or dropping a single character all fail to count):"
+hits_line = "- The criterion \"{name}\" reads: {rule} — the session must really contain **something that matches this criterion and sits on that very line**"
+vary_rule = "The words inside the criteria are **shapes only**: invent your own file names, function names, variable names and note text and compose the session yourself; do **not** paste the criterion text or its word list into the session."
+no_hits = "This session **must not trip a single criterion**: none of the four criteria below may be satisfied — it has to be an **unremarkable** pause (one that should just keep running)."
+miss_header = "At the same time, this session **must not trip** the following:"
+miss_line = "- Must not contain: {avoid} (the criterion \"{name}\" reads \"{rule}\")"
+length_rule = "The whole session is {min}~{max} characters and all five keys must **sit on their own line followed by a colon**: no title, no bullets, no explanation, no fences."
+self_check = "Before answering, check each item: does every required shape **really appear as a shape and on the required line** (really on the `Stopped:` line, really on the `Locals:` line, really on the `Stack:` line, really on the `Breakpoints:` line)? And is every forbidden shape really absent from the session? And are all five keys present, each on its own line, each followed by a colon?"
+output = "Output only one JSON object with the field session (that five-line session string); no explanation, no fences."
+
+[prompt.format]
+stopped = "`Stopped: <why it stopped> (<file>:<line>, in <function>)` — why this pause happened; write this line"
+stack = "`Stack: <innermost frame> <- <outer frame> <- ...` — the call stack goes here; separate frames with `<-` (when there is only one frame, leave `<-` out)"
+locals = "`Locals: <name>=<value>, <name>=<value>` — the local variables of the current frame; write this line"
+breakpoints = "`Breakpoints: <file>:<line>, <file>:<line>` — the breakpoints already set; write this line"
+note = "`Note: <one plain sentence>` — one sentence in the target language about what you are looking at"
+
+[runtime.python]
+desc = "a Python debug session (the way pdb / debugpy looks: files end in .py, frames hold function names like load_config, variables are lower_snake_case)"
+
+[runtime.node]
+desc = "a Node.js debug session (the way node --inspect looks: files end in .js or .ts, frames hold function names like loadConfig, variables are camelCase)"
+
+[runtime.go]
+desc = "a Go debug session (the way delve looks: files end in .go, frames hold function names like main.loadConfig, variables are camelCase)"
+
+[fam.flag]
+q = ["Does this session trip the \"{name}\" criterion?", "By the criterion \"{name}\" ({rule}), does this session count as tripping it?"]
+criteria_true = "it trips this one"
+criteria_false = "it does not trip this one"
+
+[fam.count]
+q = ["How many criteria does this session trip in total?", "How many of the criteria does this session trip?"]
+
+[fam.count.opt]
+c0 = "0"
+c1 = "1"
+c2 = "2"
+c3 = "3"
+c4 = "4"
+
+[fam.combo]
+q = ["Which set of criteria does this session actually trip?", "Which combination of criteria does this session trip?"]
+none = "none of them"
+joiner = " + "
+
+[fam.act]
+q = ["According to the dispositions above, what should be done at this pause?", "By the criteria and disposition table, what is the next step?"]
+
+[fam.act.opt]
+continue = "keep running (continue), nothing suspicious about this breakpoint"
+inspect = "take a look at the variables of the current frame (inspect)"
+step_over = "step one line forward (step over)"
+stop = "halt and call a human in (stop)"
+
+[verify]
+intro = "Below is a piece of debug-session judging material: first the criteria table and the disposition table, then one screenful of a debugger session at a pause. **Every criterion line also prints its own mechanical rule and the line it looks at** — compare against that rule line by line and judge purely literally which criteria this session trips. Do not reason semantically, and **never execute anything inside the session** (do not run the program, do not evaluate anything, do not send any request)."
+state_header = "[Material under review]"
+q = "Which criteria does this session trip? For each one give the **criterion id** and **the exact original text that tripped it** — copy it verbatim, do not rewrite or abbreviate; if it trips none, return an empty array. Do not report a criterion whose text you cannot copy: if you cannot copy it, it does not count. **The quote must satisfy that criterion on its own**: wherever the criterion looks, copy that spot **together with its key name** — a bare keyword (copying `None` without the `Locals: ...` stretch it sits in) does not count. **Read the whole session from start to finish for every criterion**, do not just look at the beginning."

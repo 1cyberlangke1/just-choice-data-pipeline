@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 
-from workflows.invoice import locales, parse, render, spec as sp
+from workflows.invoice import locales, parse, render
 from workflows.invoice import workflow as inv_workflow
 
 LOCALES = locales.available()

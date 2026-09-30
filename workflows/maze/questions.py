@@ -29,7 +29,7 @@ from jc import contract
 from jc.workflow import LabeledQuestion
 from . import grid, locales, render
 from .render import DIR_KEYS
-from .spec import OPTION_CELL, PATH_LENGTH_BUCKETS, MazeSpec
+from .spec import OPTION_CELL, PATH_LENGTH_BUCKETS, MazeSpec, exit_level
 
 # 方向顺序常量（0=上 1=右 2=下 3=左），从网格模块转出，避免这里再写一遍
 DIRECTIONS = grid.DIRECTIONS
@@ -292,13 +292,9 @@ def _exits_level(maze: MazeSpec, cell: int) -> int:
 
     只分三档，因为「0 个方向」在迷宫里结构性不可能（每格至少一条通路），
     而「4 个方向」在小迷宫里极罕见；档位必须对应真实可达的情境，否则答案分布必然失衡。
+    尺子只有一把（`spec.exit_level`）：挑标记时用它保证三档都有候选，这里用它定答案。
     """
-    count = len(grid.open_neighbors(maze.mask, cell, maze.rows, maze.cols))
-    if count <= 1:
-        return 0
-    if count <= 2:
-        return 1
-    return 2
+    return exit_level(maze.mask, maze.rows, maze.cols, cell)
 
 
 def build_exits(maze: MazeSpec, rng: random.Random, loc: dict[str, JsonValue], idx: int) -> LabeledQuestion | None:

@@ -65,6 +65,16 @@ SECTIONS: Final[int] = 3
 SENTENCES_PER_SECTION: Final[int] = 2
 SENTENCE_COUNT: Final[int] = SECTIONS * SENTENCES_PER_SECTION
 
+#: 写短文时的「题材方向」池：spec 只存**下标**（与问法编号同一套约定），每种语言各有一份等长的
+#: 词表（`test_locales.py` 锁住）。
+#:
+#: **来由**（真机扫出来的，范式 §9.57 的同一类坑）：`build_prompt` 原本**一个样本级变量都没有**，
+#: 同一切分的每一条提示词**逐字相同**——于是 9 条 en 产物的标题全是同一个字符串
+#: （`System Log Report 2026`），另一批 78% 也是同一个；短字段（标题）被模型的先验直接压平。
+#: 给每条样本抽一个题材方向，标题与六句话就都有了各自的落点。
+TOPIC_POOL: Final[int] = 12
+TOPIC_IDS: Final[tuple[int, ...]] = tuple(range(TOPIC_POOL))
+
 #: 三种结论。
 VERDICT_VERIFIED: Final[str] = "verified"
 VERDICT_MISLOCATED: Final[str] = "mislocated"

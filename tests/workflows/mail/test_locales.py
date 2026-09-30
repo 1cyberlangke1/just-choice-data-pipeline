@@ -7,6 +7,7 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
+import re
 from typing import get_args
 
 import pytest
@@ -165,14 +166,52 @@ def test_render_prompt_is_only_the_feature_sheet(lang: str) -> None:
     case = features.TagSet("forged_brand", "urgency", "credentials", "ip_mismatch", "curt")
     from workflows.mail import render
 
-    prompt = render.build_prompt(case, loc)
+    prompt = render.build_prompt(case, loc, link_path="verify", link_ip="192.0.2.1")
     values = case.as_dict()
     allowed = {loc["prompt"]["intro"], ""}
     allowed |= {locales.feature_line(loc, dim, values[dim]) for dim in render.DIM_ORDER}
+    allowed |= {loc["prompt"]["link_address_line"].format(path="verify", ip="192.0.2.1")}
     allowed |= {
         "- " + rule.format(language=loc["language_name"]) for rule in loc["prompt"]["rules"]
     }
     assert set(prompt.split("\n")) <= allowed
+
+
+@pytest.mark.parametrize("lang", LOCALES)
+def test_link_address_is_named_per_sample(lang: str) -> None:
+    """链接地址由代码按样本给，不在提示词里留成品例子。
+
+    输入：语言、一组带链接的特征。输出：无。
+    预期行为：`build_prompt` 给出的地址就是传进去的那两个值；清单说「没有链接」时整行不出现
+    （那一条要求全篇无网址，给地址只会让模型写出来）。
+    """
+    loc = locales.load(lang)
+    from workflows.mail import render
+
+    linked = features.TagSet("forged_brand", "urgency", "credentials", "ip_mismatch", "curt")
+    prompt = render.build_prompt(linked, loc, link_path="unlock", link_ip="198.51.100.7")
+    assert "/unlock" in prompt and "198.51.100.7" in prompt
+    linkless = features.TagSet("forged_brand", "urgency", "credentials", features.LINK_NONE, "curt")
+    bare = render.build_prompt(linkless, loc, link_path="unlock", link_ip="198.51.100.7")
+    assert "/unlock" not in bare and "198.51.100.7" not in bare
+
+
+@pytest.mark.parametrize("lang", LOCALES)
+def test_link_copy_carries_no_finished_address(lang: str) -> None:
+    """提示词里一个成品地址都不许有（范式 §9.25：给例子模型就照抄）。
+
+    输入：语言字典。输出：无。
+    预期行为：把 `hint` 与 `rules` 拼起来，里面不许出现 `http://` / `https://` 后面**紧跟主机名
+    首字符**（字母 / 数字 / 斜杠）的完整地址。只提协议名不算——「写成 http:// 开头的完整形式」
+    「不带 http://」都是在说形状，抄不走；真机 `mail-kimi-ood-c` 六条里五条把提示词里的示例 IP
+    原样抄了下来，所以成品地址一律交给 `link_address_line` 按样本给。
+    """
+    loc = locales.load(lang)
+    hints = [
+        entry["hint"] for values in loc["feature"].values() for entry in values.values()
+    ]
+    copy = "\n".join(hints + list(loc["prompt"]["rules"]))
+    assert re.search(r"https?://[A-Za-z0-9/]", copy) is None
 
 
 @pytest.mark.parametrize("lang", LOCALES)

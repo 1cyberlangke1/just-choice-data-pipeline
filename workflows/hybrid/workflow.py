@@ -228,6 +228,19 @@ class HybridWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：skeleton / answers / text）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：必须与声明语言一致的正文（每场会的标题与议题）。
+
+        预期行为：只报模型写的两段文字；起止时间 / 会议室 / 主持人由代码排，不报。反解不出来
+        （坏 state）给空表——那由契约校验报。
+        """
+        parsed = render.parse_state(sample.get("state"))
+        texts: dict[str, str] = {}
+        for index, meeting in enumerate(parsed.meetings, start=1):
+            texts[f"第 {index} 场标题"] = meeting.title
+            texts[f"第 {index} 场议题"] = meeting.agenda
+        return texts
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

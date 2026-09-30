@@ -7,7 +7,7 @@ import pytest
 from jc.backend.types import AllProvidersDown, TransportError
 from jc.jsontypes import JsonValue
 
-from workflows.review import features, judges, locales, render
+from workflows.review import judges, locales, render
 from workflows.review.features import TagSet
 from workflows.review.spec import ReviewSpec
 
@@ -187,10 +187,3 @@ def test_trace_prompt_repeats_the_atomic_questions() -> None:
         assert str(loc["fam"][family]["q"][0]) in prompt
         for name, desc in loc["fam"][family]["criteria"].items():
             assert str(name) in prompt and str(desc) in prompt
-
-
-def test_option_names_reads_the_shipped_order() -> None:
-    """输入：两道 choice 题。输出：无。预期行为：按产物里写的顺序给出选项名。"""
-    assert judges.option_names({"criteria": {"a": "甲", "b": "乙"}}) == ["a", "b"]
-    assert judges.option_names({"criteria": ["不是字典"]}) == []
-    assert judges.option_names({}) == []

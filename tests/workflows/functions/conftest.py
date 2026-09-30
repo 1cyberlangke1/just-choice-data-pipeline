@@ -1,14 +1,31 @@
 """函数调用 workflow 测试的公共夹具：小规格构造器（不联网、不落盘）。"""
 
 from __future__ import annotations
-from collections.abc import Callable
 from jc.jsontypes import JsonValue
 
+from typing import Protocol
 
 
 import pytest
 
 from workflows.functions import spec as sp
+
+
+class MakeCase(Protocol):
+    """工厂夹具的形状：`make_case(tool="top_movers", voice="terse")`。
+
+    为什么不是 `Callable[..., sp.CallCase]`：那种写法等于「参数表是 Any」——关键字写错
+    （`make_case(toll="x")`）静态查不出来。夹具吃的是**关键字覆盖项**，这里就把它写出来。
+    """
+
+    def __call__(self, **overrides: object) -> sp.CallCase: ...
+
+
+class MakeSpec(Protocol):
+    """工厂夹具的形状：`make_spec(tool="compare_returns")`（同样只吃关键字覆盖项）。"""
+
+    def __call__(self, **overrides: object) -> sp.CallSpec: ...
+
 
 #: 默认 case：画价格走势、语气中等、时间范围一周、写代码、第一套句面。
 CASE_DEFAULTS: dict[str, JsonValue] = {
@@ -54,12 +71,12 @@ def tiny_config(split: str = "train", *, ood_only: bool = False) -> sp.CallConfi
 
 
 @pytest.fixture
-def make_case() -> Callable[..., sp.CallCase]:
+def make_case() -> MakeCase:
     """工厂夹具：`make_case(tool="top_movers", voice="terse")` 造一个 case。"""
     return _make_case
 
 
 @pytest.fixture
-def make_spec() -> Callable[..., sp.CallSpec]:
+def make_spec() -> MakeSpec:
     """工厂夹具：`make_spec(tool="compare_returns")` 造一条真值规格。"""
     return _make_spec

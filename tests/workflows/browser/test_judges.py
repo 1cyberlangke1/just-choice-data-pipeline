@@ -11,6 +11,8 @@ from workflows.browser import features, judges, locales, render
 from workflows.browser.features import TagSet
 from workflows.browser.spec import BrowserSpec
 
+from tests.workflows.browser.conftest import FakeBackend
+
 TAGS = TagSet(intent="submit", state="ready", sensitive="yes", decoy="same_role", screen="form")
 LABEL = features.wanted_label(TAGS)
 GOOD = {"request": f"确认没问题了，点一下{LABEL}。"}
@@ -111,13 +113,13 @@ def test_frame_skips_without_spec_or_text() -> None:
     assert judges.FrameJudge("zh").judge(sample(123), spec()).skipped
 
 
-def test_trace_passes_when_the_model_agrees(fake_backend: type) -> None:
+def test_trace_passes_when_the_model_agrees(fake_backend: type[FakeBackend]) -> None:
     """输入：从不撒谎的假后端。输出：无。预期行为：通过。"""
     verdict = judges.TraceJudge(fake_backend(), "zh").judge(sample(state_of()), spec())
     assert verdict.ok and not verdict.skipped
 
 
-def test_trace_catches_a_misread_intent(fake_backend: type) -> None:
+def test_trace_catches_a_misread_intent(fake_backend: type[FakeBackend]) -> None:
     """输入：反解把意图说反。输出：无。预期行为：判不通过。"""
     verdict = judges.TraceJudge(fake_backend(trace_lies_intent=True), "zh").judge(
         sample(state_of()), spec()
@@ -126,7 +128,7 @@ def test_trace_catches_a_misread_intent(fake_backend: type) -> None:
     assert "intent" in verdict.reason
 
 
-def test_trace_catches_a_misread_row(fake_backend: type) -> None:
+def test_trace_catches_a_misread_row(fake_backend: type[FakeBackend]) -> None:
     """输入：反解把行号说错。输出：无。预期行为：判不通过。"""
     verdict = judges.TraceJudge(fake_backend(trace_lies_row=True), "zh").judge(
         sample(state_of()), spec()
@@ -135,7 +137,7 @@ def test_trace_catches_a_misread_row(fake_backend: type) -> None:
     assert "row" in verdict.reason
 
 
-def test_trace_catches_a_misread_label(fake_backend: type) -> None:
+def test_trace_catches_a_misread_label(fake_backend: type[FakeBackend]) -> None:
     """输入：反解把元素名说成另一个。输出：无。预期行为：判不通过。"""
     verdict = judges.TraceJudge(fake_backend(trace_lies_label=True), "zh").judge(
         sample(state_of()), spec()
@@ -144,7 +146,7 @@ def test_trace_catches_a_misread_label(fake_backend: type) -> None:
     assert "label" in verdict.reason
 
 
-def test_trace_marks_endpoint_failure_as_skipped(fake_backend: type) -> None:
+def test_trace_marks_endpoint_failure_as_skipped(fake_backend: type[FakeBackend]) -> None:
     """输入：反解时端点故障。输出：无。
 
     预期行为：记成**跳过**而不是不通过——端点抖动不是数据质量问题（PLAN 3.1.4）。
@@ -154,7 +156,7 @@ def test_trace_marks_endpoint_failure_as_skipped(fake_backend: type) -> None:
     assert verdict.ok and verdict.skipped
 
 
-def test_trace_reraises_a_fatal_backend_error(fake_backend: type) -> None:
+def test_trace_reraises_a_fatal_backend_error(fake_backend: type[FakeBackend]) -> None:
     """输入：全部 provider 都挂了。输出：无。
 
     预期行为：直接往上抛——那是整批该停下的唯一条件，吞掉它就会产出一整个「全被拒」的
@@ -165,14 +167,14 @@ def test_trace_reraises_a_fatal_backend_error(fake_backend: type) -> None:
         judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
 
 
-def test_trace_marks_a_broken_draft_as_skipped(fake_backend: type) -> None:
+def test_trace_marks_a_broken_draft_as_skipped(fake_backend: type[FakeBackend]) -> None:
     """输入：反解草稿缺字段。输出：无。预期行为：记成跳过。"""
     backend = fake_backend(trace_data={"intent": "fill"})
     verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
     assert verdict.ok and verdict.skipped
 
 
-def test_trace_skips_without_spec_or_backend(fake_backend: type) -> None:
+def test_trace_skips_without_spec_or_backend(fake_backend: type[FakeBackend]) -> None:
     """输入：没有真值规格 / 没有后端。输出：无。预期行为：都记成跳过。"""
     assert judges.TraceJudge(fake_backend(), "zh").judge(sample(state_of())).skipped
     assert judges.TraceJudge(None, "zh").judge(sample(state_of()), spec()).skipped
@@ -227,9 +229,3 @@ def test_build_trace_prompt_asks_all_three_questions_with_the_shared_options() -
         assert str(desc) in prompt
     assert str(loc["verify"]["q_row"]) in prompt
     assert str(loc["verify"]["q_label"]) in prompt
-
-
-def test_option_names_reads_the_product_order() -> None:
-    """输入：一道 choice 题。输出：无。预期行为：按产物里的顺序取选项名。"""
-    assert judges.option_names({"criteria": {"b": "x", "a": "y"}}) == ["b", "a"]
-    assert judges.option_names({}) == []

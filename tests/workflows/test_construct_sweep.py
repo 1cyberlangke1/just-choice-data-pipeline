@@ -34,6 +34,7 @@ from tests.workflows._contract import (
     assert_audit_ignores_the_callers_locale,
     assert_audit_reads_a_mixed_file,
     assert_contract,
+    assert_language_texts_are_declared,
 )
 
 
@@ -91,5 +92,10 @@ def test_every_locale_runs_without_rejects(name: str, split: str, tmp_path: Path
         run_dirs.append(result.run_dir)
         assert_audit_ignores_the_callers_locale(wf, result.run_dir, split, f"{name}/{locale}/{split}")
         assert_contract(result.run_dir, split, f"{name}/{locale}/{split}")
+        # 纯构造族必须报**空**：它们的 state 由代码按语言模板写（迷宫图 / 发票 / 表格），
+        # 按语言判只会把好数据当坏数据。
+        assert_language_texts_are_declared(
+            wf, result.run_dir, split, f"{name}/{locale}/{split}", prose=False
+        )
     assert len(set(counts.values())) == 1, f"{name}/{split} 各语言出的条数不一致：{counts}"
     assert_audit_reads_a_mixed_file(wf, run_dirs, split, f"{name}/{split}", tmp_path)

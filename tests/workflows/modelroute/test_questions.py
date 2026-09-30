@@ -14,7 +14,7 @@ LOCALES = locales.available()
 CASE = TagSet("code_gen", "small", "batch", "tight", "all_ok")
 
 
-def _build(case: TagSet, lang: str = "zh"):  # noqa: ANN202 —— 测试内部小工具
+def _build(case: TagSet, lang: str = "zh") -> list[questions.LabeledQuestion]:
     """输入：一组特征、语言。输出：该特征下的题目列表。"""
     return questions.build(case, locales.load(lang), phrasing=0)
 

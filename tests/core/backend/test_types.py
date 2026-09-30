@@ -40,7 +40,7 @@ def test_modes_from_rejects_unknown_mode() -> None:
 
 
 @pytest.mark.parametrize("error_type", [types.TransportError, types.RateLimitError])
-def test_transport_failures_count_as_faults(error_type: type) -> None:
+def test_transport_failures_count_as_faults(error_type: type[types.BackendError]) -> None:
     assert error_type.counts_as_fault is True
 
 
@@ -54,7 +54,7 @@ def test_transport_failures_count_as_faults(error_type: type) -> None:
         types.AllProvidersDown,
     ],
 )
-def test_non_provider_failures_do_not_count(error_type: type) -> None:
+def test_non_provider_failures_do_not_count(error_type: type[types.BackendError]) -> None:
     """「模型答错」「换 key 就好」这类都不能算 provider 故障，否则会误熔断。"""
     assert error_type.counts_as_fault is False
 

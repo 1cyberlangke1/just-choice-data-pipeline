@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import random
 
 
 import pytest
@@ -137,7 +136,7 @@ def test_aligned_table_starts_every_value_in_the_same_column(make_spec: object) 
     loc = locales.load("zh")
     spec = make_spec(71, layout="aligned_table", tax_state="ok")
     text = render.build(spec, loc)
-    starts = set()
+    starts: set[int] = set()
     for slot in render.visible_fields(spec):
         label = locales.label_of(loc, slot, spec.case.labels)
         value = render.field_text(spec, slot, loc)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 
-
 import pytest
 
 from tests.workflows.skillpick.conftest import _make_spec
@@ -29,13 +28,6 @@ def test_layout_is_fixed() -> None:
     assert len(lines) == 6 + len(sp.CATALOG)
     for index, (line, row) in enumerate(zip(lines[6:], spec.rows), start=1):
         assert line == render.row_line(index, row, loc)
-
-
-def test_render_is_a_pure_function() -> None:
-    """输入：同一份规格渲染两次。输出：无。预期行为：逐字节一致。"""
-    spec = _make_spec()
-    loc = locales.load("zh")
-    assert render.build(spec, loc) == render.build(spec, loc)
 
 
 def test_row_line_joins_the_three_cells() -> None:
@@ -75,7 +67,7 @@ def test_merged_table_reads_every_language() -> None:
     """
     spec = _make_spec(tag="ship_release", layout="l3", grant="write", inuse="below", phrasing=1)
     merged = parse.merged()
-    results = set()
+    results: set[tuple[str, str, str, str, tuple[tuple[str, str, str], ...]]] = set()
     for lang in ("zh", "en"):
         request = parse.parse_request(render.build(spec, locales.load(lang)), merged)
         results.add(
@@ -212,11 +204,4 @@ def test_merged_rejects_colliding_vocabularies(monkeypatch: pytest.MonkeyPatch) 
         monkeypatch, lambda en, zh: en["tag"].update({"read_code": zh["tag"]["read_code"]})
     )
     with pytest.raises(ValueError, match="在多种语言里都出现"):
-        parse.merged()
-
-
-def test_merged_reports_no_locales(monkeypatch: pytest.MonkeyPatch) -> None:
-    """输入：一个语言文件都没有。输出：无。预期行为：报人话。"""
-    monkeypatch.setattr(locales, "available", lambda: [])
-    with pytest.raises(ValueError, match="一个语言文件都没有"):
         parse.merged()

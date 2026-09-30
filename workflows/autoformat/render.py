@@ -431,6 +431,7 @@ def build_prompt(loc: dict[str, JsonValue], plan: DocPlan) -> str:
     """
     doc = loc["doc"]
     lines = [str(doc["intro"]).format(topic=str(loc["topic_name"][plan.case.topic]))]
+    lines.append(str(doc["lang_rule"]).format(language=loc["language_name"]))
     lines.append(str(doc["mark_rule"]))
     lines.append(str(doc["slot_header"]))
     for index, slot in enumerate(plan.slots, start=1):

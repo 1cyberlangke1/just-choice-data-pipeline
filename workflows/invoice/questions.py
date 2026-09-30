@@ -34,15 +34,25 @@ SCORE_FAMILIES: Final[tuple[str, ...]] = ("bad_lines",)
 #: 题族顺序：先抽字段（读文本），再核对（算一致性），最后数错（打分）。
 FAMILIES: Final[tuple[str, ...]] = CHOICE_FAMILIES + NOUL_FAMILIES + SCORE_FAMILIES
 
+#: `bad_lines` 的档位表是 0/1/2/3+，所以只在**至少这么多行**的单据上问：2 行的单据
+#: 取不到第 4 档（2 行不可能错 3 处），问了就是把那一档压到 0.18（实测 0.0774 的偏差，
+#: 容差 0.03）——属于「档位取不到」那一类失衡，与 §9.79 第六条同源。
+MIN_LINES_FOR_BAD_LINES: Final[int] = 3
+
 
 def families_for(spec: InvoiceSpec) -> tuple[str, ...]:
     """输入：规格。输出：这份单据会出的题族。
 
-    预期行为：只有 `tax_consistent` 是条件题族——单据里没有税额行就不问税额一致性。
+    预期行为：两个条件题族——
+    - `tax_consistent`：单据里没有税额行就不问（判据要的字段根本不存在）；
+    - `bad_lines`：明细少于 `MIN_LINES_FOR_BAD_LINES` 行就不问（档位表的第 4 档取不到）。
     """
-    if spec.has_tax:
-        return FAMILIES
-    return tuple(family for family in FAMILIES if family != "tax_consistent")
+    dropped: set[str] = set()
+    if not spec.has_tax:
+        dropped.add("tax_consistent")
+    if len(spec.items) < MIN_LINES_FOR_BAD_LINES:
+        dropped.add("bad_lines")
+    return tuple(family for family in FAMILIES if family not in dropped)
 
 
 def line_option(index: int) -> str:
@@ -63,20 +73,7 @@ def _line_options(spec: InvoiceSpec, loc: dict[str, JsonValue]) -> dict[str, str
     }
 
 
-def _choice(
-    family: str, instructions: str, options: dict[str, str], answer: str
-) -> LabeledQuestion:
-    """输入：题族、题面、选项、金答案（选项名）。输出：一道 choice 题。
-
-    预期行为：选项描述重复直接报错——那意味着这道题有两个说得通的答案，
-    是构造 bug，必须在生成时就炸掉而不是产出一条坏数据。
-    """
-    if len(set(options.values())) != len(options):
-        raise ValueError(f"{family} 的选项描述重复：{options}")
-    if answer not in options:
-        raise ValueError(f"{family} 的答案 {answer!r} 不在选项里：{sorted(options)}")
-    question = {"type": "choice", "instructions": instructions, "criteria": options}
-    return LabeledQuestion(family, question, answer)
+from jc.assemble import choice as _choice
 
 
 def build(

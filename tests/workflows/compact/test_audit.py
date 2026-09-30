@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from jc import pipeline
 
@@ -67,15 +66,6 @@ def test_family_of_strips_dedupe_suffixes() -> None:
     assert audit_mod._family_of("rule_2") == "rule"
     assert audit_mod._family_of("pin_overrode") == "pin_overrode"
     assert audit_mod._family_of("pin_overrode_2") == "pin_overrode"
-
-
-def test_recorded_handles_every_answer_shape() -> None:
-    """输入：三种题型的答案。输出：无。预期行为：choice 换回选项名，score/noul 原样。"""
-    question = {"criteria": {"a": "A", "b": "B"}}
-    assert audit_mod._recorded(question, {"type": "choice", "choice": 1}) == "b"
-    assert audit_mod._recorded(question, {"type": "choice", "choice": 9}) is None
-    assert audit_mod._recorded({}, {"type": "score", "score": 2}) == 2
-    assert audit_mod._recorded({}, {"type": "noul", "noul": True}) is True
 
 
 def test_pin_overrode_consistency_rule() -> None:
@@ -168,20 +158,6 @@ def test_audit_flags_a_broken_where_row(tmp_path: Path) -> None:
     report, missing = audit_mod.audit_run(result.run_dir, ("train",), "zh")
     assert report["train"]["frame_bad"] == 1
     assert any("位置行" in item for item in missing)
-
-
-def test_audit_reports_a_missing_product(tmp_path: Path) -> None:
-    """输入：没有产物的切分。输出：无。预期行为：缺失项里点名它，计数全为零。"""
-    report, missing = audit_mod.audit_run(tmp_path, ("train",), "zh")
-    assert report["train"]["samples"] == 0
-    assert any("产物不存在" in item for item in missing)
-    assert report["train"]["families"] == {}
-
-
-def test_audit_rejects_an_unknown_locale(tmp_path: Path) -> None:
-    """输入：不存在的语言。输出：无。预期行为：当场报错，不拖到解析阶段。"""
-    with pytest.raises(FileNotFoundError):
-        audit_mod.audit_run(tmp_path, ("train",), "nope")
 
 
 def test_known_families_are_exactly_the_built_ones() -> None:

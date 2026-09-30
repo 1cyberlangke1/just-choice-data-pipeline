@@ -44,6 +44,40 @@ def _shuffled_criteria(names: list[str], rng: random.Random) -> list[str]:
     return order
 
 
+def choice(
+    family: str,
+    instructions: str,
+    options: dict[str, str],
+    answer: str,
+    *,
+    shuffle: bool = True,
+) -> LabeledQuestion:
+    """输入：题族、题面、选项（名字 → 描述）、金答案（选项名）。输出：一道 choice 题。
+
+    预期行为：两种写法上的错当场报错，不留给后面——选项描述重复时考生分辨不出；
+    答案不在选项里时，编号那一步（`assemble_sample`）会炸，早点炸更好定位。
+    `shuffle=False` 给选项有自然顺序的题族（如等级、时间序）。
+    """
+    if len(set(options.values())) != len(options):
+        raise ValueError(f"{family} 的选项描述重复：{options}")
+    if answer not in options:
+        raise ValueError(f"{family} 的答案 {answer!r} 不在选项里：{sorted(options)}")
+    question = {"type": contract.TYPE_CHOICE, "instructions": instructions, "criteria": options}
+    return LabeledQuestion(family, question, answer, shuffle)
+
+
+def noul(
+    family: str, instructions: str, criteria: dict[str, str], answer: bool
+) -> LabeledQuestion:
+    """输入：题族、题面、判据（true / false 两句文案）、金答案。输出：一道 noul 题。
+
+    预期行为：判据也印进题目里——考生得知道「命中」在本题里指什么；true / false 是固定顺序，
+    所以不打乱。判据复制一份，免得调用方之后改了自己的字典把题目也改了。
+    """
+    question = {"type": contract.TYPE_NOUL, "instructions": instructions, "criteria": dict(criteria)}
+    return LabeledQuestion(family, question, answer, shuffle=False)
+
+
 def assemble_sample(
     sample_id: str,
     state: object,

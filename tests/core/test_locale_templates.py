@@ -1,4 +1,4 @@
-"""语言文件的两条跨 workflow 不变量（零 token 尺子）。
+"""语言文件的三条跨 workflow 不变量（零 token 尺子）。
 
 为什么值得做成尺子：
 
@@ -8,6 +8,10 @@
    不报错、只是接受率悄悄掉，日志里看起来像合成质量问题。
 2. 题族只在一种语言里定义时，另一种语言要么缺题、要么渲染直接 KeyError。这类不一致
    在「测试只跑一种语言」的情况下同样看不见（§9.32）。
+3. 提示词里没有明说的语言约束时，模型会照着它自己的先验写正文——`rerank` 的 zh 侧真机
+   产物里 3/3、4/6、1/4 把查询与候选写成了英文（汉字占比 0.081~0.120），en 侧反过来有
+   2/9 写成中文。提示词通篇是目标语言**不足以**让模型不换语言；而这一条一旦漏掉，产物
+   照样过契约校验、照样过判别器，只在事后审计里才现形。
 
 输入：`workflows/*/locales/*.toml`。
 输出：无（断言）。
@@ -19,6 +23,8 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 from typing import Final
+
+from jc import workflow as workflow_mod
 
 #: 语言文件里「装题族问法」的表名：各 workflow 沿用这两个名字之一。
 FAMILY_TABLES: Final[tuple[str, ...]] = ("fam", "ask")
@@ -100,3 +106,73 @@ def test_every_workflow_defines_the_same_families_in_all_languages() -> None:
             if missing or extra:
                 problems.append(f"{workflow_dir}: {name} 缺 {missing}、多 {extra}")
     assert not problems, "各语言题族不一致（另一种语言会缺题或渲染 KeyError）：\n" + "\n".join(problems)
+
+
+def _strings(node: object) -> list[str]:
+    """输入：TOML 解析出来的任意节点。输出：它下面所有字符串（递归展开表与数组）。
+
+    预期行为：必须递归——12 家 workflow 的语言约束写在 `prompt.rules` 这个**字符串数组**
+    里，只看表的一层会漏掉它们，尺子就会把对的判成错的。
+    """
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        found: list[str] = []
+        for value in node.values():
+            found.extend(_strings(value))
+        return found
+    if isinstance(node, list):
+        found: list[str] = []
+        for value in node:
+            found.extend(_strings(value))
+        return found
+    return []
+
+
+def test_every_llm_workflow_pins_the_language_in_its_prompt() -> None:
+    """走 LLM 的 workflow，每种语言的提示词里都必须有一句明说的语言约束。
+
+    输入：`jc.workflow` 注册表 + `workflows/*/locales/*.toml`。输出：无（断言）。
+    预期行为：`needs` 非空（= 文本由模型写）的 workflow，每种语言都必须有
+    - 顶层 `language_name`（那句约束要填的语言名，也是「与声明语言一致」这条判据在人话里
+      的说法）；
+    - 在**带 `intro` 的那张提示词表**里，至少一个字符串含 `{language}` 占位符。
+
+    为什么查的是「带 `intro` 的表」而不是写死 `[prompt]`：`autoformat` 的提示词表叫
+    `[doc]`，各家自己起名；`intro` 是开场白，是唯一在 17 家里都存在的锚点。
+    为什么纯构造式（`needs` 为空）豁免：它们根本不发提示词，没有「模型会换语言」这回事。
+    """
+    workflow_mod.discover()
+    problems: list[str] = []
+    checked = 0
+    for name in workflow_mod.registered():
+        workflow = workflow_mod.load(name)
+        if not workflow.needs:
+            continue
+        for locale in workflow.available_locales():
+            label = f"{name}/{locale}"
+            checked += 1
+            path = Path("workflows") / name / "locales" / f"{locale}.toml"
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+            language_name = data.get("language_name")
+            if not isinstance(language_name, str) or not language_name.strip():
+                problems.append(f"{label}: 顶层缺 `language_name`，提示词里没有可填的语言名")
+                continue
+            tables = [
+                key
+                for key, value in data.items()
+                if isinstance(value, dict) and "intro" in value
+            ]
+            if not tables:
+                problems.append(f"{label}: 找不到带 `intro` 的提示词表")
+                continue
+            if not any(
+                "{language}" in text
+                for table in tables
+                for text in _strings(data[table])
+            ):
+                problems.append(
+                    f"{label}: 提示词里没有一句 `{{language}}` 约束——模型会照它自己的先验换语言"
+                )
+    assert checked >= 30, f"这把尺子只量到 {checked} 份语言文件，名存实亡"
+    assert not problems, "走 LLM 的 workflow 没把语言钉死在提示词里：\n" + "\n".join(problems)

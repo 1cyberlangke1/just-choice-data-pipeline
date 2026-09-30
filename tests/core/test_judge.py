@@ -99,3 +99,18 @@ def test_verdict_is_not_skipped_by_default() -> None:
     """输入：普通 Verdict。输出：无（断言）。预期行为：默认不是「没判成」。"""
     assert judge_mod.Verdict(True).skipped is False
     assert judge_mod.Verdict(False, reason="不行", skipped=True).skipped is True
+
+
+def test_leftover_in_prefers_whole_lines_then_tags() -> None:
+    """输入：state 文本、残留行清单、残留标记清单。输出：断言结果。
+
+    预期行为：先按整行比对（去掉首尾空白后全等），再按子串比对标记；都没有就空串。
+    围栏**单独成行**才算残留，混在正文里不算——这正是各 workflow 传两份清单的理由。
+    """
+    lines = frozenset({"```", "```json"})
+    tags = ("<br>", "<br/>")
+    assert judge_mod.leftover_in("```\n正文", lines, tags) == "```"
+    assert judge_mod.leftover_in("   ```json  \n正文", lines, tags) == "```json"
+    assert judge_mod.leftover_in("正文<br>更多", lines, tags) == "<br>"
+    assert judge_mod.leftover_in("正文```尾", lines, tags) == ""
+    assert judge_mod.leftover_in("干净的正文", lines, tags) == ""

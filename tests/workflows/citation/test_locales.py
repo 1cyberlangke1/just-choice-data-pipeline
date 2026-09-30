@@ -8,11 +8,6 @@ from jc.jsontypes import JsonValue
 from workflows.citation import features, judges, locales, questions, render
 
 
-def test_both_languages_exist() -> None:
-    """输入：无。输出：无。预期行为：zh / en 都在（少一个就是漏分发）。"""
-    assert locales.available() == ["en", "zh"]
-
-
 @pytest.mark.parametrize("lang", ["en", "zh"])
 def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
     """输入：一种语言。输出：无。
@@ -80,8 +75,41 @@ def test_prompt_placeholders_are_all_filled(lang: str) -> None:
     预期行为：提示词渲染完之后**一个花括号都不剩**——漏填会在 `format` 上抛错，而多写的
     花括号会原样漏给模型，让它以为那是要填的槽。
     """
-    prompt = render.build_prompt(locales.load(lang))
+    prompt = render.build_prompt(locales.load(lang), 0)
     assert "{" not in prompt and "}" not in prompt
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_topic_table_matches_the_pool(lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：题材方向词表长度等于 `features.TOPIC_POOL`（spec 存的是下标，短一条会在渲染期抛
+    `IndexError`，长一条就是两种语言错位）、条目非空两两不同，且一个花括号都不许有。
+    """
+    loc = locales.load(lang)
+    items = loc["prompt"]["topics"]
+    assert isinstance(items, list)
+    assert len(items) == features.TOPIC_POOL
+    texts = [str(item) for item in items]
+    assert all(text.strip() for text in texts)
+    assert len(set(texts)) == len(texts)
+    assert all("{" not in text and "}" not in text for text in texts)
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_prompt_carries_every_topic(lang: str) -> None:
+    """输入：一种语言 × 全部题材下标。输出：无。
+
+    预期行为：提示词里出现的是**那一个题材**的词条，而且抽到不同题材的两条样本提示词**逐字不同**
+    ——这正是样本级旋钮（范式 §9.57）要的效果：首版一个变量都没有，标题当场塌成同一个字符串。
+    """
+    loc = locales.load(lang)
+    prompts = [
+        render.build_prompt(loc, topic) for topic in features.TOPIC_IDS
+    ]
+    assert len(set(prompts)) == len(prompts)
+    for topic, prompt in zip(features.TOPIC_IDS, prompts, strict=True):
+        assert locales.pick(loc["prompt"]["topics"], topic) in prompt
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -89,11 +117,6 @@ def test_verify_prompt_has_no_unfilled_slots(lang: str) -> None:
     """输入：一种语言。输出：无。预期行为：反解提示词也不留花括号。"""
     prompt = judges.build_trace_prompt("[state]", locales.load(lang))
     assert "{" not in prompt and "}" not in prompt
-
-
-def test_pick_wraps_around() -> None:
-    """输入：越界的问法编号。输出：无。预期行为：回绕（不抛异常）。"""
-    assert locales.pick(["a", "b"], 3) == "b"
 
 
 def test_locale_dict_is_json_shaped() -> None:

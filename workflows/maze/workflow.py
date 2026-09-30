@@ -43,6 +43,18 @@ PATH_FAMILIES: tuple[str, ...] = (
 )
 CUT_FAMILIES: tuple[str, ...] = ("reachable", *LOCAL_FAMILIES)
 
+#: `deviation` 与 `on_optimal` 的**入选概率**：{题族: (dev=0 的 case 上的概率, dev≠0 上的概率)}。
+#: 两族共用「当前位置在不在最优路径上」这一个自由度——dev=0 的 case 里 `deviation` 的答案
+#: 恒为 0、`on_optimal` 的答案恒为 True——所以光靠 case 矩阵铺不平：`deviations=(0,0,1,2,3)`
+#: 会让 deviation 的 0 档占 0.41（实测 0.164 的偏差）、on_optimal 的 True 占 0.41。
+#: 按 case 的 deviation 调入选概率之后，两族的答案各自铺平（推导：设 dev=0 的 case 上
+#: `deviation` 入选概率 a、dev≠0 上 b，则 0.4a/(0.4a+0.6b)=1/4 → b=2a；`on_optimal` 同理
+#: 0.4c/(0.4c+0.6d)=1/2 → c=1.5d）。
+FAMILY_PICK_WEIGHTS: dict[str, tuple[float, float]] = {
+    "deviation": (0.5, 1.0),
+    "on_optimal": (1.0, 2 / 3),
+}
+
 # 两个切分的采样参数：test_ood 用更大的迷宫、更全的格式/符号/问法（留出维度）
 TRAIN_CONFIG = spec_mod.MazeConfig(
     size=(3, 7),
@@ -274,6 +286,7 @@ def _pick_families(
     预期行为：
     - 强制 cut 时只用「reachable + 局部题族」（依赖最优路径的题族会被跳过）；
     - deviation=1 时把 off_by_one 加进池子（这是「走偏了 1 格」的专用题族）；
+    - `deviation` / `on_optimal` 按 case 的 deviation 调入选概率（见 `FAMILY_PICK_WEIGHTS`）；
     - `reachable` 在两种情况下都必出：cut 样本给 False、非 cut 给 True，真假刚好 1:1；
     - path_via 的目标（路径上有标记 / 全在路径外）先抽，再交给采样器去实现；
       目标是「全在路径外」时把 on_path 从池子里去掉（否则它的答案会全是 False）。
@@ -287,6 +300,12 @@ def _pick_families(
     pool.extend(PATH_FAMILIES)
     pool.extend(LOCAL_FAMILIES)
     pool = list(dict.fromkeys(pool))
+    level = 0 if case.deviation == 0 else 1
+    pool = [
+        name
+        for name in pool
+        if rng.random() < FAMILY_PICK_WEIGHTS.get(name, (1.0, 1.0))[level]
+    ]
     marks_on_path: int | None = None
     if "path_via" in pool:
         # 「都不经过」这种 no-match 选项天然占少数，用 1/4 权重去贴近「每个选项约 1/k」
@@ -378,9 +397,18 @@ class MazeWorkflow:
         """决定这一条怎么造：题族、是否强制出口不可达、path_via 的目标。
 
         输入：RNG、采样参数、case、样本序号（序号未用，保留给将来的分层采样）。
-        输出：SplitSpec（params 里放 config / case / families / force_cut / marks_on_path）。
+        输出：SplitSpec（params 里放 config / case / families / force_cut / marks_on_path /
+        path_bucket）。
+        预期行为：`path_length` 的答案桶（下标）在**这里**抽，随计划一起固定下来——
+        `sample` 会为同一个计划换迷宫重试多次，桶必须跨重试不变，否则各桶的接受率不等
+        会把短桶系统性挤掉（见 `spec.sample_spec` 里的说明）。不出 `path_length` 时为 None。
         """
         families, marks_on_path = _pick_families(rng, config, case, case.cut)
+        path_bucket = (
+            rng.choice(range(len(spec_mod.PATH_LENGTH_BUCKETS)))
+            if "path_length" in families
+            else None
+        )
         return SplitSpec(
             name="train",  # 切分名只用于记录；真正的分层信息都在 params 里
             params={
@@ -389,6 +417,7 @@ class MazeWorkflow:
                 "families": families,
                 "force_cut": case.cut,
                 "marks_on_path": marks_on_path,
+                "path_bucket": path_bucket,
             },
         )
 
@@ -403,6 +432,9 @@ class MazeWorkflow:
         config: spec_mod.MazeConfig = split.params["config"]
         case: spec_mod.MazeCase = split.params["case"]
         families: tuple[str, ...] = split.params["families"]
+        path_bucket = split.params.get("path_bucket")
+        if not isinstance(path_bucket, int):
+            path_bucket = None
         for _ in range(128):
             maze = spec_mod.sample_spec(
                 rng,
@@ -412,6 +444,7 @@ class MazeWorkflow:
                 families=families,
                 force_cut=bool(split.params.get("force_cut", False)),
                 marks_on_path=split.params.get("marks_on_path"),
+                path_bucket=path_bucket,
             )
             if maze is not None:
                 return maze
@@ -462,6 +495,15 @@ class MazeWorkflow:
             else:
                 raise KeyError(f"未知判别器：{name!r}（可用：roundtrip / label）")
         return tuple(out)
+
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：空表（这一族没有「模型写的自然语言正文」）。
+
+        预期行为：state 是 ASCII 迷宫图（`#`、`|`、`+` 与格子字母）加走位记录，**没有自然语言
+        正文**；题面与选项由代码按语言表写。拿迷宫图去算汉字占比只会把好数据当坏数据。
+        """
+        del sample
+        return {}
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str

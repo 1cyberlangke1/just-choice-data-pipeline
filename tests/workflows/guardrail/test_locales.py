@@ -7,11 +7,6 @@ import pytest
 from workflows.guardrail import features, judges, locales, questions, render
 
 
-def test_both_languages_exist() -> None:
-    """输入：无。输出：无。预期行为：zh / en 都在（少一个就是漏分发）。"""
-    assert locales.available() == ["en", "zh"]
-
-
 @pytest.mark.parametrize("lang", ["en", "zh"])
 def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
     """输入：一种语言。输出：无。
@@ -114,8 +109,3 @@ def test_prompts_and_questions_leave_no_placeholder(lang: str) -> None:
             assert "{" not in instructions and "}" not in instructions
     trace = judges.build_trace_prompt("[state]", loc)
     assert "{" not in trace and "}" not in trace
-
-
-def test_pick_wraps_around() -> None:
-    """输入：越界的问法编号。输出：无。预期行为：回绕（不抛异常）。"""
-    assert locales.pick(["a", "b"], 3) == "b"

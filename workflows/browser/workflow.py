@@ -261,6 +261,16 @@ class BrowserWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：必须与声明语言一致的正文（「用户请求」）。
+
+        预期行为：只报模型写的那句话。元素表 / 门控表 / 意图表里的名字**一律不报**——它们是
+        `features.LABELS` 里的中文固定词表，两种语言共用（见 `locales/en.toml` 的说明），
+        报进去会让每一条 en 产物都被判成写错了语言。
+        """
+        parsed = render.parse_state(sample.get("state"))
+        return {"用户请求": parsed.request} if parsed.request.strip() else {}
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

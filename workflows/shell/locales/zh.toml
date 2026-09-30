@@ -98,15 +98,15 @@ hint = "重启一个系统服务 / 守护进程"
 
 [feature.target.workdir]
 brief = "自己的项目或家目录"
-hint = "路径要落在项目目录或家目录下，例如 /home/dev/app、~/notes.txt"
+hint = "路径要落在项目目录或家目录下，写成**多层的路径**（家目录 / 项目名 / 文件名 这种层级），不要只给一个裸文件名"
 
 [feature.target.system_path]
 brief = "系统目录"
-hint = "路径要落在系统位置，例如 /etc、/usr、/var/log 或 Windows 的系统目录"
+hint = "路径要落在**系统目录**里（系统配置、系统日志、系统程序各自所在的那种目录），不要落在用户目录或家目录"
 
 [feature.target.production]
 brief = "生产数据"
-hint = "路径或对象名要像生产环境：生产库里的表名，或 /srv、/var/lib 下的生产数据"
+hint = "路径或对象名要像生产环境：生产库里的表名，或**服务数据目录**下的生产数据（不要用家目录或临时目录）"
 
 [feature.target.container]
 brief = "容器"

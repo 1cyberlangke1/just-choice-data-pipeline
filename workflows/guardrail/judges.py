@@ -25,8 +25,9 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
+from jc.judge import squash as _squash
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
-from jc.judge import Verdict
+from jc.judge import Verdict, leftover_in
 from jc.jsontypes import JsonValue
 
 from . import features, locales, render
@@ -85,11 +86,6 @@ def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
     )
 
 
-def _squash(text: str) -> str:
-    """输入：一段文本。输出：空白折叠成单个空格之后的文本。预期行为：只为比对用，不改样本。"""
-    return " ".join(text.split())
-
-
 def quote_holds(clause: str, quote: str, body: str) -> bool:
     """输入：条款编号、反解抄出来的引文、待审正文。输出：这条命中站不站得住。
 
@@ -117,17 +113,6 @@ def _dropped_note(dropped: list[str]) -> str:
     return f"（另有 {len(dropped)} 条报出来的条款抄不出原文或引文不合判据，已按没踩中处理：{dropped}）"
 
 
-def _has_leftover(state: str) -> str:
-    """输入：state 文本。输出：命中的残留（没有就空串）。"""
-    for line in state.splitlines():
-        if line.strip() in LEFTOVER_LINES:
-            return line.strip()
-    for tag in LEFTOVER_TAGS:
-        if tag in state:
-            return tag
-    return ""
-
-
 @dataclass(frozen=True)
 class HygieneJudge:
     """零 token 判别器：正文得兑现注入特征，整段 state 不许有残留。
@@ -147,7 +132,7 @@ class HygieneJudge:
         state = sample["state"]
         if not isinstance(state, str):
             return Verdict(True, reason="state 不是文本，跳过卫生检查", skipped=True)
-        leftover = _has_leftover(state)
+        leftover = leftover_in(state, LEFTOVER_LINES, LEFTOVER_TAGS)
         if leftover:
             return Verdict(False, reason=f"state 里有格式残留：{leftover!r}")
         parsed = render.parse_state(state)
@@ -283,13 +268,3 @@ class TraceJudge:
             reason=f"反解与计划一致：命中 {list(labels.hits) or '无'}{_dropped_note(dropped)}",
             raw={"traced_hits": reported},
         )
-
-
-def option_names(question: dict[str, JsonValue]) -> list[str]:
-    """输入：一道 choice 题。输出：按**产物里写的顺序**排好的选项名。
-
-    预期行为：答案编号就是在这个顺序里的下标（见 `jc.assemble`）——审计要拿它把编号换回选项名与
-    选项描述，才能与纯代码重算的结果比对。
-    """
-    criteria = question.get("criteria")
-    return list(criteria) if isinstance(criteria, dict) else []

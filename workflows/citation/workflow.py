@@ -75,16 +75,19 @@ class CitationConfig:
       512 让枚举器稳稳走**全枚举**（成对覆盖在这里只会白扔组合）；
     - `case_limit` >0 时每个切分只取前 N 个组合（小规模试跑用，**会牺牲成对覆盖**）；
     - `phrasing_pool` 问法编号池。
+    - `topics` 题材方向池（**样本级旋钮**：只改短文与标题怎么写，不改 case、标签与切分）。
     """
 
     split: str = "train"
     cover_limit: int = 512
     case_limit: int = 0
     phrasing_pool: tuple[int, ...] = (0, 1)
+    topics: tuple[int, ...] = features.TOPIC_IDS
 
     def __post_init__(self) -> None:
         """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。"""
         require_pool("phrasing_pool", self.phrasing_pool)
+        require_pool("topics", self.topics)
         if self.case_limit < 0:
             raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
 
@@ -240,12 +243,16 @@ class CitationWorkflow:
 
         预期行为：问法编号由 RNG 从池里抽（它不是 case 维度），引文计划在 `sample` 阶段按
         「case 指纹 + 问法编号」确定性地算出来。
+
+        题材方向也是**每条样本抽一个**（范式 §9.7 / §9.57：写文本的提示词里要有样本级变量，
+        否则同切分的提示词逐字相同、标题会塌成同一个字符串）。它不进 `stats_dimensions`。
         """
         return SplitSpec(
             name=config.split,
             params={
                 "case": case,
                 "phrasing": rng.choice(config.phrasing_pool),
+                "topic": rng.choice(config.topics),
                 "seq": seq,
             },
         )
@@ -255,11 +262,17 @@ class CitationWorkflow:
         del rng
         case = split.params["case"]
         phrasing = split.params["phrasing"]
-        if not isinstance(case, CitationCase) or not isinstance(phrasing, int):
-            raise TypeError(f"生成计划里的 case / phrasing 类型不对：{split.params!r}")
+        topic = split.params["topic"]
+        if (
+            not isinstance(case, CitationCase)
+            or not isinstance(phrasing, int)
+            or not isinstance(topic, int)
+        ):
+            raise TypeError(f"生成计划里的 case / phrasing / topic 类型不对：{split.params!r}")
         return CitationSpec(
             case=case,
             phrasing=phrasing,
+            topic=topic,
             split=split.name,
             seq=int(split.params["seq"]),
             plan=features.plan_for(case, phrasing),
@@ -313,6 +326,21 @@ class CitationWorkflow:
             else:
                 raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
+
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：必须与声明语言一致的正文（标题 + 各节的句子）。
+
+        预期行为：只报模型写的句子与标题；节号、引用计数这些由代码算的字段不报。反解不出来
+        （坏 state）给空表——那由契约校验报，不在这里报第二遍。
+        """
+        parsed = render.parse_state(sample.get("state"))
+        texts: dict[str, str] = {}
+        if parsed.title:
+            texts["标题"] = parsed.title
+        for index, section in enumerate(parsed.sections, start=1):
+            for position, sentence in enumerate(section, start=1):
+                texts[f"第 {index} 节第 {position} 句"] = sentence
+        return texts
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str

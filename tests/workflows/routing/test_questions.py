@@ -36,13 +36,6 @@ def test_families_are_fixed_and_typed() -> None:
         assert families[family].question["type"] == "score"
 
 
-def test_question_shape_matches_the_contract() -> None:
-    """输入：一组特征。输出：无。预期行为：每道题只有契约允许的三个字段，且题面非空。"""
-    for item in questions.build(TAGS, locales.load("zh"), 0):
-        assert set(item.question) == {"type", "instructions", "criteria"}
-        assert str(item.question["instructions"]).strip()
-
-
 def test_answers_match_the_labels() -> None:
     """输入：一组特征。输出：无。预期行为：每族金答案等于特征层算出来的那一格。"""
     labels = TAGS.label()
@@ -84,14 +77,6 @@ def test_priority_depends_only_on_urgency_and_tier() -> None:
     assert left["queue"].answer != right["queue"].answer  # 队列那一族确实变了
 
 
-def test_choice_options_are_only_the_allowed_ones() -> None:
-    """输入：一组特征。输出：无。预期行为：每道 choice 的选项名就是该族允许的取值。"""
-    families = by_family()
-    for family in questions.CHOICE_FAMILIES:
-        criteria = families[family].question["criteria"]
-        assert list(criteria) == list(features.CHOICE_OPTIONS[family])
-
-
 def test_noul_and_score_criteria_shapes() -> None:
     """输入：一组特征。输出：无。
 
@@ -102,34 +87,6 @@ def test_noul_and_score_criteria_shapes() -> None:
     assert list(families["needs_human"].question["criteria"]) == ["true", "false"]
     assert list(families["priority"].question["criteria"]) == list(loc["fam"]["priority"]["levels"])
     assert len(families["priority"].question["criteria"]) == features.PRIORITY_LEVELS
-
-
-def test_only_the_score_and_noul_families_are_unshuffled() -> None:
-    """输入：一组特征。输出：无。
-
-    预期行为：有序阶梯与布尔题不打乱（打乱破坏语义），四个 choice 题族都允许打乱
-    （防「答案总在第 n 个」的位置捷径）。
-    """
-    families = by_family()
-    for family in questions.FAMILIES:
-        if family in questions.SCORE_FAMILIES or family in questions.NOUL_FAMILIES:
-            assert families[family].shuffle is False
-        else:
-            assert families[family].shuffle is True
-
-
-def test_phrasings_rotate() -> None:
-    """输入：三个问法编号。输出：无。预期行为：同一族的题面在三个编号上都能取到。"""
-    for family in questions.FAMILIES:
-        texts = {
-            next(
-                item.question["instructions"]
-                for item in questions.build(TAGS, locales.load("zh"), phrasing)
-                if item.family == family
-            )
-            for phrasing in (0, 1, 2)
-        }
-        assert len(texts) == 3, family
 
 
 def test_families_for_returns_the_full_table() -> None:

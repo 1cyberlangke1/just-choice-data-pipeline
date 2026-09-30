@@ -23,18 +23,15 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
+from jc.contract import recorded_value
+from jc.workflow import family_of as _family_of
 from jc import jsonio
 from jc.jsontypes import JsonValue
 
-from . import features, judges as judges_mod, locales, questions, render
+from . import features, locales, questions, render
 
 #: 本 workflow 认得的题族（产物里出现别的就是串版本了）。
 KNOWN_FAMILIES: frozenset[str] = frozenset(questions.FAMILIES)
-
-
-def _family_of(qid: str) -> str:
-    """输入：题号。输出：题族名（去掉 `_1` 这类序号后缀）。"""
-    return "".join(ch for ch in qid if not ch.isdigit()).rstrip("_")
 
 
 def line_qid(row: int) -> str:
@@ -44,21 +41,6 @@ def line_qid(row: int) -> str:
     与题号是固定对应——审计拿它把重算出来的逐行标记对回答案。
     """
     return "line" if row == 0 else f"line_{row + 1}"
-
-
-def _recorded(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> JsonValue:
-    """输入：题面、答案。输出：把编号换回可读形态后的答案值。
-
-    预期行为：choice 的编号是**产物里那个打乱顺序**里的下标（见 `jc.assemble`），所以先取回
-    选项名再比；noul 原样返回。
-    """
-    if answer.get("type") == "choice":
-        names = judges_mod.option_names(question)
-        index = answer.get("choice")
-        if isinstance(index, int) and 0 <= index < len(names):
-            return names[index]
-        return None
-    return answer.get("noul")
 
 
 def audit_run(
@@ -103,7 +85,7 @@ def audit_run(
                 counts["types"][question["type"]] += 1
                 if family not in KNOWN_FAMILIES:
                     counts["unknown_families"][family] += 1
-                recorded[qid] = _recorded(question, answers[qid])
+                recorded[qid] = recorded_value(question, answers[qid])
             parsed = render.parse_state(row["state"])
             if parsed.rule is None:
                 counts["rule_bad"] += 1

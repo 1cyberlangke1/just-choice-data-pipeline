@@ -174,12 +174,6 @@ def test_detect_locale_does_not_let_one_language_steal_the_other() -> None:
     assert empty.query is None and empty.candidates == ()
 
 
-def test_unknown_locale_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：抛 `FileNotFoundError` 并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="可用"):
-        locales.load("nope")
-
-
 def test_backend_fake_produces_parseable_drafts() -> None:
     """输入：假后端。输出：无。预期行为：它造的草稿真的能过校验（假后端自己得先站得住）。"""
     plan = _plan(terms=2, relevant=2, best="last")

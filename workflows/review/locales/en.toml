@@ -36,7 +36,7 @@ change_kind = "change kind"
 size = "change size"
 
 [prompt]
-intro = "Below is the feature list of **one change**. Write the change body from this list — the lines of the diff, **every line starting with `+` (added), `-` (removed), or a space (context)**, for example `+ timeout = 60`."
+intro = "Below is the feature list of **one change**. Write the change body from this list — the lines of the diff, **every line starting with `+` (added), `-` (removed), or a space (context)**, with one space after the prefix."
 bullet = "- {dim}: {brief} ({hint})"
 rules = [
   "Write only the changed lines, **one prefix per line**: `+` is an added line, `-` is a removed line, a space is a context line (put one space after the prefix)",
@@ -47,16 +47,16 @@ rules = [
   "The \"credential literal\" flag must be obvious at a glance: if yes, put `db_password = \"…\"` — a **quoted value** — on an **added line** (a code line is the most natural place, but prose counts too); if no, write none at all (reading an environment variable or a config file is not one). A literal that appears only on a removed line does not count as \"yes\" — that change deletes it",
   "The \"debug output\" flag must be obvious too: if yes, put a print( / console.log( / logger.debug( style call on an **added line**; if no, write none at all",
   "Do not use the name of any real company, product, or codebase — invent fictitious names",
-  "A docs change needs prefixes too: `+ ## Install` is right, a bare `## Install` is not (the prefix comes first; the file kind only decides what the content is)",
+  "A docs change needs prefixes too: a heading line needs a prefix just like any other line; a bare heading with no prefix is not enough (the prefix comes first; the file kind only decides what the content is)",
 ]
 
 [feature.secret.no]
-brief = "no `name = \"quoted value\"` on the added lines"
+brief = "no `name = \"…\"` on the added lines"
 hint = "write no quoted password / token / key at all; read an environment variable instead"
 
 [feature.secret.yes]
-brief = "a `name = \"quoted value\"` on the added lines"
-hint = "put `db_password = \"hunter2\"` on an **added line** (a code line is the most natural place, but prose counts too)"
+brief = "a `name = \"…\"` on the added lines"
+hint = "put `name = \"…\"` on an **added line** — invent both the name and the value (a code line is the most natural place, but prose counts too)"
 
 [feature.debug.no]
 brief = "no debug output on the added lines"
@@ -68,19 +68,19 @@ hint = "put something like print( or logger.debug( on an **added line**, dumping
 
 [feature.file_kind.source]
 brief = "a source file"
-hint = "write the **changed lines** of business code: a prefixed function, branch, or value such as `+ def total(x):`"
+hint = "write the **changed lines** of business code: a prefixed function, branch or value, every line starting with `+` or a space"
 
 [feature.file_kind.test]
 brief = "a test file"
-hint = "write the **changed lines** of test code: a prefixed case name, assertion, or fixture such as `+ def test_total():`"
+hint = "write the **changed lines** of test code: a prefixed case name, assertion or fixture, every line starting with `+` or a space"
 
 [feature.file_kind.config]
 brief = "a config file"
-hint = "write the **changed lines** of configuration: prefixed key/value pairs such as `+ timeout: 60` (YAML / TOML / JSON style); a bare `timeout: 60` is not enough"
+hint = "write the **changed lines** of configuration: prefixed key/value pairs (`+` first, then one space, then the key and value; YAML / TOML / JSON style); a bare key/value with no prefix is not enough"
 
 [feature.file_kind.docs]
 brief = "a documentation file"
-hint = "write the **changed lines** of prose (Markdown style), no code: `+ ## Install` is right, a bare `## Install` is not"
+hint = "write the **changed lines** of prose (Markdown style), no code: every line needs a prefix, heading lines included; a bare heading with no prefix is not enough"
 
 [feature.change_kind.added]
 brief = "an addition"

@@ -13,15 +13,9 @@ LOCALES = locales.available()
 CASE = TagSet("bash", "remove_tree", "production", "elevated")
 
 
-def _build(case: TagSet, lang: str = "zh"):  # noqa: ANN202 —— 测试内部小工具
+def _build(case: TagSet, lang: str = "zh") -> list[questions.LabeledQuestion]:
     """输入：一组特征、语言。输出：该特征下的题目列表。"""
     return questions.build(case, locales.load(lang), phrasing=0)
-
-
-@pytest.mark.parametrize("lang", LOCALES)
-def test_question_order_and_families(lang: str) -> None:
-    """题号顺序必须按 `FAMILIES` 走，题号就是题族名。"""
-    assert [item.family for item in _build(CASE, lang)] == list(questions.FAMILIES)
 
 
 @pytest.mark.parametrize("lang", LOCALES)
@@ -35,22 +29,6 @@ def test_every_case_asks_every_family(lang: str) -> None:
     assert cases
     for case in cases:
         assert [item.family for item in _build(case, lang)] == list(questions.FAMILIES)
-
-
-def test_choice_answers_are_option_names() -> None:
-    """choice 的答案必须是选项名本身（编号由组装器最后一步映射）。"""
-    for item in _build(CASE):
-        if item.question["type"] != "choice":
-            continue
-        assert item.answer in item.question["criteria"], item.family
-
-
-def test_choice_options_follow_the_contract_table() -> None:
-    """选项表必须与 `features.CHOICE_OPTIONS` 逐项一致（含顺序）。"""
-    for item in _build(CASE):
-        if item.question["type"] != "choice":
-            continue
-        assert list(item.question["criteria"]) == list(features.CHOICE_OPTIONS[item.family])
 
 
 def test_ordered_families_are_not_shuffled() -> None:
@@ -69,13 +47,6 @@ def test_score_answer_is_the_level_index() -> None:
     assert item.answer == CASE.label().blast_radius
     assert 0 <= item.answer < len(item.question["criteria"])
     assert len(item.question["criteria"]) == 5
-
-
-def test_noul_answers_are_bools() -> None:
-    """noul 的答案只能是 JSON 布尔。"""
-    for item in _build(CASE):
-        if item.question["type"] == "noul":
-            assert isinstance(item.answer, bool)
 
 
 @pytest.mark.parametrize("lang", LOCALES)

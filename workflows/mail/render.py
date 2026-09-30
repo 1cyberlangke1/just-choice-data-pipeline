@@ -20,7 +20,7 @@ from typing import Final
 from jc.backend.types import GenerationTask
 from pydantic import BaseModel, Field
 
-from . import locales
+from . import features, locales
 from .features import TagSet
 
 # 提示词里特征的固定顺序：顺序固定才能按提示哈希回放。
@@ -145,16 +145,27 @@ def link_text_of(state: object, *, bare_domains: bool = False) -> str:
     return "matches" if len(urls) == 1 else "mismatched"
 
 
-def build_prompt(tags: TagSet, loc: dict[str, JsonValue]) -> str:
+def build_prompt(
+    tags: TagSet, loc: dict[str, JsonValue], *, link_path: str, link_ip: str
+) -> str:
     """组装渲染提示词。
 
-    输入：特征组合、语言字典。
+    输入：特征组合、语言字典、这一条的链接路径段与 IP。
     输出：提示词字符串。
     预期行为：只出现特征清单与硬性要求；维度顺序按 `DIM_ORDER` 固定。
+
+    **链接地址按样本给**（范式 §9.25 / §9.60）：提示词原来在 `hint` 里直接给了成品地址
+    （`http://203.0.113.47/verify` 那种），真机 `mail-kimi-ood-c` 六条里五条把它原样抄了下来。
+    现在 `hint` 只说形状，具体地址由 `link_address_line` 按这一条的样本序号给出——模型有东西
+    可写，又不会整批塌成同一个地址。清单说「没有链接」时这一行不出现（那一条要求全篇无网址）。
     """
     lines = [loc["prompt"]["intro"], ""]
     values = tags.as_dict()
     lines += [locales.feature_line(loc, dim, values[dim]) for dim in DIM_ORDER]
+    if tags.link != features.LINK_NONE:
+        lines.append(
+            str(loc["prompt"]["link_address_line"]).format(path=link_path, ip=link_ip)
+        )
     lines += [""]
     lines += [
         "- " + rule.format(language=loc["language_name"]) for rule in loc["prompt"]["rules"]
@@ -162,10 +173,12 @@ def build_prompt(tags: TagSet, loc: dict[str, JsonValue]) -> str:
     return "\n".join(lines)
 
 
-def build_task(tags: TagSet, loc: dict[str, JsonValue], task_id: str) -> GenerationTask:
+def build_task(
+    tags: TagSet, loc: dict[str, JsonValue], task_id: str, *, link_path: str, link_ip: str
+) -> GenerationTask:
     """把一次渲染包成后端任务。
 
-    输入：特征组合、语言字典、任务 id。
+    输入：特征组合、语言字典、任务 id、这一条的链接路径段与 IP。
     输出：`GenerationTask`。
     预期行为：`spec` 里只放**特征**（不是答案）——后端看不到金标签，
     这样「标签由特征决定」这条性质不会被模型污染。
@@ -174,7 +187,7 @@ def build_task(tags: TagSet, loc: dict[str, JsonValue], task_id: str) -> Generat
         task_id=task_id,
         kind="text",  # 不是题型：这一步只产文本，题型的编号与 type 由组装器决定
         domain="mail",
-        prompt=build_prompt(tags, loc),
+        prompt=build_prompt(tags, loc, link_path=link_path, link_ip=link_ip),
         response_model=MailDraft,
         spec={"tags": tags.as_dict()},
     )

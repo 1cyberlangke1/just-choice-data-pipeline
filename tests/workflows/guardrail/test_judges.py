@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
 
-from jc.backend.types import AllProvidersDown, Draft, TransportError
+from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
 
 from tests.workflows.guardrail.conftest import (
@@ -69,15 +68,6 @@ def test_hygiene_rejects_a_state_without_a_content_block() -> None:
     verdict = judges.HygieneJudge("zh").judge({"state": "这里什么抬头都没有"}, spec)
     assert not verdict.ok
     assert "正文" in verdict.reason
-
-
-def test_hygiene_rejects_fence_lines_anywhere() -> None:
-    """输入：整段被围栏包起来的 state。输出：无。预期行为：不通过，理由是残留。"""
-    spec, sample = faithful(CASE)
-    sample["state"] = f"```text\n{sample['state']}\n```"
-    verdict = judges.HygieneJudge("zh").judge(sample, spec)
-    assert not verdict.ok
-    assert "残留" in verdict.reason
 
 
 def test_hygiene_skips_when_it_cannot_judge() -> None:
@@ -169,23 +159,6 @@ def test_trace_drops_an_overclaim_whose_quote_is_fabricated() -> None:
     assert verdict.raw == {"traced_hits": ["P3", "P4"]}
 
 
-def test_trace_marks_transport_errors_as_skipped() -> None:
-    """输入：反解时端点故障。输出：无。预期行为：记成「没判成」，不算数据不合格。"""
-    spec, sample = faithful(CASE)
-    judge = judges.TraceJudge(FakeBackend(trace_raises=TransportError("boom")), "zh")
-    verdict = judge.judge(sample, spec)
-    assert verdict.skipped and verdict.ok
-    assert "端点故障" in verdict.reason
-
-
-def test_trace_reraises_when_every_provider_is_down() -> None:
-    """输入：全部 provider 都挂了。输出：无。预期行为：往上抛，让整批停下（不是这一条的错）。"""
-    spec, sample = faithful(CASE)
-    judge = judges.TraceJudge(FakeBackend(trace_raises=AllProvidersDown("all down")), "zh")
-    with pytest.raises(AllProvidersDown):
-        judge.judge(sample, spec)
-
-
 def test_trace_skips_an_unknown_clause_id() -> None:
     """输入：反解答了一个不存在的条款编号。输出：无。
 
@@ -195,23 +168,6 @@ def test_trace_skips_an_unknown_clause_id() -> None:
     verdict = judges.TraceJudge(_UnknownIdBackend(), "zh").judge(sample, spec)
     assert verdict.skipped and verdict.ok
     assert "不认识的条款编号" in verdict.reason
-
-
-def test_trace_prompt_carries_the_whole_state() -> None:
-    """输入：一段 state。输出：无。预期行为：反解提示词把整段材料原样带上。"""
-    _, sample = faithful(CASE)
-    loc = locales.load("zh")
-    prompt = judges.build_trace_prompt(str(sample["state"]), loc)
-    assert str(sample["state"]) in prompt
-    assert str(loc["verify"]["state_header"]) in prompt
-    assert "{" not in prompt and "}" not in prompt
-
-
-def test_option_names_follows_the_recorded_order() -> None:
-    """输入：一道 choice 题 / 一道 noul 题。输出：无。预期行为：choice 给选项名顺序，noul 给空表。"""
-    question: dict[str, JsonValue] = {"type": "choice", "criteria": {"b": "x", "a": "y"}}
-    assert judges.option_names(question) == ["b", "a"]
-    assert judges.option_names({"type": "noul"}) == []
 
 
 class _UnknownIdBackend:

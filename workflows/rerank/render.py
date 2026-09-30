@@ -127,9 +127,14 @@ def build_prompt(plan: RerankPlan, loc: dict[str, JsonValue]) -> str:
     预期行为：关键词个数、逐条候选的覆盖率要求写在最前面；关键词的挑选规则（够长、两两不
     互为子串）与「一条都不许出现」的那些候选该怎么写，各有一句——不写清楚，模型就会拿
     `the`、`and` 这类词充数，覆盖率当场退化成常量。
+    **语言约束紧跟开场白**：真机实测 zh 侧 3/3、4/6、1/4 的产物把查询与候选写成了英文
+    （汉字占比 0.081~0.120），en 侧反过来有 2/9 写成中文——提示词通篇是目标语言并不足以
+    让模型不换语言，得有一句明说的。这一条与 `jc.language` 的判据是同一件事的两端：这里
+    要求，那里复核。
     """
     lines = [
         str(loc["prompt"]["intro"]).format(n=features.CANDIDATES),
+        str(loc["prompt"]["lang_rule"]).format(language=loc["language_name"]),
         str(loc["prompt"]["terms_rule"]).format(k=plan.terms, min=min_term_chars(loc)),
         str(loc["prompt"]["req_header"]),
         *_requirement_lines(plan, loc),

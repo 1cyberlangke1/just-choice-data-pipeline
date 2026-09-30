@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from jc.jsontypes import JsonValue
 from jc.workflow import LabeledQuestion
 from tests.workflows.autoformat import conftest as cf
 from workflows.autoformat import features, locales, parse, questions, render

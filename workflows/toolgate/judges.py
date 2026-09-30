@@ -219,13 +219,3 @@ class TraceJudge:
             reason="; ".join(problems),
             raw={"traced": {family: data[family] for family in TRACE_FAMILIES}},
         )
-
-
-def option_names(question: dict[str, JsonValue]) -> list[str]:
-    """输入：一道 choice 题。输出：按**产物里写的顺序**排好的选项名。
-
-    预期行为：答案编号就是在这个顺序里的下标（见 `jc.assemble`）——审计要拿它把编号
-    换回选项名，才能与纯代码重算的结果比对。
-    """
-    criteria = question.get("criteria")
-    return list(criteria) if isinstance(criteria, dict) else []

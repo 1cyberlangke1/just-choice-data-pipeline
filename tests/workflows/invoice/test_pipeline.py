@@ -210,7 +210,8 @@ def test_render_and_ask_never_touch_a_backend() -> None:
     )
     first = workflow.ask(spec, random.Random(1), "zh")
     assert first == workflow.ask(spec, random.Random(1), "zh")
-    assert [item.family for item in first] == list(questions.FAMILIES)
+    # 这份规格只有 2 行，`bad_lines` 的第 4 档（≥3 处错）取不到 → 属于条件题族，不出
+    assert [item.family for item in first] == list(questions.families_for(spec))
 
 
 def test_reparse_reads_a_rendered_document() -> None:

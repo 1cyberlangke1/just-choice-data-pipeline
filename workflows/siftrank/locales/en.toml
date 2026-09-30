@@ -1,0 +1,79 @@
+# 多批次排名聚合（siftrank）的英文文案。
+# 与中文侧一一对应：抬头、条目名、判据条目、题族名与选项键都相同，只有「怎么读」不同。
+
+[meta]
+request = "Ranking request"
+prompt = "Ranking prompt"
+items = "Items"
+batch = "Batch"
+sep = ": "
+list_sep = ", "
+arrow = " > "
+
+[flavor]
+launch = "Find the items most relevant to \"service launch\""
+incident = "Find the items most relevant to \"incident triage\""
+cost = "Find the items most relevant to \"cost optimization\""
+audit = "Find the items most relevant to \"compliance audit\""
+
+[item]
+overview = "Overview note"
+runbook = "Runbook"
+changelog = "Change log"
+metrics = "Metrics dump"
+alerts = "Alert config"
+postmortem = "Postmortem"
+
+[rules]
+lines = [
+  "Rules (read the item list order first, then the ranking inside each batch; batches carry no weights, every batch counts the same):",
+  "1. Each batch lists 4 items from most to least relevant, leftmost is rank 1. If a batch ranks k items, the item at rank p (p starting at 1) scores k - p points.",
+  "2. An item's total is the sum of its scores across all batches; if it does not appear in a batch it scores 0 there.",
+  "3. Sort the items by total, highest first; ties are ordered by the item list order (the list order only decides how the order is written down, not which item is more relevant).",
+  "4. For \"which is more relevant\": the higher total comes first; equal totals mean a tie (the list order does not break it). For \"which one is first\": a tie is broken by the item list order, taking the earlier one.",
+  "5. Elbow: after sorting by rule 3, look at the total-score gap between adjacent ranks; the largest gap (leftmost if tied) is the elbow. The items to its left (including the left item of that gap) count as relevant, the rest as irrelevant; if every total is equal there is no gap and all items count as relevant.",
+  "  - relevant 1: the largest gap sits between rank 1 and rank 2;",
+  "  - relevant 2: the largest gap sits between rank 2 and rank 3;",
+  "  - relevant 3: the largest gap sits between rank 3 and rank 4.",
+  "6. Batches are \"consistent\" when every pair of items that shows up in two batches keeps the same relative order. A single pair of items ordered one way in one batch and the other way in another batch makes them inconsistent.",
+]
+
+[fam.agg_top]
+q = [
+  "Which item comes first in the aggregated order?",
+  "Aggregate these batches by the rules; which item ends up first?",
+  "After aggregating the batches, which item takes rank 1?",
+]
+
+[fam.pair_order]
+q = [
+  "Between \"{a}\" and \"{b}\", which one is more relevant after aggregating?",
+  "Looking at the aggregated batches, which is more relevant, \"{a}\" or \"{b}\"?",
+  "In the aggregated order, which of \"{a}\" and \"{b}\" comes first?",
+]
+[fam.pair_order.criteria]
+a_first = "\"{a}\" is more relevant - its total is higher"
+b_first = "\"{b}\" is more relevant - its total is higher"
+tie = "A tie - both items have the same total, neither comes first"
+
+[fam.cut_size]
+q = [
+  "By the elbow rule, how many items are relevant?",
+  "What is the number of relevant items?",
+  "The elbow splits the items into relevant and irrelevant; how many are relevant?",
+]
+levels = [
+  "relevant 1 - the largest gap sits between rank 1 and rank 2",
+  "relevant 2 - the largest gap sits between rank 2 and rank 3",
+  "relevant 3 - the largest gap sits between rank 3 and rank 4",
+]
+
+[fam.stable]
+q = [
+  "Do any two batches disagree on the relative order of some pair of items?",
+  "Comparing the four batches pairwise, does any pair of items contradict itself?",
+  "Are these batches consistent - is there a pair of items ordered one way in one batch and the other way in another?",
+]
+[fam.stable.criteria]
+true = "No - every pair of items keeps the same relative order in every batch it appears in"
+false = "Yes - at least one pair of items is ordered one way in one batch and the other way in another"

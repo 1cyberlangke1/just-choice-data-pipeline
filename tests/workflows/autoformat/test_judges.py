@@ -231,13 +231,11 @@ def test_option_names_and_answer_value_read_the_recorded_order() -> None:
     给 None（那是对不上，不是崩）；noul 只认布尔。
     """
     question: dict[str, JsonValue] = {"type": "choice", "criteria": {"b": "x", "a": "y"}}
-    assert judges.option_names(question) == ["b", "a"]
     assert judges.answer_value(question, {"type": "choice", "choice": 0}) == "b"
     assert judges.answer_value(question, {"type": "choice", "choice": 5}) is None
     assert judges.answer_value(question, {"type": "choice", "choice": True}) is None
     assert judges.answer_value({"type": "noul"}, {"type": "noul", "noul": True}) is True
     assert judges.answer_value({"type": "noul"}, {"type": "noul", "noul": "yes"}) is None
-    assert judges.option_names({"type": "noul"}) == []
 
 
 def test_trace_accepts_the_truth_and_uses_the_trace_task_id() -> None:

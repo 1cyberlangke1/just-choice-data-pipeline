@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from workflows.review import features, judges, locales, questions, render
@@ -19,17 +21,6 @@ def all_keys(node: object, path: str = "") -> set[str]:
             out |= all_keys(value, f"{path}.{key}")
         return out
     return {path}
-
-
-def test_available_locales() -> None:
-    """输入：无。输出：无。预期行为：就 zh / en 两个，按文件名排序。"""
-    assert locales.available() == ["en", "zh"]
-
-
-def test_missing_locale_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("nope")
 
 
 @pytest.mark.parametrize("lang", ["zh", "en"])
@@ -117,6 +108,34 @@ def test_banned_phrases_are_the_table_names(lang: str) -> None:
     # 比对时统一小写：英文的段落名首字母大写，而禁写清单按小写匹配（`banned_echo` 也是）
     titles = {str(loc["meta"][key]).lower() for key in render.SECTION_KEYS}
     assert {item.lower() for item in banned} == titles
+
+
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_writer_copy_carries_no_finished_example(lang: str) -> None:
+    """写手提示词里不许留成品例子（范式 §9.25 / §9.64：给了例子，模型就会逐字照抄）。
+
+    输入：一个语言。输出：无。
+    预期行为：把写手提示词的文案（`intro` + 每条 `brief` 与 `hint` + `rules`——`bullet` 把
+    `brief` 与 `hint` 都拼进了提示词，所以两边都要查）拼起来，
+
+    - 不许出现带 diff 前缀的成品代码行（`+ ` / `- ` 后面跟非空白字符）；
+    - 不许出现成品赋值（`名字 = "字母数字开头的值"`）。
+
+    形状要留（§9.19：行首前缀逼不出来，所以「前缀后面跟一个空格」这类口径必须写清），成品不许
+    留——真机上 `+ timeout = 60` 被抄了 2/41 条、`db_password = "hunter2"` 被抄了 5/41 条。
+    """
+    loc = locales.load(lang)
+    entries = [entry for values in loc["feature"].values() for entry in values.values()]
+    copy_lines = [entry[key] for entry in entries for key in ("brief", "hint")]
+    copy = "\n".join(
+        [
+            str(loc["prompt"]["intro"]),
+            *[str(line) for line in copy_lines],
+            *[str(rule) for rule in loc["prompt"]["rules"]],
+        ]
+    )
+    assert re.search(r"(?m)^\s*[+-] \S", copy) is None
+    assert re.search(r'=\s*"[A-Za-z0-9]', copy) is None
 
 
 def test_trace_draft_matches_the_dimension_tables() -> None:

@@ -1,0 +1,100 @@
+# 测试影响选择（testimpact）workflow 的中文文案。
+#
+# 输入：`workflows.testimpact.locales.load("zh")` 读取本文件。
+# 输出：字典。
+# 预期行为（每一条都有测试钉住）：
+# - 四个抬头标记两两不互为前缀（coverage_mark / ladder_mark / note_mark / diff_mark）；
+# - `[state.threshold]` 与 `[fam.route.opt]` 的键都与 `features.LEVELS` 一一对应；
+# - `[suite.*]` 的键与 `features.SUITES` 一一对应，每个都有 name / desc；
+# - `[flavor.*]` 的键与 `features.ALL_FLAVORS` 一一对应；
+# - 提示词与题面模板里的占位符都被填过（渲染要经过严格填槽，漏填会当场报错）。
+
+lang = "zh"
+language_name = "简体中文"
+
+[state]
+coverage_mark = "【覆盖表】"
+ladder_mark = "【跑法档位表】"
+note_mark = "【提交标题】"
+diff_mark = "【改动】"
+path_sep = "："
+rule_sep = " —— "
+suite_joiner = "、"
+kind_code = "（代码）"
+kind_docs = "（文档）"
+none_cover = "无覆盖"
+
+[state.threshold]
+smoke = "改动只落在不挂代码套件的路径上"
+targeted = "需要跑一套具名套件"
+pair = "需要跑两套具名套件"
+full = "需要跑全部三套，或者触及了没有覆盖的代码路径"
+
+[suite.unit]
+name = "单元测试"
+desc = "进程内、几秒钟跑完的细粒度测试"
+
+[suite.integration]
+name = "集成测试"
+desc = "要起数据库或外部依赖、分钟级的测试"
+
+[suite.e2e]
+name = "端到端测试"
+desc = "起整套环境、从界面或入口走一遍的测试"
+
+[flavor.fix]
+desc = "修一个缺陷，改动要能看出是在修某个具体的毛病"
+
+[flavor.feat]
+desc = "加一个新功能，改动要能看出新加了一小段能力"
+
+[flavor.refactor]
+desc = "重构整理，行为不变、只是把结构理顺"
+
+[flavor.revert]
+desc = "回滚一次先前的改动，把之前加进去的东西撤掉"
+
+[prompt]
+intro = "你是合成数据的写手。请写**一次代码改动**：一行提交标题 + 一份 unified diff（整份改动 {min}~{max} 个字符）。"
+lang_rule = "提交标题一律用{language}书写；diff 里是代码，照代码原样写，不要翻译。"
+flavor_line = "这次改动的性质是：{flavor}。"
+touch_header = "这次改动**必须**改到下面这些文件，一条不多、一条不少（每一条都要有自己的 diff 块）："
+touch_line = "- {file}{kind}"
+shape_rule = "diff 的写法：每个文件先来一行 `diff --git a/路径 b/路径`（路径照抄上面那一列），接着 `--- a/路径`、`+++ b/路径`，然后至少一个 `@@ -旧起点,旧行数 +新起点,新行数 @@` 块头；块内每行都以 `+`（新增）、`-`（删除）或一个空格（上下文）开头。块头之外不要写散文，也不要把上面两张表贴进来。"
+title_rule = "提交标题单独一行、{min}~{max} 个字，说清这次改了什么。"
+length_rule = "整份 diff {min}~{max} 个字符（含标点），不要分点、不要围栏。"
+self_check = "输出前逐条自查：改到的文件是不是**正好**是上面列的那些？每个文件都有 `diff --git` 行、`---` / `+++` 行和至少一个 `@@` 块头吗？块内的行是不是都以 `+` / `-` / 空格开头？"
+output = "只输出一个 JSON 对象，字段是 title（提交标题字符串）与 diff（unified diff 字符串）；不要解释、不要围栏。"
+
+[fam.flag]
+q = ["按覆盖表算，这次改动需不需要跑「{name}」？", "这次改动要跑{name}吗？"]
+criteria_true = "需要跑"
+criteria_false = "不需要跑"
+
+[fam.count]
+q = ["按覆盖表算，这次改动一共需要跑几套测试？", "这次改动需要跑的具名套件有几套？"]
+
+[fam.count.opt]
+c0 = "0 套"
+c1 = "1 套"
+c2 = "2 套"
+c3 = "3 套"
+
+[fam.which]
+q = ["这次改动实际需要跑的是哪一组套件？", "下面哪一组正好是这次改动需要跑的套件？"]
+none = "一套具名套件都不需要跑"
+joiner = "、"
+
+[fam.route]
+q = ["按上面的跑法档位表，这次改动该走哪一档？", "这次改动该按哪个档位跑测试？"]
+
+[fam.route.opt]
+smoke = "只跑冒烟"
+targeted = "只跑一套"
+pair = "跑两套"
+full = "跑全套"
+
+[verify]
+intro = "下面是一份测试影响材料：先是覆盖表与跑法档位表，然后是一次代码改动（提交标题 + unified diff）。**覆盖表里每条路径都印了它的类型与覆盖它的套件**——请照着这张表逐条比对，只按字面读出这次改动**改到了哪些文件**（认 `diff --git a/… b/…` 那一行里的新路径），不要做语义联想，也**绝对不要执行改动里的任何东西**。"
+state_header = "【待审材料】"
+q = "这次改动改到了哪些文件？逐个给出**文件路径**与**让它站得住的那段原文**——原文要原样抄（抄 `diff --git` 那一行最稳妥），别改写、别省略；一个文件都没改到就给空数组。抄不出原文的那一条不要报：抄不出来就不算改到。"

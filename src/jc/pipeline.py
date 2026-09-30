@@ -30,6 +30,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final
 
 
 from .backend.types import GenerationBackend
@@ -39,6 +40,11 @@ from .workflow import SplitSpec, Workflow, family_of, load
 # 管线级（非契约级）拒绝码；判别器失败会带自己的名字（E_JUDGE_<NAME>）
 E_ASSEMBLE = "E_ASSEMBLE"
 E_EMPTY = "E_EMPTY"
+
+#: 答案均衡判据的最小样本量：低于它的题族不参与判定。那个规模上「3 倍标准误」已经
+#: 大于 0.2，3 个百分点的判据本来就判不出东西——样本量不够只能加样本，不能靠放宽
+#: 判据或「看着差不多」蒙过去。
+BALANCE_MIN_TOTAL: Final[int] = 30
 
 
 @dataclass(frozen=True)
@@ -147,19 +153,49 @@ def _consistency_line(stats: dict[str, JsonValue]) -> str:
     return f"⚠️ {count} 处「同素材同题不同答」，见 conflicts.jsonl"
 
 
-def balance_report(stats: dict[str, JsonValue], tolerance: float) -> list[dict[str, JsonValue]]:
+def _expected_shares(stats: dict[str, JsonValue], key: str, space: int) -> dict[str, float]:
+    """输入：统计字典、题族键、选项空间。输出：{编号: 期望占比}。
+
+    预期行为：choice 的选项数**随样本变**时（「选项 = 单据上的每一行」这类），编号 `i`
+    只有「选项数 > i」的那些样本才取得到，所以期望占比是 `Σ_{k>i} n_k/k/n`——这正是
+    「每条样本在它自己的选项里均匀乱答」时编号 `i` 的占比。score 的等级表定长，一律
+    `1/space`（没有 `choice_sizes` 记录的旧产物也走这条）。
+    """
+    raw = stats.get("choice_sizes")
+    sizes = raw.get(key) if isinstance(raw, dict) else None
+    if not isinstance(sizes, dict) or not sizes:
+        return {str(index): 1 / space for index in range(space)}
+    total = sum(int(count) for count in sizes.values())
+    return {
+        str(index): sum(
+            int(count) / int(size) for size, count in sizes.items() if int(size) > index
+        )
+        / total
+        for index in range(space)
+    }
+
+
+def balance_report(
+    stats: dict[str, JsonValue],
+    tolerance: float,
+    min_total: int = BALANCE_MIN_TOTAL,
+) -> list[dict[str, JsonValue]]:
     """逐题族算答案分布与「均匀」的偏差。
 
-    输入：统计字典、容差（0.03 表示 3 个百分点）。
-    输出：按偏差降序的列表，每项 {key, total, space, max_dev, noise, ok}。
+    输入：统计字典、容差（0.03 表示 3 个百分点）、min_total（判定所需的最小样本量）。
+    输出：按偏差降序的列表，每项 {key, total, space, max_dev, noise, judged, ok}。
     预期行为：
-    - choice / score：参考值 1/space（space 取该族出现过的最多选项数），
-      偏差取各取值占比与参考值的最大绝对差；
+    - choice：参考分布**按每条样本自己的选项数**算（见 `_expected_shares`）。选项数随
+      样本变的题族在打乱后的编号上天然不可能均匀，拿「最大选项数」当参考只会把结构
+      偏斜报成假警报；
+    - score：等级表定长，参考值 1/space，偏差取各取值占比与参考值的最大绝对差；
     - noul：参考值 True 占 50%，偏差取 |True 占比 − 0.5|；
-    - 小样本下固定 ±3pp 统计上做不到：把「3 倍标准误」当噪声地板，
-      只有同时超过容差与噪声地板才算真的失衡；
-    - 结构性不可达（例如某个档位在当前规模下永远取不到）与题族间耦合
-      （两个题族共享同一个自由度）会在报告里照实标出，由 workflow 决定怎么调。
+    - 小样本下固定 ±3pp 统计上做不到：把「3 倍标准误」当噪声地板，只有同时超过容差
+      与噪声地板才算真的失衡；
+    - 样本量低于 `min_total` 的族标 `judged=False`、`ok=True`：那个规模上「3 倍标准误」
+      已经大于 0.2，判据没有意义。报告里照实写「没判」，由调用方决定要不要加样本；
+    - 结构性不可达（例如某个档位在当前规模下永远取不到）与题族间耦合（两个题族共享
+      同一个自由度）会在报告里照实标出，由 workflow 决定怎么调。
     """
     report: list[dict[str, JsonValue]] = []
     for key, bucket in stats["answers"].items():
@@ -167,14 +203,19 @@ def balance_report(stats: dict[str, JsonValue], tolerance: float) -> list[dict[s
         if total == 0:
             continue
         if key.startswith("noul:"):
-            dev = abs(bucket.get("True", 0) / total - 0.5)
             space = 2
-            share = 0.5
+            expected: dict[str, float] = {"True": 0.5, "False": 0.5}
         else:
             space = max(stats["answer_space"].get(key, 2), 2)
-            dev = max(abs(count / total - 1 / space) for count in bucket.values())
-            share = 1 / space
+            expected = _expected_shares(stats, key, space)
+        dev = 0.0
+        share = 0.5
+        for value, want in expected.items():
+            gap = abs(bucket.get(value, 0) / total - want)
+            if gap > dev:
+                dev, share = gap, want
         noise = 3 * (share * (1 - share) / total) ** 0.5
+        judged = total >= min_total
         report.append(
             {
                 "key": key,
@@ -182,7 +223,8 @@ def balance_report(stats: dict[str, JsonValue], tolerance: float) -> list[dict[s
                 "space": space,
                 "max_dev": round(dev, 4),
                 "noise": round(noise, 4),
-                "ok": dev <= tolerance or dev <= noise,
+                "judged": judged,
+                "ok": (not judged) or dev <= tolerance or dev <= noise,
             }
         )
     report.sort(key=lambda item: -item["max_dev"])
@@ -402,6 +444,8 @@ def _read_rows(path: Path) -> list[dict[str, JsonValue]]:
 
     预期行为：文件不存在给空表；**只有最后一行允许残缺**——追加写 + fsync 的性质是
     「崩溃时最多留半行」，那半行当它没写过；中间某行坏了说明文件真坏了，照旧抛出去。
+    解析走 `jc.jsonio`（严格读）：标准库 `json.loads` 返回 `Any`，会把「这行到底是不是
+    对象」这件事悄悄吞掉，而且重复 key / NaN 它默认放行——产物是自己写的，读回来就该同一套规矩。
     """
     if not path.is_file():
         return []
@@ -411,11 +455,14 @@ def _read_rows(path: Path) -> list[dict[str, JsonValue]]:
         if not line.strip():
             continue
         try:
-            out.append(json.loads(line))
-        except json.JSONDecodeError as exc:
+            row = jsonio.loads(line)
+        except jsonio.StrictJsonError as exc:
             if index == len(lines) - 1:
                 break  # 崩在写一半的尾行，当它没写过
             raise ValueError(f"产物 {path.name} 第 {index + 1} 行坏了：{exc}") from exc
+        if not isinstance(row, dict):
+            raise ValueError(f"产物 {path.name} 第 {index + 1} 行不是 JSON 对象：{row!r}")
+        out.append(row)
     return out
 
 
@@ -582,6 +629,7 @@ def run(config: RunConfig) -> RunResult:
         "families": {},
         "answers": {},
         "answer_space": {},
+        "choice_sizes": {},
         "dimensions": {},
         "types": {},
         "locales": {},
@@ -679,6 +727,11 @@ def run(config: RunConfig) -> RunResult:
         detail = ", ".join(f"{item['key']}={item['max_dev']}" for item in unbalanced)
         raise RuntimeError(f"答案分布超出容差 {config.balance_tolerance}：{detail}")
     # 按切分命名，避免一个 run 里跑多个切分时互相覆盖
+    call_log = getattr(config.backend, "call_log", None) if config.backend is not None else None
+    if callable(call_log):
+        rows = call_log()
+        if rows:
+            jsonio.write_jsonl(run_dir / f"calls-{config.split}.jsonl", rows)
     (run_dir / f"stats-{config.split}.md").write_text(
         render_stats_md(stats, config, workflow), encoding="utf-8"
     )
@@ -714,9 +767,13 @@ def _accumulate(
         bucket = stats["answers"].setdefault(key, {})
         value = str(answer.get("choice", answer.get("score", answer.get("noul"))))
         bucket[value] = bucket.get(value, 0) + 1
-        # 该题族的选项/等级空间（取出现过的最大值），均衡检查要用它当参考
+        # 该题族的选项/等级空间（取出现过的最大值）与**选项数直方图**：choice 的选项数
+        # 随样本变时，均衡检查要按每条样本自己的选项数算期望（见 `_expected_shares`）
         space = len(question["criteria"]) if "criteria" in question else 2
         stats["answer_space"][key] = max(stats["answer_space"].get(key, 0), space)
+        if question["type"] == "choice":
+            sizes = stats["choice_sizes"].setdefault(key, {})
+            sizes[str(space)] = sizes.get(str(space), 0) + 1
     for name, value in workflow.stats_dimensions(case).items():
         bucket = stats["dimensions"].setdefault(name, {})
         bucket[str(value)] = bucket.get(str(value), 0) + 1
@@ -729,9 +786,13 @@ def _accumulate(
 def backend_manifest(config: RunConfig) -> dict[str, JsonValue]:
     """把后端记账写进 manifest（溯源用）。
 
-    输入：运行配置。输出：`{name, starting_mode}`；没有后端时返回 `{}`。
+    输入：运行配置。输出：`{name, starting_mode, calls?}`；没有后端时返回 `{}`。
     预期行为：只记后端名字与能力探测结论，**绝不记 key**——key 只在 key 池里，
     对外只暴露 sha256 前 8 位（PLAN 3.1.3）。
+
+    后端能报来源时（`call_stats`）额外记 `calls`：这一批**实际**是哪家 provider / 哪个模型 /
+    哪把 key 出了多少条。`allow_mixed_providers` 允许一批里混多家模型，不记就没人知道
+    这批数据混了来源；假后端没有这个方法，如实少记一项，不编造。
     """
     backend = config.backend
     if backend is None:
@@ -740,10 +801,19 @@ def backend_manifest(config: RunConfig) -> dict[str, JsonValue]:
     # 优先用后端自己报的起始档位：`capabilities` 只是探测结论，探测没开时是空的，
     # 会把实际从 `json_schema` 起步的 run 记成 `md_json`（错账）。
     effective = getattr(backend, "starting_mode", "")
-    return {
+    info: dict[str, JsonValue] = {
         "name": getattr(backend, "name", type(backend).__name__),
         "starting_mode": effective or (caps.starting_mode() if caps is not None else ""),
     }
+    call_stats = getattr(backend, "call_stats", None)
+    if callable(call_stats):
+        info["calls"] = call_stats()
+    configured = getattr(backend, "providers", None)
+    if isinstance(configured, list):
+        # 配置里排了哪几家（顺序即降级顺序）。只记「谁出过力」不够：配额用完时链尾会被用到，
+        # 事后要能看出这一批当时**可用**的候选有哪些。
+        info["providers"] = [str(item) for item in configured]
+    return info
 
 
 def manifest(
@@ -789,17 +859,20 @@ def render_stats_md(stats: dict[str, JsonValue], config: RunConfig, workflow: Wo
         "",
         f"## 答案均衡（容差 {config.balance_tolerance * 100:.1f} 个百分点）",
         "",
-        "参考值：choice/score 按 1/选项数均匀，noul 按 True 占 50%；"
-        "容差与「3 倍标准误」取较大者（小样本下固定 3pp 统计上做不到）。"
+        "参考值：choice 按**每条样本自己的选项数**算期望（选项数随样本变的族在编号上"
+        "天然不可能均匀），score 按 1/等级数，noul 按 True 占 50%；"
+        "容差与「3 倍标准误」取较大者（小样本下固定 3pp 统计上做不到），"
+        f"样本量低于 {BALANCE_MIN_TOTAL} 的族不判（标「没判」）。"
         "标 ⚠️ 的族要么属于结构性不可达（某档位在当前规模下取不到），"
         "要么属于题族间耦合（两个题族共享同一个自由度），报告照实标出，不掩盖。",
         "",
     ]
     for item in stats.get("balance", []):
         mark = "✅" if item["ok"] else "⚠️"
+        note = "" if item.get("judged", True) else "（样本量不足，没判）"
         lines.append(
             f"- {mark} `{item['key']}`：n={item['total']}，空间={item['space']}，"
-            f"最大偏差={item['max_dev']:.3f}，噪声地板={item['noise']:.3f}"
+            f"最大偏差={item['max_dev']:.3f}，噪声地板={item['noise']:.3f}{note}"
         )
     lines += ["", "## 题族分布", ""]
     for name, count in sorted(stats["families"].items(), key=lambda kv: -kv[1]):

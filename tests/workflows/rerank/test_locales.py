@@ -10,11 +10,6 @@ from workflows.rerank import features, locales, questions, render
 MARKS = ("query_mark", "terms_mark", "cands_mark", "rule_mark")
 
 
-def test_both_languages_exist() -> None:
-    """输入：无。输出：无。预期行为：zh / en 都在（少一个就是漏分发）。"""
-    assert locales.available() == ["en", "zh"]
-
-
 @pytest.mark.parametrize("lang", ["en", "zh"])
 def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
     """输入：一种语言。输出：无。
@@ -91,11 +86,6 @@ def test_verify_prompt_has_no_unfilled_slots(lang: str) -> None:
 
     prompt = judges.build_trace_prompt("[state]", locales.load(lang))
     assert "{" not in prompt and "}" not in prompt
-
-
-def test_pick_wraps_around() -> None:
-    """输入：越界的问法编号。输出：无。预期行为：回绕（不抛异常）。"""
-    assert locales.pick(["a", "b"], 3) == "b"
 
 
 def test_min_term_chars_is_per_language() -> None:

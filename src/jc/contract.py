@@ -14,6 +14,65 @@ from typing import Final
 # ---------- 顶层字段（只允许这四个，多出即拒绝） ----------
 TOP_FIELDS: Final[tuple[str, ...]] = ("id", "state", "questions", "answers")
 
+
+def option_names(question: dict[str, JsonValue]) -> list[str]:
+    """输入：一道 choice 题。输出：按**产物里写的顺序**排好的选项名。
+
+    预期行为：答案编号就是在这个顺序里的下标（见 `jc.assemble`）——审计要拿它把编号换回
+    选项名与选项描述，才能与纯代码重算的结果比对；不是 choice 题（或没有判据表）给空表。
+    """
+    criteria = question.get("criteria")
+    return list(criteria) if isinstance(criteria, dict) else []
+
+
+def parse_hits(value: str) -> tuple[str, ...]:
+    """输入：命中组合串（如 `A1+A3`）。输出：判据编号元组。
+
+    预期行为：空串给空元组；不排序、不去重——顺序由 state 里写的顺序说了算。
+    """
+    return tuple(part for part in value.split("+") if part)
+
+def recorded_value(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> JsonValue:
+    """输入：一道题、它的答案。输出：把编号换回**选项名 / 等级下标 / 布尔**后的值。
+
+    预期行为：choice 的编号是产物里那个打乱顺序的下标（见 `jc.assemble`），所以先取回选项名再比；
+    score 的编号就是等级下标，原样返回；noul 原样返回布尔。越界或类型不对给 `None`——那是对不上，
+    不是崩。文案口径见 `recorded_text`：审计比的是哪一种，由各 workflow 自己选。
+    """
+    kind = answer.get("type")
+    if kind == TYPE_CHOICE:
+        names = option_names(question)
+        index = answer.get("choice")
+        if isinstance(index, int) and 0 <= index < len(names):
+            return names[index]
+        return None
+    if kind == TYPE_SCORE:
+        return answer.get("score")
+    return answer.get("noul")
+
+
+def recorded_text(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> JsonValue:
+    """输入：一道题、它的答案。输出：把编号换回**文案**（选项描述 / 等级描述 / 布尔）后的值。
+
+    预期行为：choice 取回选项描述、score 取回等级描述再比——这样「选项 / 等级文案抄错」也会被
+    审计抓住，而只比选项名是抓不住的；noul 原样返回布尔。越界或类型不对给 `None`。
+    """
+    kind = answer.get("type")
+    criteria = question.get("criteria")
+    if kind == TYPE_CHOICE:
+        names = option_names(question)
+        index = answer.get("choice")
+        if isinstance(index, int) and 0 <= index < len(names) and isinstance(criteria, dict):
+            return criteria.get(names[index])
+        return None
+    if kind == TYPE_SCORE:
+        index = answer.get("score")
+        if isinstance(index, int) and isinstance(criteria, list) and 0 <= index < len(criteria):
+            return criteria[index]
+        return None
+    return answer.get("noul")
+
+
 # ---------- 题型 ----------
 TYPE_CHOICE: Final[str] = "choice"
 TYPE_NOUL: Final[str] = "noul"

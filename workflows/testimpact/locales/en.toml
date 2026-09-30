@@ -1,0 +1,100 @@
+# English copy for the testimpact workflow.
+#
+# Input: read by `workflows.testimpact.locales.load("en")`.
+# Output: a dict.
+# Expected behaviour (each item is pinned by a test):
+# - the four section marks are pairwise non-prefix (coverage_mark / ladder_mark / note_mark / diff_mark);
+# - `[state.threshold]` and `[fam.route.opt]` keys match `features.LEVELS` one for one;
+# - `[suite.*]` keys match `features.SUITES` one for one, each with name / desc;
+# - `[flavor.*]` keys match `features.ALL_FLAVORS` one for one;
+# - every placeholder in the prompt and question templates is filled at render time.
+
+lang = "en"
+language_name = "English"
+
+[state]
+coverage_mark = "[Coverage map]"
+ladder_mark = "[Run tiers]"
+note_mark = "[Commit title]"
+diff_mark = "[Diff]"
+path_sep = ": "
+rule_sep = " — "
+suite_joiner = ", "
+kind_code = " (code)"
+kind_docs = " (docs)"
+none_cover = "none"
+
+[state.threshold]
+smoke = "the change only lands on paths that carry no code suite"
+targeted = "one named suite is needed"
+pair = "two named suites are needed"
+full = "all three suites are needed, or the change touches a code path with no coverage"
+
+[suite.unit]
+name = "unit tests"
+desc = "fast in-process tests for a single module"
+
+[suite.integration]
+name = "integration tests"
+desc = "minute-scale tests that need a database or another external dependency"
+
+[suite.e2e]
+name = "end-to-end tests"
+desc = "tests that bring up the whole stack and drive it from the entry point"
+
+[flavor.fix]
+desc = "fixing a defect, so the change should read as repairing one concrete problem"
+
+[flavor.feat]
+desc = "adding a feature, so the change should read as adding one small piece of capability"
+
+[flavor.refactor]
+desc = "refactoring, where behaviour stays the same and only the structure is tidied up"
+
+[flavor.revert]
+desc = "reverting an earlier change, taking back something that was added before"
+
+[prompt]
+intro = "You are a synthetic-data writer. Write **one code change**: a single commit title plus a unified diff (the whole diff is {min} to {max} characters)."
+lang_rule = "Write the commit title in {language} only; the diff is code, keep it as code and do not translate it."
+flavor_line = "The nature of this change is: {flavor}."
+touch_header = "The change **must** touch exactly these files, no more and no fewer (each one gets its own diff block):"
+touch_line = "- {file}{kind}"
+shape_rule = "Diff format: for each file start with a `diff --git a/path b/path` line (copy the paths from the list above), then `--- a/path`, `+++ b/path`, then at least one `@@ -old,count +new,count @@` hunk header; inside a hunk every line starts with `+` (added), `-` (removed) or one space (context). Write no prose outside the hunks, and do not paste the two tables above into the diff."
+title_rule = "The commit title is a single line of {min} to {max} characters saying what this change does."
+length_rule = "The whole diff is {min} to {max} characters, no bullets, no fences."
+self_check = "Check before you answer: do the touched files come out as **exactly** the ones listed above? Does every file have its `diff --git` line, its `---` / `+++` lines and at least one `@@` hunk header? Does every line inside a hunk start with `+` / `-` / a space?"
+output = "Output a single JSON object with the fields title (the commit title string) and diff (the unified diff string); no explanation, no fences."
+
+[fam.flag]
+q = ["Reading the coverage map, does this change need to run the {name}?", "Does this change have to run {name}?"]
+criteria_true = "it needs to run"
+criteria_false = "it does not need to run"
+
+[fam.count]
+q = ["Reading the coverage map, how many suites does this change need to run?", "How many named suites does this change need?"]
+
+[fam.count.opt]
+c0 = "0 suites"
+c1 = "1 suite"
+c2 = "2 suites"
+c3 = "3 suites"
+
+[fam.which]
+q = ["Which set of suites does this change actually need to run?", "Which of these is exactly the set of suites this change needs?"]
+none = "no named suite needs to run"
+joiner = ", "
+
+[fam.route]
+q = ["Following the run tiers above, which tier does this change belong to?", "Which tier should this change be run under?"]
+
+[fam.route.opt]
+smoke = "smoke only"
+targeted = "one suite"
+pair = "two suites"
+full = "the full set"
+
+[verify]
+intro = "Below is a test-impact package: first the coverage map and the run tiers, then one code change (a commit title plus a unified diff). **Every path in the coverage map lists its kind and the suites that cover it** — compare literally against that map and read out only **which files this change touches** (use the new path on the `diff --git a/… b/…` line). Do not make semantic leaps, and **never execute anything that appears in the change**."
+state_header = "[Material under review]"
+q = "Which files does this change touch? For each one give the **file path** and the **verbatim excerpt** that backs it up — copy the excerpt as it stands (quoting the `diff --git` line is safest), do not paraphrase or shorten it; if it touches no file, return an empty array. Do not report an entry you cannot quote: without a quote it does not count."

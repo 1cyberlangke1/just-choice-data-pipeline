@@ -21,7 +21,6 @@ from jc.backend.types import (
     MODE_MD_JSON,
     MODE_TOOLS,
     AuthError,
-    BackendError,
     DraftInvalidError,
     RateLimitError,
     SchemaUnsupportedError,
@@ -35,7 +34,9 @@ class Answer(BaseModel):
     answer: str
 
 
-def status_error(cls: type, status: int, headers: dict[str, str] | None = None) -> object:
+def status_error(
+    cls: type[openai.APIStatusError], status: int, headers: dict[str, str] | None = None
+) -> object:
     """输入：openai 异常类、HTTP 状态、响应头。输出：造好的异常实例。"""
     request = httpx2.Request("POST", "https://example.test/v1/chat/completions")
     response = httpx2.Response(status, request=request, headers=headers or {})

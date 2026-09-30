@@ -9,6 +9,7 @@ from jc.jsontypes import JsonValue
 from dataclasses import dataclass
 
 
+from . import features
 from .features import Labels, TagSet
 
 
@@ -28,6 +29,23 @@ class MailSpec:
     def labels(self) -> Labels:
         """输入：无。输出：这一组特征对应的全部金标签。"""
         return self.tags.label()
+
+    @property
+    def link_path(self) -> str:
+        """输入：无。输出：这一条的链接地址要用哪个路径段（见 `features.link_path_at`）。
+
+        预期行为：纯派生、不进构造函数——它是**渲染期变量**，不是数据维度；按样本序号取，所以
+        同一批里逐条不同。清单说「没有链接」时这个值不会出现在提示词里。
+        """
+        return features.link_path_at(self.seq)
+
+    @property
+    def link_ip(self) -> str:
+        """输入：无。输出：这一条的链接地址要用哪个 IP（见 `features.link_ip_at`）。
+
+        预期行为：同上——纯派生、按样本序号取，池里全是文档网段。
+        """
+        return features.link_ip_at(self.seq)
 
     @property
     def render_task_id(self) -> str:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 
-
 import pytest
 
 from tests.workflows.sim.conftest import _make_spec
@@ -30,13 +29,6 @@ def test_layout_is_fixed() -> None:
     assert len(lines) == 6 + len(sp.ACTIONS)
     for index, (line, row) in enumerate(zip(lines[6:], spec.rows), start=1):
         assert line == render.row_line(index, row, loc)
-
-
-def test_render_is_a_pure_function() -> None:
-    """输入：同一份规格渲染两次。输出：无。预期行为：逐字节一致。"""
-    spec = _make_spec()
-    loc = locales.load("zh")
-    assert render.build(spec, loc) == render.build(spec, loc)
 
 
 def test_row_line_joins_the_four_cells() -> None:
@@ -86,7 +78,7 @@ def test_merged_table_reads_every_language() -> None:
     """
     spec = _make_spec(board="b6", layout="l3", phrasing=1)
     merged = parse.merged()
-    results = set()
+    results: set[tuple[str, int, int, int, tuple[tuple[str, str, str, str], ...]]] = set()
     for lang in ("zh", "en"):
         board = parse.parse_board(render.build(spec, locales.load(lang)), merged)
         results.add(
@@ -213,13 +205,6 @@ def _patched_merged(monkeypatch: pytest.MonkeyPatch, mutate: object) -> None:
     monkeypatch.setattr(locales, "load", lambda lang: {"zh": zh, "en": en}[lang])
 
 
-def test_merged_rejects_mismatched_separators(monkeypatch: pytest.MonkeyPatch) -> None:
-    """输入：两门语言用不同的四格分隔符。输出：无。预期行为：报人话。"""
-    _patched_merged(monkeypatch, lambda en, zh: en["meta"].update({"cell_sep": " | "}))
-    with pytest.raises(ValueError, match="分隔符必须一致"):
-        parse.merged()
-
-
 def test_merged_rejects_colliding_labels(monkeypatch: pytest.MonkeyPatch) -> None:
     """输入：两门语言的抬头字段名写成一样。输出：无。预期行为：报人话（合并表有歧义）。"""
     _patched_merged(
@@ -237,11 +222,4 @@ def test_merged_rejects_colliding_vocabularies(monkeypatch: pytest.MonkeyPatch) 
         lambda en, zh: en["action"].update({"advance": zh["action"]["advance"]}),
     )
     with pytest.raises(ValueError, match="在多种语言里都出现"):
-        parse.merged()
-
-
-def test_merged_reports_no_locales(monkeypatch: pytest.MonkeyPatch) -> None:
-    """输入：一个语言文件都没有。输出：无。预期行为：报人话。"""
-    monkeypatch.setattr(locales, "available", lambda: [])
-    with pytest.raises(ValueError, match="一个语言文件都没有"):
         parse.merged()

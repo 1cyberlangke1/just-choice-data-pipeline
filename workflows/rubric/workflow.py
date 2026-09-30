@@ -260,6 +260,14 @@ class RubricWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：必须与声明语言一致的正文（「待评材料」）。
+
+        预期行为：只报模型写的那几行材料；评分表 / 档位表 / 门控表里的取值词元由代码写，不报。
+        """
+        parsed = render.parse_state(sample.get("state"))
+        return {"待评材料": "\n".join(parsed.body_lines)} if parsed.body_lines else {}
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

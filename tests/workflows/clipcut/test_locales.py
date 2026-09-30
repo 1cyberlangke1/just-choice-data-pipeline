@@ -1,0 +1,153 @@
+"""语言文件：标签不撞车、题族两边齐、判据写全、主题名认得出。"""
+
+from __future__ import annotations
+
+import pytest
+
+from workflows.clipcut import features as ft
+from workflows.clipcut import locales, parse, questions
+
+LANGS: tuple[str, ...] = ("zh", "en")
+
+
+def test_available_is_zh_and_en() -> None:
+    """输入：无。输出：无。预期行为：两种语言都在，顺序稳定。"""
+    assert locales.available() == ["en", "zh"]
+
+
+def test_load_reports_a_missing_language() -> None:
+    """输入：不存在的语言。输出：无。预期行为：报错并列出可用语言。"""
+    with pytest.raises(FileNotFoundError, match="没有语言文件"):
+        locales.load("fr")
+
+
+def test_pick_wraps_around() -> None:
+    """输入：短列表、越界编号。输出：无。预期行为：回绕取模，不抛 IndexError。"""
+    assert locales.pick(["a", "b"], 3) == "b"
+
+
+def test_reverse_rejects_a_duplicate_name() -> None:
+    """输入：两个条目同名。输出：无。预期行为：报错——反解会把两个条目认成一个。"""
+    with pytest.raises(ValueError, match="同时属于"):
+        locales.reverse({"a": "同名", "b": "同名"})
+
+
+def test_merged_words_cover_every_key() -> None:
+    """输入：合并反查表。输出：无。
+
+    预期行为：每个主题键在合并表里都至少有一个名字、指向的键都在主题池里，高亮词只指向
+    yes / no——漏一个就会让那种语言的产物整片读成「表外名字」。
+    """
+    words = locales.words()
+    topics = words["topic"]
+    flags = words["flag"]
+    assert isinstance(topics, dict) and isinstance(flags, dict)
+    assert set(topics.values()) == set(ft.TOPIC_IDS) | {ft.OOD_TOPIC_ID}
+    assert set(flags.values()) == {"yes", "no"}
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_labels_are_not_mutual_prefixes(lang: str) -> None:
+    """输入：一份语言文件。输出：无。
+
+    预期行为：抬头与区块抬头两两**不互为前缀**——反解靠最长前缀认标签，互为前缀时短的
+    会把长的吃掉（「片段筛选请求」被认成「片段筛选请求号」）。
+    """
+    tables = parse.tables_of(locales.load(lang))
+    labels = [*tables.request, *tables.sections]
+    for left in labels:
+        for right in labels:
+            if left != right:
+                assert not right.startswith(left), f"{lang}: {left!r} / {right!r}"
+
+
+def test_languages_do_not_share_labels() -> None:
+    """输入：两份语言文件。输出：无。预期行为：标签原文互不重叠（合并表才不炸）。"""
+    zh = parse.tables_of(locales.load("zh"))
+    en = parse.tables_of(locales.load("en"))
+    assert not set(zh.request) & set(en.request)
+    assert not set(zh.sections) & set(en.sections)
+    merged = parse.merged_tables()
+    assert set(merged.request) == set(zh.request) | set(en.request)
+    assert set(merged.sections) == set(zh.sections) | set(en.sections)
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_topic_names_are_distinct_and_complete(lang: str) -> None:
+    """输入：一份语言文件。输出：无。预期行为：五个主题名互不相同，键与主题池一一对应。"""
+    table = locales.load(lang)["topic"]
+    assert isinstance(table, dict)
+    assert set(table) == set(ft.TOPIC_IDS) | {ft.OOD_TOPIC_ID}, sorted(table)
+    names = [str(value) for value in table.values()]
+    assert len(set(names)) == len(names), names
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_flag_words_are_exactly_yes_and_no(lang: str) -> None:
+    """输入：一份语言文件。输出：无。
+
+    预期行为：`[flag]` 只有 yes / no 两个词、互不相同，而且都不含在主题名里——反查表把
+    它们按整串比对，撞了就会认错。
+    """
+    loc = locales.load(lang)
+    table = loc["flag"]
+    assert isinstance(table, dict)
+    assert set(table) == {"yes", "no"}
+    words = [str(value) for value in table.values()]
+    assert len(set(words)) == 2, words
+    topics = [str(value) for value in loc["topic"].values()]
+    for word in words:
+        assert not any(word in topic or topic in word for topic in topics), word
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_families_have_phrasings_and_valid_criteria(lang: str) -> None:
+    """输入：一份语言文件。输出：无。
+
+    预期行为：每个题族至少一条问法；`first_kept` 五个选项键、两个 noul 族真 / 假两行、
+    `keep_count` 的等级数与 `features.SEGMENTS + 1` 一致——选项键与代码里那一套完全一致。
+    """
+    loc = locales.load(lang)
+    for family in questions.FAMILIES:
+        assert loc["fam"][family]["q"], family
+    assert set(loc["fam"]["first_kept"]["criteria"]) == {"s1", "s2", "s3", "s4", "none"}
+    assert set(loc["fam"]["blocked_any"]["criteria"]) == {"true", "false"}
+    assert set(loc["fam"]["dup_any"]["criteria"]) == {"true", "false"}
+    assert len(loc["fam"]["keep_count"]["levels"]) == ft.SEGMENTS + 1
+
+
+def test_languages_define_the_same_families_and_keys() -> None:
+    """输入：两份语言文件。输出：无。
+
+    预期行为：题族名、各族的键集合、问法条数逐个对齐——少一个键就是另一种语言缺题或
+    渲染直接 KeyError。
+    """
+    reference = locales.load("zh")
+    other = locales.load("en")
+    assert set(other["fam"]) == set(reference["fam"])
+    for family in questions.FAMILIES:
+        assert set(other["fam"][family]) == set(reference["fam"][family]), family
+        assert len(other["fam"][family]["q"]) == len(reference["fam"][family]["q"]), family
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_rules_lines_are_not_empty(lang: str) -> None:
+    """输入：一份语言文件。输出：无。预期行为：判据原文非空、每一条都不是空串。"""
+    lines = locales.load(lang)["rules"]["lines"]
+    assert lines
+    for line in lines:
+        assert str(line).strip(), lang
+
+
+def test_meta_has_the_four_structural_labels() -> None:
+    """输入：一份语言文件。输出：无。
+
+    预期行为：`[meta]` 里抬头 / 区块抬头 / 圆括号对齐全——渲染要按它们拼行，缺一个就
+    直接 KeyError（那是接线错误，不该拖到采样阶段）。
+    """
+    for lang in LANGS:
+        meta = locales.load(lang)["meta"]
+        assert isinstance(meta, dict)
+        assert set(meta) == {"request", "segments", "paren_open", "paren_close"}
+        assert str(meta["paren_open"]).strip() in {"（", "("}
+        assert str(meta["paren_close"]).strip() in {"）", ")"}

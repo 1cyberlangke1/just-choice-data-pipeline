@@ -1,0 +1,95 @@
+# 界面元素定位 workflow 的英文文案。
+# 与 zh 的键集合必须完全一致；字段名与四张词表跨语言不重叠；四格分隔符必须一致。
+
+[meta]
+title = "Element list"
+screen_label = "Screen"
+action_label = "Action"
+colon = ": "
+cell_sep = " · "
+#: 近似文本 = 标签原文 + 这个后缀（反解按同一条规则剥回去）。
+shadow_suffix = " draft"
+
+[role]
+button = "button"
+toggle = "toggle"
+link = "link"
+icon = "icon"
+input = "input"
+select = "select"
+
+[visibility]
+visible = "visible"
+hidden = "hidden"
+
+[clickable]
+yes = "clickable"
+no = "not clickable"
+
+[label]
+save = "Save"
+cancel = "Cancel"
+delete = "Delete"
+edit = "Edit"
+refresh = "Refresh"
+submit = "Submit"
+
+[policy]
+# 判据原文：整段拼在每道题的问句后面（范式 §9.8）。用 TOML 单引号原样串，免得转义引号。
+text = 'Criteria: 1. Each row of the element list reads "index · role · visibility · clickable · text"; there are six roles — button, toggle, link, icon, input, select — grouped into three classes: button-like (button, toggle), link-like (link, icon), input-like (input, select). 2. Which element the action lands on: first find the elements whose text is exactly the value on the Action line — one character off does not count, and merely containing that text as a substring does not count either; among those same-named elements keep the ones that are both visible and clickable — that one is the landing element. 3. Exactly one same-named element is visible and clickable, so there is no need to compare which comes first; the remaining same-named elements are all blocked — either hidden, or visible but not clickable. 4. An approximate element is one whose text contains the action label as a substring but is not exactly equal to it.'
+
+[fam.found]
+q = [
+  "Is there an element the action can land on?",
+  "Per the criteria, is there a clickable same-named element on this screen?",
+  "Can the action land on any element at all?",
+]
+
+[fam.found.criteria]
+true = "Yes: one element's text is exactly equal to the action value and it is visible and clickable"
+false = "No: either no element's text is exactly equal, or they are all blocked (hidden, or visible but not clickable)"
+
+[fam.shadow]
+q = [
+  "Is there an element whose name is only approximate?",
+  "Is there an element whose text contains the action label as a substring but is not exactly equal?",
+  "Per the criteria, is there an approximate element on screen?",
+]
+
+[fam.shadow.criteria]
+true = "Yes: some element's text contains the action label as a substring but is not exactly equal"
+false = "No: apart from the exactly equal ones, no other element contains the action label as a substring"
+
+[fam.target]
+q = [
+  "Which element does the action land on?",
+  "Per the criteria, which row of the list should be clicked?",
+  "What is the index of the landing element?",
+]
+
+[fam.role]
+q = [
+  "Which class does the landing element belong to?",
+  "Which class does element {n} belong to?",
+  "Per the criteria, which class is the landing element in?",
+]
+
+[fam.decoy]
+q = [
+  "How many same-named elements are blocked?",
+  "Among the same-named elements, how many are blocked?",
+  "Per the criteria, how many same-named elements are blocked?",
+]
+levels = [
+  "0: no same-named element is blocked",
+  "1: one same-named element is blocked",
+  "2: two same-named elements are blocked",
+]
+
+[option.role_class]
+button_like = "button-like: button and toggle"
+link_like = "link-like: link and icon"
+input_like = "input-like: input and select"
+
+[option.slot]
+element = "Row {n}: {role} · {visibility} · {clickable} · {text}"

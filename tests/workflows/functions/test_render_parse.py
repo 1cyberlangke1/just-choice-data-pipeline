@@ -6,11 +6,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import pytest
 
 from workflows.functions import locales, parse, render, spec as sp
+
+from tests.workflows.functions.conftest import MakeCase, MakeSpec
 
 LANGS = tuple(locales.available())
 
@@ -37,7 +37,7 @@ def test_render_parse_round_trips_the_whole_matrix() -> None:
             assert got == want, (lang, case.describe(), state)
 
 
-def test_unstated_optional_args_leave_no_trace(make_case: Callable[..., sp.CallCase]) -> None:
+def test_unstated_optional_args_leave_no_trace(make_case: MakeCase) -> None:
     """输入：最简语气的请求。输出：无。
 
     预期行为：没被提到的可选参数的取值短语与 flag 短语在文本里**一个都不出现**——
@@ -59,7 +59,7 @@ def _any_value(name: str) -> str:
     return sp.ARG_BY_NAME[name].values[0]
 
 
-def test_alias_changes_the_spelling_not_the_answer(make_case: Callable[..., sp.CallCase]) -> None:
+def test_alias_changes_the_spelling_not_the_answer(make_case: MakeCase) -> None:
     """输入：只差写法的两个 case。输出：无。
 
     预期行为：写代码与写名字渲染出来的文本不同，而读回来的取值各自等于自己那份金计划里的
@@ -76,7 +76,7 @@ def test_alias_changes_the_spelling_not_the_answer(make_case: Callable[..., sp.C
         assert plan_n.binding("symbol").value == sp.build_plan(name).binding("symbol").value
 
 
-def test_aliased_value_phrase_comes_from_the_right_subtable(make_case: Callable[..., sp.CallCase]) -> None:
+def test_aliased_value_phrase_comes_from_the_right_subtable(make_case: MakeCase) -> None:
     """输入：两种写法。输出：无。预期行为：文本里出现的是对应别名子表里的那条短语。"""
     loc = locales.load("zh")
     value = sp.build_plan(make_case(alias="ticker")).binding("symbol").value
@@ -84,13 +84,13 @@ def test_aliased_value_phrase_comes_from_the_right_subtable(make_case: Callable[
     assert render.value_phrase(loc, "symbol", value, "name") == loc["val"]["symbol"]["name"][value]
 
 
-def test_set_argument_is_listed_with_the_join_marks(make_case: Callable[..., sp.CallCase]) -> None:
+def test_set_argument_is_listed_with_the_join_marks(make_case: MakeCase) -> None:
     """输入：语气越啰嗦的 compare_returns。输出：无。
 
     预期行为：成员越多文本越长，且每个成员都能读回来（列举用 `[mark]` 里的连接词）。
     """
     loc = locales.load("zh")
-    lengths = []
+    lengths: list[int] = []
     for voice in sp.VOICES:
         plan, state = _plan_of(make_case(tool="compare_returns", voice=voice), "zh")
         lengths.append(len(state))
@@ -101,7 +101,7 @@ def test_set_argument_is_listed_with_the_join_marks(make_case: Callable[..., sp.
     assert lengths == sorted(lengths)
 
 
-def test_top_movers_has_no_subject_slot(make_spec: Callable[..., sp.CallSpec]) -> None:
+def test_top_movers_has_no_subject_slot(make_spec: MakeSpec) -> None:
     """输入：top_movers 的规格。输出：无。预期行为：`{subject}` 槽填成空串，不留占位符。"""
     loc = locales.load("zh")
     spec = make_spec(tool="top_movers", voice="terse")
@@ -158,7 +158,7 @@ def test_fill_reports_a_leftover_placeholder() -> None:
         render._fill("你好{nope}", name="x")
 
 
-def test_missing_segment_template_is_an_error(make_case: Callable[..., sp.CallCase]) -> None:
+def test_missing_segment_template_is_an_error(make_case: MakeCase) -> None:
     """输入：被提到却没有分段模板的参数。输出：无。
 
     预期行为：直接报错——否则那句话会悄悄丢掉一个参数，而 `stated_*` 的答案就跟着错。
@@ -174,7 +174,7 @@ def test_missing_segment_template_is_an_error(make_case: Callable[..., sp.CallCa
         render.render_request(spec, broken)
 
 
-def test_reparse_uses_the_merged_table(make_case: Callable[..., sp.CallCase]) -> None:
+def test_reparse_uses_the_merged_table(make_case: MakeCase) -> None:
     """输入：两种语言渲染出来的 state。输出：无。
 
     预期行为：`Workflow.reparse` 没有语言参数，合并表要能认出两种语言的文本。
@@ -187,7 +187,7 @@ def test_reparse_uses_the_merged_table(make_case: Callable[..., sp.CallCase]) ->
         assert parsed.binding("symbol").value == sp.build_plan(make_case()).binding("symbol").value
 
 
-def test_merged_table_is_language_agnostic(make_case: Callable[..., sp.CallCase]) -> None:
+def test_merged_table_is_language_agnostic(make_case: MakeCase) -> None:
     """输入：合并表。输出：无。预期行为：两种语言的意图短语都合并进来了。"""
     merged = locales.merged()
     assert set(merged["intent"]) == set(sp.TOOLS)

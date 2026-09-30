@@ -70,7 +70,7 @@ def test_every_role_can_be_the_target_and_be_named() -> None:
     预期行为：四种角色都可能成为目标（`target` 那一族每种角色都出得到），
     而且「可操作时」的答案一定落在该角色的标签池里。
     """
-    seen = Counter()
+    seen: Counter[str] = Counter()
     for case in all_tags():
         label = case.label()
         if label.target != features.NONE_TARGET:
@@ -159,7 +159,7 @@ def test_rows_for_is_a_rotation_of_the_logical_table() -> None:
     预期行为：显示顺序只是把逻辑顺序旋转一下（同一组特征必得同一张表），
     而且目标行**不是**老在第一行——否则「用户指的是第几行」这种反解问题会退化成常数。
     """
-    positions = set()
+    positions: set[int] = set()
     for case in all_tags():
         logical = features.logical_rows(case)
         shown = features.rows_for(case)

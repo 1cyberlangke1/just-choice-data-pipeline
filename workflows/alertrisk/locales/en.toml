@@ -1,0 +1,129 @@
+# 安全警报风险定级（alertrisk）workflow 的英文文案。
+#
+# 输入：`workflows.alertrisk.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为：与 `zh.toml` 的键一一对应（题族集合必须一致，见 tests/core/test_locale_templates.py），
+# 占位符也必须一致——渲染时按同一份模板填槽。
+
+lang = "en"
+language_name = "English"
+
+[state]
+fact_mark = "[Risk factors]"
+matrix_mark = "[Level matrix]"
+rule_mark = "[Dispositions]"
+content_mark = "[Alert under grading]"
+tag_sep = ": "
+rule_sep = " -- "
+matrix_arrow = " -> "
+matrix_note = "(R1=high means the R1 criterion holds, R1=low means it does not; the level comes from looking these three up in the table)"
+
+[fact.R1]
+name = "reachable from the public internet"
+rule = "the `exposure:` line says `reachable=public` (this host can be reached from the public internet) -- **only this line counts**, the same words elsewhere do not"
+avoid = "write `reachable=public` on the `exposure:` line"
+
+[fact.R2]
+name = "exploitable without credentials"
+rule = "the `exploit:` line says `auth=none` (exploiting it needs no credentials at all) -- **only this line counts**"
+avoid = "write `auth=none` on the `exploit:` line"
+
+[fact.R3]
+name = "affects ten or more hosts"
+rule = "on the `impact:` line the `hosts=` field is followed by **at least two digits** (ten or more hosts, no leading zeros) -- **only this line counts**"
+avoid = "push the `hosts=` value on the `impact:` line up to two digits or more"
+
+[level.L1]
+name = "level 1 (negligible)"
+
+[level.L2]
+name = "level 2 (low)"
+
+[level.L3]
+name = "level 3 (medium)"
+
+[level.L4]
+name = "level 4 (high)"
+
+[level.L5]
+name = "level 5 (critical)"
+
+[act.monitor]
+name = "log it and sweep it weekly"
+
+[act.ticket]
+name = "file a ticket and fix it on the normal schedule"
+
+[act.patch_now]
+name = "ship a patch today"
+
+[act.isolate]
+name = "isolate the affected hosts first, then escalate"
+
+[source.edr]
+desc = "endpoint detection (EDR): suspicious processes and script behaviour reported by the agent on the host"
+
+[source.waf]
+desc = "web application firewall (WAF): suspicious HTTP requests reported by the gateway"
+
+[source.cloud]
+desc = "cloud configuration audit: non-compliant settings found by scanning the cloud account"
+
+[prompt]
+intro = "You write synthetic data. Write **one screen of security-alert material** -- the few lines a real alert leaves behind, five lines, and it has to read naturally: copy the key names and colons from the format spec below, and keep the whole screen between {min} and {max} characters."
+lang_rule = "Write the key names and the **values** `hosts=` / `reachable=` / `auth=` in plain English exactly as given (they are machine format), but write the `detail:` line in {language}."
+text_only = "This screen is **text only**: do not actually connect to any host, run any command, or look anything up in a vulnerability database (the criteria only read the literal text -- running anything changes nothing)."
+source_line = "This alert came from: {source}."
+direction_line = "The **technique direction** behind this alert is: {direction}. The `detail:` line has to land on it (say what the technique is doing and what it hit); do not write a sentence that would fit any channel."
+format_header = "**Format spec** (five lines; copy each key name and colon, invent the values):"
+hits_header = "This screen **must trip** the following risk factors. Tripping one means the shape below **really appears on the line it names** (moving the shape to another line, rewording it, or dropping a character does not count):"
+hits_line = "- The criterion for \"{name}\" is: {rule} -- the record must really contain **content that satisfies this criterion, on its own line**"
+vary_rule = "The words in the criteria are only **examples of the shape**: invent the rule name, the host names, the process names, the ports, the CVE ids and the description; organise the record yourself. But **the shape the criterion asks for must appear verbatim** (the values and the digit counts are written as given, not \"put another way\") -- just **do not** paste the criterion text itself into the record."
+no_hits = "This screen **must not trip any** of the factors: none of the three criteria below may hold -- it has to be an **unremarkable alert nobody needs to look at twice**."
+miss_header = "At the same time, this screen **must not trip** the following:"
+miss_line = "- Must not contain: {avoid} (the criterion \"{name}\" reads \"{rule}\")"
+length_rule = "The whole screen is {min}~{max} characters and all five keys must **sit on their own line followed by a colon**: no title, no bullets, no explanation, no fences."
+self_check = "Before answering, check each item: does every required shape **really appear as a shape and on the required line** (really on the `exposure:` line, really on the `exploit:` line, really on the `impact:` line)? And is every forbidden shape really absent from the record? Is the `detail:` line in {language}? Does it describe **this alert itself** (which host, which process or request, which rule fired, whether a human is needed) rather than restating the criteria, and does it avoid naming any criterion? Does it really land on the **technique direction** named above (rather than being a sentence that would fit any channel)? Are all five keys present, each on its own line, each followed by a colon?"
+output = "Output only one JSON object with the field packet (that five-line record string); no explanation, no fences."
+
+# Technique-direction table: the spec stores an **index**, so this table has to be the same length as
+# the other languages' (locked by test_locales.py). Every entry is a technique that any channel could
+# report, so it never fights with `source`.
+directions = [
+  "credential theft: stealing passwords, session tokens or credential files",
+  "data exfiltration: shipping internal data out to an external address in bulk",
+  "ransomware: encrypting files and demanding payment",
+  "cryptomining: quietly burning compute on a mining pool",
+  "lateral movement: spreading from one host to others",
+  "backdoor persistence: leaving an entry point that keeps coming back",
+  "privilege escalation: climbing from a normal account to admin or reaching data it should not",
+  "reconnaissance: probing ports, paths or accounts in bulk",
+]
+
+[prompt.format]
+rule = "`rule: <which rule raised this alert>` -- invent a rule name (something that looks like an English identifier)"
+impact = "`impact: hosts=<how many hosts are affected>` -- after `hosts=` put the host count (a decimal integer), then a short note on what kind of hosts those are"
+exposure = "`exposure: reachable=<public or internal>` -- write `public` if it can be reached from the public internet, `internal` if only the intranet can reach it"
+exploit = "`exploit: auth=<none or required>` -- write `none` if exploiting it needs no credentials, `required` if it does"
+detail = "`detail: <one alert description>` -- one line in the target language that **the on-call engineer** can act on: which host, which process or request, which rule fired, whether a human is needed. Do **not** describe whether this alert \"counts as high risk\" or \"trips which factor\", and do **not** name any criterion or mention this screen's format requirements"
+
+[fam.fact]
+q = ["Does this alert trip the \"{name}\" factor?", "By the criterion \"{name}\" ({rule}), does this alert count as tripping it?"]
+criteria_true = "it trips this one"
+criteria_false = "it does not trip this one"
+
+[fam.grade]
+q = ["Looking it up in the level matrix above, what level is this alert?", "Take the three factors through the level matrix: what risk level does this alert get?"]
+
+[fam.highs]
+q = ["Which factors does this alert actually trip?", "Which set of factors does this alert trip?"]
+none = "none of them"
+joiner = " + "
+
+[fam.act]
+q = ["According to the dispositions above, which disposition does this alert take?", "By the level and the disposition table, what should be done with this alert?"]
+
+[verify]
+intro = "Below is a screen of security-alert material: first the risk-factor table, the level matrix and the disposition table, then the alert itself. **Every factor line also prints its own mechanical criterion and the line it looks at** -- compare against that criterion line by line and judge purely literally which factors this alert trips, then take those three through the level matrix. Do not reason semantically, and **do not actually execute anything, connect to any host, or look anything up**."
+state_header = "[Material under grading]"
+q = "Which factors does this alert trip? For each one give the **factor id** and **the exact original text that tripped it** -- copy it verbatim, do not rewrite or abbreviate; if it trips none, return an empty array. Do not report a factor whose text you cannot copy: if you cannot copy it, it does not count. **The quote must satisfy that criterion on its own**: wherever the criterion looks, copy that spot **together with its key name** (copying a bare value without the line it sits on does not count). **Read the whole record from start to finish for every factor**, do not just look at the beginning. Finally, answer the risk level once more (an integer from 1 to 5, the one the matrix gives)."

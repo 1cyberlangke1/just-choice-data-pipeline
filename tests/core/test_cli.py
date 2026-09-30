@@ -16,6 +16,7 @@ import pytest
 
 from jc import cli, pipeline
 from jc.backend.types import BackendCapabilities
+from jc.jsontypes import JsonValue
 from jc.workflow import discover, load
 
 
@@ -447,6 +448,15 @@ class LocaleSpy:
         self.seen.append(locale)
         return {split: {"samples": 0} for split in splits}, []
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：空表。
+
+        预期行为：这一族问的是「CLI 拿哪种语言去读产物」，与产物正文无关，所以不声明任何正文
+        （声明了就会顺带跑语言判据，把这条测试的因果搅浑）。
+        """
+        del sample
+        return {}
+
 
 def write_manifest(run_dir: Path, split: str, locales: list[str]) -> None:
     """输入：run 目录、切分、语言列表。输出：无。
@@ -509,3 +519,120 @@ def test_audit_falls_back_to_zh_without_a_manifest(
     monkeypatch.setattr(cli, "load", lambda name: spy)
     assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 0
     assert spy.seen == ["zh"]
+
+
+#: 一份**逐字合法**的产物行：语言那几条测试要的是「唯一的问题是语言」，
+#: 别的错误码（缺字段 / id 不合法）会污染因果。
+LEGAL_ROW = (
+    '{"id":"fake-train-0000000","state":"素材",'
+    '"questions":{"ask":{"type":"noul","instructions":"对吗？"}},'
+    '"answers":{"ask":{"type":"noul","noul":true}}}'
+)
+
+
+class LanguageSpy:
+    """假 workflow：`language_texts` 报一段**写死**的正文，用来单测语言那条尺子的接线。
+
+    预期行为：只实现审计要用的三个方法；`language_texts` 与样本无关——这条测试问的是
+    「CLI 会不会拿产物声明的语言去比它」，不是「某个真 workflow 反解对不对」。
+    """
+
+    name = "fake"
+    version = "0.0.1"
+
+    def __init__(self, texts: dict[str, str]) -> None:
+        """输入：要报出去的正文。输出：实例。"""
+        self.texts = texts
+
+    def split_names(self) -> tuple[str, ...]:
+        """输入：无。输出：一个切分名。"""
+        return ("train",)
+
+    def audit(self, run_dir: Path, splits: tuple[str, ...], locale: str) -> tuple[object, list[str]]:
+        """输入：目录 / 切分 / 语言。输出：(计数, 缺失项)。预期行为：永远通过。"""
+        return {split: {"samples": 1} for split in splits}, []
+
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：写死的那段正文。预期行为：不看样本，直接回写死的那份。"""
+        del sample
+        return dict(self.texts)
+
+
+def test_audit_fails_when_the_text_does_not_match_the_declared_language(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """输入：manifest 声明 en，但正文是一整段中文。输出：无。
+
+    预期行为：退出码 1，并把「哪一条、哪个字段、实测比例」说清楚。产物文本必须与它**声明的**
+    语言一致——真机上 `rerank` 的 en 侧整段写成中文、`citation` 的 en 侧有一条写成中文文档，
+    此前没有任何机制拦得住。
+    """
+    (tmp_path / "train.jsonl").write_text(LEGAL_ROW + "\n", encoding="utf-8")
+    write_manifest(tmp_path, "train", ["en"])
+    spy = LanguageSpy({"正文": "这一段写成了中文，而这一份产物声明的是英文。"})
+    monkeypatch.setattr(cli, "load", lambda name: spy)
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 1
+    out = capsys.readouterr().out
+    assert "文本与声明语言对不上" in out
+    assert "正文" in out
+    assert "fake-train-0000000" in out
+
+
+def test_audit_passes_when_the_text_matches_the_declared_language(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """输入：manifest 声明 zh，正文也是中文。输出：无。预期行为：退出码 0，不误报。"""
+    (tmp_path / "train.jsonl").write_text(LEGAL_ROW + "\n", encoding="utf-8")
+    write_manifest(tmp_path, "train", ["zh"])
+    spy = LanguageSpy({"正文": "这一段是中文，声明也是中文，两边对得上。"})
+    monkeypatch.setattr(cli, "load", lambda name: spy)
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 0
+    assert "审计通过" in capsys.readouterr().out
+
+
+def test_audit_passes_when_the_text_matches_any_declared_language(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """输入：manifest 记着 `["zh", "en"]`，正文是英文。输出：无。
+
+    预期行为：退出码 0——一次 run 可以把两种语言轮转着写进**同一份**产物（`jc.pipeline` 按
+    `locales[seq % len]` 轮转），所以判据是「配不配得上**某一种**声明语言」，不是「配不配得上
+    第一种」。这条不这么定，混语言 run 会被整份误判。
+    """
+    (tmp_path / "train.jsonl").write_text(LEGAL_ROW + "\n", encoding="utf-8")
+    write_manifest(tmp_path, "train", ["zh", "en"])
+    spy = LanguageSpy({"正文": "this paragraph is written in english and the run declares both"})
+    monkeypatch.setattr(cli, "load", lambda name: spy)
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 0
+
+
+def test_audit_reports_a_workflow_that_never_declares_its_text(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """输入：一个没有 `language_texts` 的假 workflow + 有 manifest 的产物。输出：无。
+
+    预期行为：退出码 1 并**如实说**「这条检查跳过了」——静默跳过等于告诉用户「查过了，没问题」，
+    而实际上一次都没查。真 workflow 由 `tests/workflows/test_protocol.py` 兜住。
+    """
+    (tmp_path / "train.jsonl").write_text(LEGAL_ROW + "\n", encoding="utf-8")
+    write_manifest(tmp_path, "train", ["zh"])
+
+    class NoDeclaration:
+        """假 workflow：只实现审计要用的两个方法（**故意**不实现 `language_texts`）。"""
+
+        name = "fake"
+        version = "0.0.1"
+
+        def split_names(self) -> tuple[str, ...]:
+            """输入：无。输出：一个切分名。"""
+            return ("train",)
+
+        def audit(
+            self, run_dir: Path, splits: tuple[str, ...], locale: str
+        ) -> tuple[object, list[str]]:
+            """输入：目录 / 切分 / 语言。输出：(计数, 缺失项)。预期行为：永远通过。"""
+            return {split: {"samples": 1} for split in splits}, []
+
+    monkeypatch.setattr(cli, "load", lambda name: NoDeclaration())
+    assert cli.main(["audit", "--workflow", "fake", "--dir", str(tmp_path)]) == 1
+    assert "没有实现" in capsys.readouterr().out

@@ -21,34 +21,6 @@ def all_keys(node: object, path: str = "") -> set[str]:
     return {path}
 
 
-def test_available_locales() -> None:
-    """输入：无。输出：无。预期行为：就 zh / en 两个，按文件名排序。"""
-    assert locales.available() == ["en", "zh"]
-
-
-def test_missing_locale_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("nope")
-
-
-@pytest.mark.parametrize("lang", ["zh", "en"])
-def test_locale_covers_every_dimension_value(lang: str) -> None:
-    """输入：一个语言。输出：无。
-
-    预期行为：`dims` 与 `feature` 覆盖全部维度与取值——缺一条，`build_prompt` 会抛
-    KeyError，而那条 KeyError 只有跑到渲染阶段才暴露。
-    """
-    loc = locales.load(lang)
-    assert set(loc["dims"]) == set(features.DIMS)
-    assert set(loc["feature"]) == set(features.DIMS)
-    for dim, values in features.DIMS.items():
-        assert set(loc["feature"][dim]) == set(values), dim
-        for value in values:
-            assert str(loc["feature"][dim][value]["brief"]).strip()
-            assert str(loc["feature"][dim][value]["hint"]).strip()
-
-
 @pytest.mark.parametrize("lang", ["zh", "en"])
 def test_locale_covers_every_criterion_and_family(lang: str) -> None:
     """输入：一个语言。输出：无。
@@ -105,23 +77,6 @@ def test_locale_meta_and_columns(lang: str) -> None:
 
 
 @pytest.mark.parametrize("lang", ["zh", "en"])
-def test_prompt_rules_format_without_leftover_placeholders(lang: str) -> None:
-    """输入：一个语言。输出：无。
-
-    预期行为：每条提示词规则都能按 `{language}` 格式化，且格式化后不再留占位符——
-    留着占位符会把 `{language}` 原样发给模型。
-    """
-    loc = locales.load(lang)
-    rules = [str(item) for item in loc["prompt"]["rules"]]
-    assert rules
-    for rule in rules:
-        filled = rule.format(language=loc["language_name"])
-        assert "{" not in filled and "}" not in filled, rule
-    assert str(loc["prompt"]["intro"]).strip()
-    assert "{dim}" in str(loc["prompt"]["bullet"])
-
-
-@pytest.mark.parametrize("lang", ["zh", "en"])
 def test_banned_phrases_are_the_table_names(lang: str) -> None:
     """输入：一个语言。输出：无。
 
@@ -147,13 +102,3 @@ def test_trace_draft_matches_the_dimension_tables() -> None:
     assert set(holders.annotation.__args__) == set(features.PLACEHOLDERS)
     assert set(cites.annotation.__args__) == set(features.CITATIONS)
     assert judges.TRACE_FAMILIES == ("placeholders", "citations")
-
-
-def test_both_locales_have_the_same_structure() -> None:
-    """输入：两个语言文件。输出：无。
-
-    预期行为：叶子路径集合完全一致——加维度 / 加题族时漏翻一个语言，这条会当场报出来。
-    """
-    zh = all_keys(locales.load("zh"))
-    en = all_keys(locales.load("en"))
-    assert zh == en

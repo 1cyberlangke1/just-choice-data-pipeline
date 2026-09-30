@@ -16,7 +16,6 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
-import json
 import os
 import threading
 from dataclasses import asdict, dataclass, field, replace
@@ -88,11 +87,13 @@ class ProgressLog:
             if not line.strip():
                 continue
             try:
-                raw = json.loads(line)
-            except json.JSONDecodeError as exc:
+                raw = jsonio.loads(line)
+            except jsonio.StrictJsonError as exc:
                 if index == len(lines) - 1:
                     break  # 崩在写一半的尾行，当它没写过
                 raise ValueError(f"进度文件第 {index + 1} 行坏了：{exc}") from exc
+            if not isinstance(raw, dict):
+                raise ValueError(f"进度文件第 {index + 1} 行不是 JSON 对象：{raw!r}")
             out.append(ProgressEntry(**{k: v for k, v in raw.items() if k in known}))
         return out
 

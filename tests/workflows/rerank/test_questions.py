@@ -121,14 +121,6 @@ def test_order_options_are_four_distinct_permutations() -> None:
     assert criteria["o0"] == expected
 
 
-def test_choice_helper_rejects_broken_options() -> None:
-    """输入：重复的选项描述 / 答案不在选项里。输出：无。预期行为：都当场报错。"""
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice("x", "q", {"a": "same", "b": "same"}, "a")
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("x", "q", {"a": "one", "b": "two"}, "c")
-
-
 def test_unknown_family_reports_itself(monkeypatch: pytest.MonkeyPatch) -> None:
     """输入：一个假题族名。输出：无。预期行为：`build` 报 `KeyError`，不静默跳过。"""
     plan = _plan(relevant=1)

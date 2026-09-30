@@ -23,9 +23,13 @@ llm = [
     "pyrate-limiter>=4.0",
     "tenacity>=9.0",  # 重试退避；instructor 也依赖它，这里显式声明免得被上游改动连坐
 ]
-# 静态检查（本地门禁，pre-commit 钩子会跑）。刻意**不用 mypy**：pydantic 模型类会让
-# `disallow_any_explicit` 报 23 处假阳性（模型类那行被判成显式 Any），而且本仓库还有
-# 162 处历史报错——现在开等于把闸门焊死。ruff 的 ANN/F821 只做 AST 层面的判断，没有这问题。
+# 静态检查（本地门禁，pre-commit 钩子会跑）。刻意**不用 mypy**，实测（2026-09-30）：
+# `mypy --follow-imports=silent src workflows` = 6572 处报错 / 184 个文件，加上 tests 是
+# 14618 处 / 481 个文件；其中 `--disallow-any-explicit` 的 36 / 39 处**全是假阳性**——
+# pydantic 模型类会让它把 `class X(BaseModel):` 那一行判成「显式 Any」。现在开 mypy 等于
+# 把闸门焊死，还得先做一次跨上百个文件的重构。ruff 的 ANN/F821 只做 AST 层面的判断，
+# 没有这问题；「Any 及其等价物」（裸泛型 / `Callable[..., X]` / 空容器 / `noqa: ANN…` /
+# 生产代码的 `json.loads`）由 `tests/core/test_no_any.py` 的 AST 尺子管。
 dev = ["ruff>=0.16"]
 
 [tool.setuptools]
@@ -34,6 +38,11 @@ packages = [
     "jc.backend",
     "workflows",
     "workflows.maze",
+    "workflows.cachereuse",
+    "workflows.clipcut",
+    "workflows.quoteread",
+    "workflows.sourceselect",
+    "workflows.findtriage",
     "workflows.mail",
     "workflows.invoice",
     "workflows.hybrid",
@@ -57,6 +66,25 @@ packages = [
     "workflows.citation",
     "workflows.guardrail",
     "workflows.autoformat",
+    "workflows.promptinject",
+    "workflows.memorygate",
+    "workflows.logtriage",
+    "workflows.turntake",
+    "workflows.adblock",
+    "workflows.debugstep",
+    "workflows.subqa",
+    "workflows.sqlreview",
+    "workflows.alertrisk",
+    "workflows.depcheck",
+    "workflows.hirecheck",
+    "workflows.chatgate",
+    "workflows.testimpact",
+    "workflows.tracescore",
+    "workflows.segmentation",
+    "workflows.posttriage",
+    "workflows.siftrank",
+    "workflows.receiptcat",
+    "workflows.elementpick",
 ]
 
 [tool.setuptools.package-dir]
@@ -66,6 +94,11 @@ workflows = "workflows"
 [tool.setuptools.package-data]
 jc = ["locales/judge/*.toml"]
 "workflows.maze" = ["locales/*.toml"]
+"workflows.cachereuse" = ["locales/*.toml"]
+"workflows.clipcut" = ["locales/*.toml"]
+"workflows.quoteread" = ["locales/*.toml"]
+"workflows.sourceselect" = ["locales/*.toml"]
+"workflows.findtriage" = ["locales/*.toml"]
 "workflows.mail" = ["locales/*.toml"]
 "workflows.invoice" = ["locales/*.toml"]
 "workflows.hybrid" = ["locales/*.toml"]
@@ -89,6 +122,25 @@ jc = ["locales/judge/*.toml"]
 "workflows.citation" = ["locales/*.toml"]
 "workflows.guardrail" = ["locales/*.toml"]
 "workflows.autoformat" = ["locales/*.toml"]
+"workflows.promptinject" = ["locales/*.toml"]
+"workflows.memorygate" = ["locales/*.toml"]
+"workflows.logtriage" = ["locales/*.toml"]
+"workflows.turntake" = ["locales/*.toml"]
+"workflows.adblock" = ["locales/*.toml"]
+"workflows.debugstep" = ["locales/*.toml"]
+"workflows.subqa" = ["locales/*.toml"]
+"workflows.sqlreview" = ["locales/*.toml"]
+"workflows.alertrisk" = ["locales/*.toml"]
+"workflows.depcheck" = ["locales/*.toml"]
+"workflows.hirecheck" = ["locales/*.toml"]
+"workflows.chatgate" = ["locales/*.toml"]
+"workflows.testimpact" = ["locales/*.toml"]
+"workflows.tracescore" = ["locales/*.toml"]
+"workflows.segmentation" = ["locales/*.toml"]
+"workflows.posttriage" = ["locales/*.toml"]
+"workflows.siftrank" = ["locales/*.toml"]
+"workflows.receiptcat" = ["locales/*.toml"]
+"workflows.elementpick" = ["locales/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

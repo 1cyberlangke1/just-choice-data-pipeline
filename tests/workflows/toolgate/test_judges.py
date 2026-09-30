@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from jc.backend.types import AllProvidersDown, GenerationBackend, TransportError
+from jc.backend.types import AllProvidersDown, TransportError
 from workflows.toolgate import features, judges, locales, render
 from workflows.toolgate.features import TagSet
 from workflows.toolgate.spec import ToolGateSpec
@@ -200,10 +200,3 @@ def test_trace_judge_rejects_a_value_outside_the_labels(
     )
     verdict = judge.judge({"state": state_of()}, spec_of())
     assert not verdict.ok and not verdict.skipped
-
-
-def test_option_names_follows_the_artifact_order() -> None:
-    """输入：一道打乱过的题。输出：无。预期行为：按产物里的顺序返回选项名。"""
-    question = {"type": "choice", "criteria": {"deny": "a", "allow": "b"}}
-    assert judges.option_names(question) == ["deny", "allow"]
-    assert judges.option_names({"type": "noul"}) == []

@@ -11,12 +11,38 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Final, Protocol, runtime_checkable
 
 #: LLM 判别器的名字前缀（`llm:solvable`）。通用层负责装配它们（要后端），
 #: 各 workflow 只管在自己的判别器名单里写名字，不必重复接线。
 LLM_PREFIX: Final[str] = "llm:"
+
+
+def squash(text: str) -> str:
+    """输入：一段文本。输出：空白折叠成单个空格之后的文本。
+
+    预期行为：只为比对用，不改样本本身——判别器拿它把「换行 / 多空格」的差异抹平，
+    免得同一句话因为排版不同被判成两回事。
+    """
+    return " ".join(text.split())
+
+
+def leftover_in(state: str, lines: Iterable[str], tags: Iterable[str]) -> str:
+    """输入：state 文本、残留行清单、残留标记清单。输出：命中的残留（没有就空串）。
+
+    预期行为：先按**整行**比对（去掉首尾空白后全等，所以围栏单独成行才算残留），再按**子串**
+    比对标签；两份清单的顺序就是优先级，先命中的先返回。清单由各 workflow 给（判什么算残留是
+    领域知识），比对本身是通用的。
+    """
+    for line in state.splitlines():
+        if line.strip() in lines:
+            return line.strip()
+    for tag in tags:
+        if tag in state:
+            return tag
+    return ""
 
 
 def partition_names(names: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[str, ...]]:

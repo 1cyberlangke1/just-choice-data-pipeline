@@ -5,34 +5,21 @@
 """
 
 from __future__ import annotations
-from jc.jsontypes import JsonValue
-
-import tomllib
 from functools import lru_cache
 from pathlib import Path
 from typing import Final
+
+from jc import locale_files
+from jc.jsontypes import JsonValue
+
 
 LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")
 #: 默认语言：构造**与语言无关**的随机计划时固定用它（取值名两种语言一致）。
 DEFAULT: Final[str] = "zh"
 
 
-def available() -> list[str]:
-    """输入：无。输出：可用语言列表（按文件名）。"""
-    return sorted(path.stem for path in LOCALE_DIR.glob("*.toml"))
-
-
-@lru_cache(maxsize=8)
-def load(lang: str) -> dict[str, JsonValue]:
-    """读取并缓存一个语言文件。
-
-    输入：语言代码。输出：字典。预期行为：文件不存在时抛 FileNotFoundError 并列出可用语言。
-    """
-    path = LOCALE_DIR / f"{lang}.toml"
-    if not path.exists():
-        raise FileNotFoundError(f"没有语言文件 {path.name}；可用：{', '.join(available())}")
-    with path.open("rb") as handle:
-        return tomllib.load(handle)
+#: 三个函数由通用层按本包目录绑好（读取 / 缓存 / 报错 / 回绕只在那里有一份），见 `jc.locale_files.make`。
+available, load, pick = locale_files.make(LOCALE_DIR)
 
 
 @lru_cache(maxsize=1)
@@ -84,11 +71,3 @@ def _iter_phrases(table: dict[str, JsonValue]) -> list[tuple[str, tuple[str, ...
         (value, (phrases,) if isinstance(phrases, str) else tuple(str(p) for p in phrases))
         for value, phrases in table.items()
     ]
-
-
-def pick(seq: list[str], index: int) -> str:
-    """输入：候选列表、编号。输出：第 index 个（越界回绕）。
-
-    预期行为：问法池比题族数量少时也照常工作——回绕而不是报错（题面措辞不是判据）。
-    """
-    return seq[index % len(seq)]

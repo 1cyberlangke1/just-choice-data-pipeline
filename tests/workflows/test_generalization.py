@@ -40,6 +40,26 @@ from workflows.rerank.workflow import RerankWorkflow
 from workflows.citation.workflow import CitationWorkflow
 from workflows.guardrail.workflow import GuardrailWorkflow
 from workflows.autoformat.workflow import AutoformatWorkflow
+from workflows.promptinject.workflow import PromptInjectWorkflow
+from workflows.memorygate.workflow import MemoryGateWorkflow
+from workflows.logtriage.workflow import LogTriageWorkflow
+from workflows.turntake.workflow import TurnTakeWorkflow
+from workflows.adblock.workflow import AdBlockWorkflow
+from workflows.alertrisk.workflow import AlertRiskWorkflow
+from workflows.depcheck.workflow import DepCheckWorkflow
+from workflows.debugstep.workflow import DebugStepWorkflow
+from workflows.hirecheck.workflow import HireCheckWorkflow
+from workflows.subqa.workflow import SubQaWorkflow
+from workflows.sqlreview.workflow import SqlReviewWorkflow
+from workflows.cachereuse.workflow import CacheReuseWorkflow
+from workflows.clipcut.workflow import ClipCutWorkflow
+from workflows.quoteread.workflow import QuoteReadWorkflow
+from workflows.posttriage.workflow import PostTriageWorkflow
+from workflows.receiptcat.workflow import ReceiptCatWorkflow
+from workflows.siftrank.workflow import SiftRankWorkflow
+from workflows.sourceselect.workflow import SourceSelectWorkflow
+from workflows.findtriage.workflow import FindTriageWorkflow
+from workflows.elementpick.workflow import ElementPickWorkflow
 
 
 def spans_of(workflow: object, splits: tuple[str, ...]) -> dict[str, set[str]]:
@@ -65,6 +85,7 @@ def id_splits_of(workflow: object) -> tuple[str, ...]:
     [
         (InvoiceWorkflow, "labels"),
         (HybridWorkflow, "layout"),
+        (QuoteReadWorkflow, "names"),
    ],
 )
 def test_dimension_holdout_is_realized(factory: object, dim: str) -> None:
@@ -121,6 +142,26 @@ def value_spans(workflow: object, splits: tuple[str, ...]) -> dict[str, set[str]
         (CitationWorkflow, ("target",)),
         (GuardrailWorkflow, ("decoy",)),
         (AutoformatWorkflow, ("topic", "wrap", "variant", "code_family")),
+        (PromptInjectWorkflow, ("source",)),
+        (MemoryGateWorkflow, ("form",)),
+        (LogTriageWorkflow, ("source",)),
+        (TurnTakeWorkflow, ("channel",)),
+        (AdBlockWorkflow, ("surface",)),
+        (AlertRiskWorkflow, ("source",)),
+        (DepCheckWorkflow, ("ecosystem",)),
+        (HireCheckWorkflow, ("channel",)),
+        (DebugStepWorkflow, ("runtime",)),
+        (SubQaWorkflow, ("track",)),
+        (SqlReviewWorkflow, ("workload",)),
+        (CacheReuseWorkflow, ("flavor",)),
+        (ClipCutWorkflow, ("topics",)),
+        (QuoteReadWorkflow, ("names",)),
+        (PostTriageWorkflow, ("decoy",)),
+        (ReceiptCatWorkflow, ("decoy",)),
+        (SiftRankWorkflow, ("flavor",)),
+        (SourceSelectWorkflow, ("size",)),
+        (FindTriageWorkflow, ("size",)),
+        (ElementPickWorkflow, ("layout", "phrasing")),
     ],
 )
 def test_value_holdout_is_realized(factory: object, dims: tuple[str, ...]) -> None:

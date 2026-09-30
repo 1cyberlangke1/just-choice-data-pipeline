@@ -78,20 +78,7 @@ def agenda_key(index: int) -> str:
     return f"a{index + 1}"
 
 
-def _choice(
-    family: str, instructions: str, options: dict[str, str], answer: str
-) -> LabeledQuestion:
-    """输入：题族、题面、选项、金答案（选项名）。输出：一道 choice 题。
-
-    预期行为：选项描述重复、答案不在选项里，都直接报错——那是构造 bug，
-    必须在生成时就炸掉而不是产出一条有两个正确答案的坏数据。
-    """
-    if len(set(options.values())) != len(options):
-        raise ValueError(f"{family} 的选项描述重复：{options}")
-    if answer not in options:
-        raise ValueError(f"{family} 的答案 {answer!r} 不在选项里：{sorted(options)}")
-    question = {"type": "choice", "instructions": instructions, "criteria": options}
-    return LabeledQuestion(family, question, answer)
+from jc.assemble import choice as _choice
 
 
 def _noul(family: str, loc: dict[str, JsonValue], phrasing: int, answer: bool) -> LabeledQuestion:

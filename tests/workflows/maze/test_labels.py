@@ -249,7 +249,7 @@ def generate(
     永远只会在真机上撞见。
     """
     workflow = workflow_mod.load("maze")
-    out = []
+    out: list[tuple[dict[str, JsonValue], maze_spec.MazeSpec, ParsedMaze, maze_spec.MazeCase]] = []
     for seq, case in enumerate(cases):
         rng = pipeline.sample_rng(seed, workflow.name, "train", seq)
         split = workflow.plan_sample(rng, config, case, seq)
@@ -402,7 +402,7 @@ def test_case_dimensions_are_all_exercised(lang: str) -> None:
     config = small_config()
     cases = workflow.build_cases(config)
     loc = locales.load(lang)
-    seen: dict[str, set] = {
+    seen: dict[str, set[JsonValue]] = {
         "format": set(),
         "symbols": set(),
         "history_len": set(),

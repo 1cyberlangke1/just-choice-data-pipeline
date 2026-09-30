@@ -158,7 +158,9 @@ def test_limits_reject_illegal_values(field: str, value: object, expected: str) 
         ({"max_retries": -1}, "max_retries 不能为负"),
     ],
 )
-def test_provider_config_rejects_illegal_fields(overrides: dict, expected: str) -> None:
+def test_provider_config_rejects_illegal_fields(
+    overrides: dict[str, object], expected: str
+) -> None:
     """名字 / 地址 / 模型 / 超时 / 重试次数的非法取值同样当场报错。"""
     base = {"name": "a", "base_url": "u", "model": "m"}
     with pytest.raises(ValueError, match=expected):

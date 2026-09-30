@@ -154,15 +154,6 @@ def test_phrasing_rotates_the_instruction() -> None:
         assert all(texts)
 
 
-def test_instructions_are_never_empty() -> None:
-    """输入：全空间组合 × 两种语言。输出：无。预期行为：题面文案都不为空。"""
-    for lang in ("zh", "en"):
-        loc = locales.load(lang)
-        for tags in all_tags():
-            for item in questions.build(tags, loc, 1):
-                assert str(item.question["instructions"]).strip()
-
-
 @pytest.mark.parametrize("lang", ["zh", "en"])
 def test_noul_criteria_text_differs_between_true_and_false(lang: str) -> None:
     """输入：一个语言。输出：无。预期行为：true / false 两段文案不一样。"""

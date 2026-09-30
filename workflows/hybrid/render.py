@@ -295,7 +295,7 @@ def _parse_bullet(lines: list[str]) -> list[ParsedMeeting]:
                 title=texts["title"],
                 agenda=texts["agenda"],
             )
-            texts = {}
+            texts.clear()
     return out
 
 

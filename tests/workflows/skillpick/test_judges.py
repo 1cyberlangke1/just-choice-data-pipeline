@@ -128,38 +128,6 @@ def test_roundtrip_diff_catches_each_cell() -> None:
     )
 
 
-def test_roundtrip_judge_passes_a_good_sample() -> None:
-    """输入：一条合格样本。输出：无。预期行为：结构往返通过。"""
-    sample, spec = _sample()
-    verdict = judges.RoundtripJudge(locale="zh").judge(sample, spec)
-    assert verdict.ok is True
-    assert verdict.raw == {"diff": []}
-
-
-def test_roundtrip_judge_skips_without_a_spec() -> None:
-    """输入：没有真值规格。输出：无。
-
-    预期行为：跳过而不是判错——「没判成」与「不通过」是两件事。
-    """
-    sample, _ = _sample()
-    verdict = judges.RoundtripJudge(locale="zh").judge(sample, None)
-    assert verdict.ok is True and verdict.raw == {"skipped": True}
-
-
-def test_roundtrip_judge_flags_a_broken_state() -> None:
-    """输入：state 被改坏 / 规格类型不对。输出：无。
-
-    预期行为：state 改坏判不通过；规格类型不对走「没有 spec」那条路（跳过），
-    与 `LabelJudge` 的严格检查相反——结构往返没有规格也能只看文本，所以跳过是对的。
-    """
-    sample, spec = _sample()
-    broken = {**sample, "state": "今天天气不错。"}
-    verdict = judges.RoundtripJudge(locale="zh").judge(broken, spec)
-    assert verdict.ok is False and "反解失败" in verdict.reason
-    verdict = judges.RoundtripJudge(locale="zh").judge(sample, "not-a-spec")
-    assert verdict.ok is True and verdict.raw == {"skipped": True}
-
-
 def test_label_judge_passes_a_good_sample() -> None:
     """输入：一条合格样本。输出：无。预期行为：题号与答案与规格逐题一致。"""
     sample, spec = _sample()

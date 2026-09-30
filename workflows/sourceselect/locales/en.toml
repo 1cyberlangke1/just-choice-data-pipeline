@@ -1,0 +1,122 @@
+lang = "en"
+language_name = "English"
+
+# Phrases banned from the query: the candidate table and the selection rules belong to code, and a
+# query that talks about that table is fighting them for the same fact. Kept to high-precision
+# phrases only — a false positive rejects an otherwise usable sample at render time. The words
+# "official" / "latest" / "complete" are deliberately NOT banned: they are how the primary
+# requirement is normally expressed in English, and banning them would block the one sentence this
+# task is built to read.
+banned_intent_phrases = [
+  "candidate source",
+  "source table",
+  "row number",
+  "|",
+]
+
+[meta]
+query_label = "Query"
+sources_label = "Candidate sources"
+rules_label = "Selection rules"
+header = "[{title}]"
+row_prefix = "- "
+paren = " ({text})"
+colon = ": "
+sources_columns = "row | type | freshness | coverage"
+row_ref = "row {n}"
+
+[rules.filter]
+text = "First look at which axis the query's primary requirement lands on: for authority keep only the rows with type = official, for freshness only the rows with freshness = fresh, for coverage only the rows with coverage = full."
+
+[rules.rank]
+text = "When more than one row survives, compare in order: type (official > community > unknown) then freshness (fresh > recent > stale) then coverage (full > partial > none) then the lower row number; take the first."
+
+[rules.abstain]
+text = "When no row survives, the answer is \"none of them fit\" — never settle for less."
+
+[dims]
+need = "Primary requirement"
+
+[prompt]
+intro = "Below is a lookup scenario. Write **one query sentence** (a single line) that says what you are looking for and what you need from the source."
+bullet = "- {dim}: {brief} ({hint})"
+rules = [
+  "Write **one** query, a single line; no line breaks, no Markdown fences",
+  "Do not talk about the candidate table: avoid \"candidate source / source table / row number\", and never emit a vertical bar",
+  "The requirement must be obvious at a glance: authority, freshness, or coverage — exactly one",
+  "For authority: write it as looking for a **first-hand statement** (official docs, the standard itself, the original announcement)",
+  "For freshness: write it as looking for **the latest** (newest release, most recent progress)",
+  "For coverage: write it as looking for **the most complete round-up** (full list, end-to-end comparison)",
+  "Do not name any real company, product, or repository — invent the names",
+  "Write everything in {language}",
+]
+
+[feature.need.authority]
+brief = "this time you want a **first-hand statement**"
+hint = "write it as looking for official docs, the standard itself, or the original announcement"
+
+[feature.need.freshness]
+brief = "this time you want **the latest**"
+hint = "write it as looking for the newest release or the most recent progress"
+
+[feature.need.coverage]
+brief = "this time you want **the most complete round-up**"
+hint = "write it as looking for a full list or an end-to-end comparison"
+
+[verify]
+intro = "Below is a source-selection item. Reverse-engineer it literally: which axis does this query's primary requirement land on?"
+state_header = "[Item]"
+questions_header = "[Question]"
+option_line = "   - {name}: {desc}"
+
+[fam.need]
+q = [
+  "Which axis does this query's primary requirement land on?",
+  "Reading the query, which aspect of a source does it care about most?",
+  "Which axis does this sentence put its requirement on?",
+]
+[fam.need.criteria]
+authority = "Authority: it wants a first-hand, official statement"
+freshness = "Freshness: it wants the most recent progress or release"
+coverage = "Coverage: it wants a round-up that covers the whole topic"
+
+[fam.pick]
+q = [
+  "By the selection rules, which source should be used?",
+  "Which row of this candidate table should be picked?",
+  "Which row should serve as the source for this lookup?",
+]
+[fam.pick.opt]
+none = "None of them fit: no row meets the primary requirement"
+
+[fam.enough]
+q = [
+  "Is there a row in the table that meets the primary requirement?",
+  "Does a qualifying row exist in this candidate table?",
+  "Filtering by the primary requirement, does anything survive?",
+]
+[fam.enough.criteria]
+true = "Yes: at least one row meets the primary requirement"
+false = "No: not a single row qualifies"
+
+[fam.cover]
+q = [
+  "What coverage tier does the chosen source fall in?",
+  "Which coverage tier does the row to be used fall in?",
+  "After applying the selection rules, what is its coverage tier?",
+]
+levels = [
+  "Tier 0: almost no coverage (none)",
+  "Tier 1: covers only part of it (partial)",
+  "Tier 2: covers it completely (full)",
+]
+
+[fam.near_miss]
+q = [
+  "Is there a row that misses only the primary requirement and is best on the other two?",
+  "Does the table contain a row that would be usable if only the primary requirement were met?",
+  "Does a row exist that is top-tier on both other axes but not on the primary requirement?",
+]
+[fam.near_miss.criteria]
+true = "Yes: one row misses only the primary requirement"
+false = "No: every row misses at least one more axis besides the primary requirement"

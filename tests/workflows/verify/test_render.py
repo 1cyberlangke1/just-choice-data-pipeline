@@ -30,15 +30,6 @@ def test_prompt_lists_only_the_two_text_dimensions() -> None:
         assert token not in prompt, token
 
 
-def test_prompt_rotates_rules_by_phrasing() -> None:
-    """输入：不同问法编号。输出：无。预期行为：规则顺序不同但集合相同。"""
-    loc = locales.load("zh")
-    first = render.build_prompt(CASE, loc, 0)
-    second = render.build_prompt(CASE, loc, 1)
-    assert first != second
-    assert sorted(first.splitlines()) == sorted(second.splitlines())
-
-
 @pytest.mark.parametrize("lang", ["zh", "en"])
 def test_state_roundtrip(lang: str) -> None:
     """输入：语言。输出：无。

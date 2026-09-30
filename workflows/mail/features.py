@@ -58,6 +58,48 @@ LINK: Final[tuple[str, ...]] = (
     *tuple(f"{target}_{anchor}" for target in LINK_TARGETS for anchor in ANCHORS),
 )
 
+#: 链接地址的两个**渲染期变量池**（范式 §9.25 / §9.60）：URL 的路径段与 IP 都是机器格式、
+#: 与语言无关，所以放在这里（同 `REQUIRED_SKILL` 那种结构常量），不进语言文件。取值按**样本
+#: 序号**取（见 `MailSpec.link_path` / `link_ip`），所以同一次 run 内逐条不同。
+#:
+#: **为什么要有它**：提示词原来直接给了成品地址（`http://203.0.113.47/verify` 之类），真机
+#: `mail-kimi-ood-c` 六条里五条把这个 IP 原样抄了下来——「给形状」被模型读成了「给例子」
+#: （范式 §9.25）。池里的 IP 全部取 RFC 5737 的文档网段（192.0.2.0/24、198.51.100.0/24、
+#: 203.0.113.0/24），不会指向真实主机。
+LINK_PATHS: Final[tuple[str, ...]] = (
+    "verify",
+    "login",
+    "confirm",
+    "update",
+    "activate",
+    "signin",
+    "unlock",
+    "review",
+)
+LINK_IPS: Final[tuple[str, ...]] = (
+    "203.0.113.47",
+    "198.51.100.23",
+    "192.0.2.88",
+    "203.0.113.9",
+    "198.51.100.7",
+    "192.0.2.141",
+)
+
+
+def link_path_at(seq: int) -> str:
+    """输入：样本序号。输出：这一条要写的链接路径段。
+
+    预期行为：按池长回绕（序号一定非负），纯函数——同一次 run 里序号唯一，所以同一批的路径段
+    逐条不同，模型不会把整批塌成同一个地址。
+    """
+    return LINK_PATHS[seq % len(LINK_PATHS)]
+
+
+def link_ip_at(seq: int) -> str:
+    """输入：样本序号。输出：这一条要写的 IP 地址（池里全是文档网段）。预期行为：按池长回绕。"""
+    return LINK_IPS[seq % len(LINK_IPS)]
+
+
 # 语气维**只描述语域**，不承载任何内容信号。原先的 `threatening` 取值把「施压」又
 # 表达了一遍，于是 `lure=none` + `tone=threatening` 的清单自相矛盾：一边要求
 # 「通篇没有任何施压」，一边要求「用警告与后果的措辞」，模型只能摆烂。

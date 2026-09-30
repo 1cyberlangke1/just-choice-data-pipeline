@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from itertools import combinations
 from typing import Final
 
+from jc.contract import parse_hits
 from jc.cover import cover_dims
 from jc.jsontypes import JsonValue
 
@@ -102,11 +103,6 @@ def hit_set(text: str) -> tuple[str, ...]:
 def hits_of(text: str) -> str:
     """输入：待审正文。输出：命中组合的规范串（与 `HIT_SETS` 里的写法一致）。"""
     return "+".join(hit_set(text))
-
-
-def parse_hits(value: str) -> tuple[str, ...]:
-    """输入：命中组合的规范串。输出：条款编号元组。预期行为：空串给空元组。"""
-    return tuple(part for part in value.split("+") if part)
 
 
 def has_decoy(text: str) -> bool:

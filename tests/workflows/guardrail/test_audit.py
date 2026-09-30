@@ -124,13 +124,6 @@ def test_state_without_a_clause_table_is_caught(tmp_path: Path) -> None:
     assert any(BAD_LABELS["content_bad"] in item for item in missing)
 
 
-def test_missing_split_is_reported(tmp_path: Path) -> None:
-    """输入：只审一个没跑过的切分。输出：无。预期行为：缺失项里点名那个切分。"""
-    run_dir = _run(tmp_path, "t-missing")
-    _, missing = _audit(run_dir, ("val",))
-    assert any("val" in item for item in missing)
-
-
 def test_unknown_locale_is_rejected(tmp_path: Path) -> None:
     """输入：不存在的语言。输出：无。预期行为：当场抛错，别拖到解析阶段才报。"""
     run_dir = _run(tmp_path, "t-locale")

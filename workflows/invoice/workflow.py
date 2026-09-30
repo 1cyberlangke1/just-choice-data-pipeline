@@ -205,6 +205,14 @@ class InvoiceWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：roundtrip / label）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：空表（纯构造族，没有「模型写的正文」）。
+
+        预期行为：`needs` 为空，state 全由代码按语言模板拼，天然一致。
+        """
+        del sample
+        return {}
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:
@@ -226,15 +234,21 @@ class InvoiceWorkflow:
                 "types": Counter(),
                 "index_bad": 0,
                 "tax_mismatch": 0,
+                "bad_lines_on_short_docs": 0,
                 "unknown_families": Counter(),
             }
+            #: 有「至少 `MIN_LINES_FOR_BAD_LINES` 行」的单据时，`bad_lines` 才该出现
+            long_docs = 0
             if not path.exists():
                 missing.append(f"{split}: 产物不存在（{path.name}）")
                 report[split] = counts
                 continue
             for _, row in jsonio.iter_jsonl(path):
                 counts["samples"] += 1
-                has_tax = "tax" in parse.parse_document(row["state"], labels).fields
+                parsed = parse.parse_document(row["state"], labels)
+                has_tax = "tax" in parsed.fields
+                if len(parsed.items) >= questions.MIN_LINES_FOR_BAD_LINES:
+                    long_docs += 1
                 for qid, question in row["questions"].items():
                     family = family_of(qid)  # 去掉同族后缀（`bad_lines_2` -> `bad_lines`）
                     counts["families"][family] += 1
@@ -247,9 +261,13 @@ class InvoiceWorkflow:
                             counts["index_bad"] += 1
                     elif family == "tax_consistent" and not has_tax:
                         counts["tax_mismatch"] += 1
+                    elif family == "bad_lines" and len(parsed.items) < questions.MIN_LINES_FOR_BAD_LINES:
+                        counts["bad_lines_on_short_docs"] += 1
             for family in questions.FAMILIES:
                 if family == "tax_consistent":
                     continue  # 条件题族：只在有税额行的单据上出，不要求每份都有
+                if family == "bad_lines" and not long_docs:
+                    continue  # 条件题族：只在够长的单据上出（档位表的第 4 档取不到就不问）
                 if counts["families"][family] == 0:
                     missing.append(f"{split}: 题族 {family} 一条都没出")
             if counts["index_bad"]:
@@ -257,6 +275,11 @@ class InvoiceWorkflow:
             if counts["tax_mismatch"]:
                 missing.append(
                     f"{split}: {counts['tax_mismatch']} 条 tax_consistent 出现在没有税额行的单据上"
+                )
+            if counts["bad_lines_on_short_docs"]:
+                missing.append(
+                    f"{split}: {counts['bad_lines_on_short_docs']} 条 bad_lines 出现在"
+                    f"不足 {questions.MIN_LINES_FOR_BAD_LINES} 行的单据上"
                 )
             if counts["unknown_families"]:
                 missing.append(f"{split}: 出现未知题族 {dict(counts['unknown_families'])}")

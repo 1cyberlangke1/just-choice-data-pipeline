@@ -5,9 +5,13 @@
 # 预期行为：与 `zh.toml` 同一套结构（见那边的说明）；两边的署名前缀与提示框关键词
 # **互不重叠**，`locales.merged()` 才能拿来当 `reparse` 的合并读法。
 
+lang = "en"
+language_name = "English"
+
 [doc]
 context = "Below is a plain-text memo with its markup stripped: no hashes, no bullet characters, no quote markers, and the prose has been hard-wrapped. Every line starts with a line id such as L001. A \"content block\" means: a run of consecutive lines forms one block, blocks are separated by blank lines, and inside a list each item counts as its own block."
 intro = "You write the prose for a plain-text memo. The topic is \"{topic}\". All markup will be stripped and the prose will be hard-wrapped to a fixed width, so the text must contain **no markup at all**."
+lang_rule = "Write every block of prose in {language}, not in any other language (commands inside command blocks stay as they are)."
 mark_rule = "Do not use: hash (#), asterisk (*), dash plus space (- ), greater-than (> ), backticks or underscores; do not write Markdown tables or code fences."
 slot_header = "Below are the content blocks of this memo, in order. Write the text for each one:"
 list_sep = ", "

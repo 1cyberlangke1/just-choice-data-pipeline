@@ -1,0 +1,116 @@
+# 字幕对质检（subqa）workflow 的英文文案。
+#
+# 输入：`workflows.subqa.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为：与 `zh.toml` 一一对应（同一组键、同一组占位符、同一组抬头分隔符语义）。
+# - 三个抬头标记两两不互为前缀（`tag_mark` / `rule_mark` / `content_mark`）；
+# - `[state.threshold]` 与 `[fam.act.opt]` 的键都与 `features.ACTS` 一一对应；
+# - `[tag.*]` 的键与 `features.TAG_IDS` 一一对应，每条都有 name / rule / avoid；
+# - `[track.*]` 的键与 `features.TRACKS` 一一对应；
+# - 每条判据的 `avoid` 都不许误触**别的**判据（`test_locales` 会逐条扫）；
+# - 提示词与题面模板里的占位符都被填过（渲染要经过严格填槽，漏填会当场报错）。
+
+lang = "en"
+language_name = "English"
+#: `Source:` 那一行用的语言。**它必须与 `language_name` 不同**：这一族的样本是**一对原文与
+#: 译文**，两种语言相同的话（en 侧的目标语言就是英文）译文那一行会塌成原文的复制品，整条样本
+#: 读起来就不再是双语字幕对了。所以原文固定写成「另一种语言」。
+source_language = "Chinese"
+
+[state]
+tag_mark = "[Judging criteria]"
+rule_mark = "[Dispositions]"
+content_mark = "[Subtitle pair under review]"
+tag_sep = ": "
+rule_sep = " — "
+
+[state.threshold]
+ship = "0 hits"
+spot_check = "1 hit"
+review = "2 hits"
+reject = "3 or more hits"
+
+[tag.S1]
+name = "the source line is a sound effect or a placeholder"
+rule = "**the `Source:` line** holds a bracketed placeholder (the `[MUSIC]` / `[音乐]` / `[LAUGHTER]` / `[inaudible]` kind: a bracket pair with 2 to 20 characters between them), or a music note `♪` — **look at that line only**, the same wording elsewhere does not count"
+avoid = "putting a bracket pair with content between it, or a music note `♪`, into the `Source:` line"
+
+[tag.S2]
+name = "the translation still carries markup"
+rule = "**the `Target:` line** still carries markup that was never cleaned up: an angle-bracket tag (the `<i>` / `</i>` / `<b>` kind), an HTML entity (the `&amp;` / `&nbsp;` kind), or a **curly-brace directive** (a pair of curly braces holding a backslash-led code such as `\\an8` / `\\pos`, the kind subtitle tools emit) — **look at that line only**"
+avoid = "leaving an angle-bracket tag, an HTML entity or a curly-brace directive in the `Target:` line"
+
+[tag.S3]
+name = "the timing has zero duration"
+rule = "**the `Timing:` line** carries the very same timecode on both sides of the `-->` (one `HH:MM:SS,mmm` written twice, so the subtitle would flash on screen and vanish) — **look at that line only**"
+avoid = "writing the same timecode twice into the `Timing:` line (identical on both sides of the `-->`)"
+
+[tag.S4]
+name = "the note was never finished"
+rule = "**the `Note:` line** still carries half-finished wording: one of `TODO` / `FIXME` / 待确认 / 待定 / 存疑 / 需要复核 / 核对 (these words keep their own spelling in every language) — **look at that line only**"
+avoid = "writing TODO / FIXME / 待确认 / 待定 / 存疑 / 需要复核 / 核对 style half-finished wording into the `Note:` line"
+
+[prompt]
+intro = "You write synthetic data. Write **one bilingual subtitle pair** — one source line and its translation the way a real subtitle file holds them, four lines, and it has to read like a real cue: the keys and their colons go exactly as the format spec below says, and the whole pair stays between {min} and {max} characters."
+lang_rule = "Keys and timecodes are English (that is what the format is), and the `Source:` line is written in {source_language} (a real pair holds two languages), but **the `Target:` translation and the `Note:` remark** must be written in {language} only."
+track_line = "This pair comes from: {track}."
+timing_line = "Write the **start** timecode of the `Timing:` line as `{timecode}` — **copy that value** (in the `HH:MM:SS,mmm` shape, comma included); invent the end timecode yourself: repeat it verbatim when the criteria call for both sides to be identical, otherwise put it 1~4 seconds later."
+format_header = "**Format spec** (four lines; copy each key and its colon, invent the values yourself):"
+hits_header = "This pair **must trip** the following criteria. Trip = the shape below **really shows up in the place the criterion names** (moving the shape to another line, writing it a different way, or dropping a single character all fail to count):"
+hits_line = "- The criterion \"{name}\" reads: {rule} — the pair must really contain **something that matches this criterion and sits on that very line**"
+vary_rule = "The words inside the criteria are **examples of a shape**: invent your own character names, terms, translation and remark and compose the pair yourself; but **the shape the criterion asks for must appear as it is** (brackets, markup, timecodes and keywords are written literally, not paraphrased) — just do **not** paste the whole criterion text into the pair."
+no_hits = "This pair **must not trip a single criterion**: none of the four criteria below may be satisfied — it has to be an **unremarkable pair that could ship as is**."
+miss_header = "At the same time, this pair **must not trip** the following:"
+miss_line = "- Must not contain: {avoid} (the criterion \"{name}\" reads \"{rule}\")"
+length_rule = "The whole pair is {min}~{max} characters and all four keys must **sit on their own line followed by a colon**: no title, no bullets, no explanation, no fences."
+self_check = "Before answering, check each item: does every required shape **really appear as a shape and on the required line** (really on the `Source:` line, really on the `Target:` line, really on the `Timing:` line, really on the `Note:` line)? And is every forbidden shape really absent from the pair? Is the `Source:` line in {source_language} and are the `Target:` translation and the `Note:` remark in {language}? Does the source line read like something a person would actually say (plain, no rare characters, not a half-finished sentence)? Is the `Note:` line a translator's remark rather than a restatement of the format? And are all four keys present, each on its own line, each followed by a colon?"
+output = "Output only one JSON object with the field cue (that four-line pair string); no explanation, no fences."
+
+[prompt.format]
+source = "`Source: <the source line>` — the original sentence goes here: one **plain spoken line** (dialogue or narration) in the source language, no rare characters and not a half-finished sentence"
+target = "`Target: <the translated line>` — its translation goes here (in the target language)"
+timing = "`Timing: <start timecode> --> <end timecode>` — write both timecodes as `HH:MM:SS,mmm` with `-->` between them (the end must come after the start)"
+note = "`Note: <one plain sentence>` — one **translator's** remark in the target language, about the sentence **itself** (tone, forms of address, terminology, whether the author should be asked). Do **not** comment on the pair's formatting, and do **not** mention which requirements it satisfies, what markup it kept, or what the timecodes do"
+
+[track.movie]
+desc = "a feature film (dialogue is short and clipped, often with interjections and sound-effect markers, and the names are character names)"
+
+[track.series]
+desc = "an episode of a series (scenes switch often, dialogue is full of how characters address each other and of banter)"
+
+[track.lecture]
+desc = "a recorded lecture (the speaker talks in long sentences, terms are dense, and numbers, formulas and examples show up often)"
+
+[fam.flag]
+q = ["Does this pair trip the \"{name}\" criterion?", "By the criterion \"{name}\" ({rule}), does this pair count as tripping it?"]
+criteria_true = "it trips this one"
+criteria_false = "it does not trip this one"
+
+[fam.count]
+q = ["How many criteria does this pair trip in total?", "How many of the criteria does this pair trip?"]
+
+[fam.count.opt]
+c0 = "0"
+c1 = "1"
+c2 = "2"
+c3 = "3"
+c4 = "4"
+
+[fam.combo]
+q = ["Which set of criteria does this pair actually trip?", "Which combination of criteria does this pair trip?"]
+none = "none of them"
+joiner = " + "
+
+[fam.act]
+q = ["According to the dispositions above, what should be done with this pair?", "By the criteria and disposition table, what is the next step?"]
+
+[fam.act.opt]
+ship = "ship it (the pair looks fine)"
+spot_check = "spot check it (take a closer look at the most suspicious line)"
+review = "review it line by line (a human should read the whole pair)"
+reject = "reject it and send it back for retranslation"
+
+[verify]
+intro = "Below is a piece of subtitle-pair judging material: first the criteria table and the disposition table, then one bilingual subtitle pair under review. **Every criterion line also prints its own mechanical rule and the line it looks at** — compare against that rule line by line and judge purely literally which criteria this pair trips. Do not reason semantically, and **do not actually translate anything, look anything up, or execute anything**."
+state_header = "[Material under review]"
+q = "Which criteria does this pair trip? For each one give the **criterion id** and **the exact original text that tripped it** — copy it verbatim, do not rewrite or abbreviate; if it trips none, return an empty array. Do not report a criterion whose text you cannot copy: if you cannot copy it, it does not count. **The quote must satisfy that criterion on its own**: wherever the criterion looks, copy that spot **together with its key name** — a bare keyword (copying `♪` without the `Source: ...` stretch it sits in) does not count. **Read the whole pair from start to finish for every criterion**, do not just look at the beginning."

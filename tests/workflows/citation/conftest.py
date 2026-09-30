@@ -75,12 +75,17 @@ def state_of(
 
 
 def spec_for(
-    case: features.CitationCase, phrasing: int = 0, split: str = "train", seq: int = 1
+    case: features.CitationCase,
+    phrasing: int = 0,
+    split: str = "train",
+    seq: int = 1,
+    topic: int = 0,
 ) -> CitationSpec:
-    """输入：case、问法编号、切分、序号。输出：真值规格。"""
+    """输入：case、问法编号、切分、序号、题材方向下标。输出：真值规格。"""
     return CitationSpec(
         case=case,
         phrasing=phrasing,
+        topic=topic,
         split=split,
         seq=seq,
         plan=features.plan_for(case, phrasing),

@@ -126,6 +126,15 @@ class Workflow(Protocol):
     def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
         """输入：判别器名单、语言。输出：判别器实例。"""
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> Mapping[str, str]:
+        """输入：契约样本。输出：{字段名: 必须与**声明语言**一致的文本}（空 = 没有自然语言正文）。
+
+        预期行为：只报**自然语言正文**的字段——代码、命令行、ASCII 图、编号、选项名一律不报
+        （那些不该按语言判，报进去就是把好数据当坏数据）。通用层拿它查「产物文本与声明语言
+        是否一致」（`jc.language`），审计逐行调它；**它是纯函数，只读样本，不看调用方给的语言**
+        ——语言由产物自己的 manifest 说了算。
+        """
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

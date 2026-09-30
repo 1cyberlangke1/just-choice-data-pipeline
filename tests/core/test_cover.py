@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import random
+
 import pytest
 
 from jc import cover
@@ -107,3 +109,42 @@ def test_impossible_constraints_are_reported() -> None:
 
     with pytest.raises(ValueError, match="没有任何可选取值"):
         cover.cover_dims(dims, max_full=1, allow_pair=rule)
+
+
+def test_row_allowed_reports_any_banned_pair() -> None:
+    """输入：一行组合、取值对约束。输出：断言结果。
+
+    预期行为：逐对比对，**任意一对**被禁就 False，全允许才 True——workflow 的
+    `compatible` 就是拿它当「这组特征写得出来吗」。
+    """
+    names = ["a", "b", "c"]
+    row = {"a": "1", "b": "2", "c": "3"}
+
+    def allow_all(dim_a: str, value_a: str, dim_b: str, value_b: str) -> bool:
+        """任何取值对都允许。"""
+        return True
+
+    def ban_a_with_c(dim_a: str, value_a: str, dim_b: str, value_b: str) -> bool:
+        """禁掉 `a` 与 `c` 的任何取值组合。"""
+        return {dim_a, dim_b} != {"a", "c"}
+
+    assert cover.row_allowed(names, row, allow_all) is True
+    assert cover.row_allowed(names, row, ban_a_with_c) is False
+
+
+def test_near_miss_combos_are_close_to_truth_and_never_the_truth() -> None:
+    """输入：判据编号表、真值组合、固定随机源。输出：断言结果。
+
+    预期行为：给 `count` 个互不相同的组合，都不等于真值、都离真值很近（差一两处），
+    且同一入参必得同一结果——干扰项要难分辨，但不能变成答案。
+    """
+    tag_ids = ("A", "B", "C", "D")
+    truth = ("A", "C")
+    got = cover.near_miss_combos(tag_ids, truth, random.Random(7), count=3)
+    assert len(got) == 3
+    assert len(set(got)) == 3
+    assert truth not in got
+    for combo in got:
+        assert set(combo) <= set(tag_ids)
+        assert len(set(combo) ^ set(truth)) <= 2
+    assert got == cover.near_miss_combos(tag_ids, truth, random.Random(7), count=3)

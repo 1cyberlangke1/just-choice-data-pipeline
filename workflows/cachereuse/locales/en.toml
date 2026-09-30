@@ -1,0 +1,96 @@
+# 缓存复用判定（cachereuse）的英文文案。
+# 与中文侧一一对应：写法表的下标含义、判据条目、题族名与选项键都相同，
+# 只有「怎么读」不同。写法表必须让**不同键之间不撞词**（由 test_locales.py 锁住）。
+
+[meta]
+request = "Cache reuse request"
+source = "Cache source"
+cached = "Cached trace"
+current = "Current trace"
+sep = ": "
+quote_open = " \""
+quote_close = "\""
+
+[flavor]
+web = "Web app"
+desktop = "Desktop app"
+kiosk = "Self-service kiosk"
+
+[action]
+open = ["Open", "Bring up"]
+click = ["Click", "Tap"]
+type = ["Type into", "Enter text in"]
+choose = ["Choose", "Pick"]
+scroll = ["Scroll", "Swipe"]
+confirm = ["Confirm", "Submit"]
+
+[target]
+search_box = ["Search box", "Search field"]
+result_list = ["Result list", "Results panel"]
+filter_menu = ["Filter menu", "Filter panel"]
+sort_menu = ["Sort menu", "Sort panel"]
+cart_button = ["Cart button", "Cart icon"]
+address_field = ["Address field", "Shipping address field"]
+pay_button = ["Pay button", "Payment button"]
+help_link = ["Help link", "Help entry"]
+
+[rules]
+lines = [
+  "Rules (compare the two traces step by step, same step numbers; normalize the wording first):",
+  "1. Each step is made of two keys: an action and an element. Synonymous wordings are the same key (for example \"Click\" and \"Tap\" are the same action).",
+  "2. If both the action and the element are the same after normalization, the step is equivalent; otherwise the step differs.",
+  "3. The reusable length is the number of equivalent steps counted from step 1 with no gap. Once a step differs, that step and every step after it are unusable (a recorded sequence cannot be replayed out of order), even if the traces match again later.",
+  "4. Reuse bands, by the reusable length:",
+  "  - All but the last step: reusable length = total steps - 1;",
+  "  - About half: reusable length = half of the total steps, rounded up;",
+  "  - First step only: reusable length = 1;",
+  "  - Nothing usable: reusable length = 0.",
+  "5. Where the first differing step number falls: step 1 / step 2 / some middle step (neither step 1, step 2, nor the last step) / the last step.",
+  "6. What differs at the divergence step: the action alone (same element) means the action differs; the element alone (same action) means the element differs.",
+  "7. Reusable length x 2 >= total steps means \"at least half\" (equality counts).",
+]
+
+[fam.reuse_band]
+q = [
+  "How far can this cache be reused? Give a band.",
+  "Assign the reuse band for this cache according to the rules.",
+  "Which reuse band does the cache fall into?",
+]
+levels = [
+  "All but the last step - reusable length = total steps - 1",
+  "About half - reusable length = half of the total steps, rounded up",
+  "First step only - reusable length = 1",
+  "Nothing usable - reusable length = 0",
+]
+
+[fam.diverge_at]
+q = [
+  "Which band does the first differing step number fall into?",
+  "At which band do the two traces first differ?",
+  "Where does the first difference show up?",
+]
+[fam.diverge_at.criteria]
+first = "Step 1"
+second = "Step 2"
+middle = "Some middle step - neither step 1, step 2, nor the last step"
+last = "The last step"
+
+[fam.diff_kind]
+q = [
+  "What differs at step {step}?",
+  "At step {step}, the first step that differs, is it the action or the element?",
+  "Compared with the cache, which part of step {step} differs?",
+]
+[fam.diff_kind.criteria]
+action = "The action differs - same element, a different action"
+target = "The element differs - same action, a different element"
+
+[fam.reuse_half]
+q = [
+  "Does the reusable length reach at least half of the total steps?",
+  "Is at least half of the cached trace still usable?",
+  "Can at least half of the steps be reused?",
+]
+[fam.reuse_half.criteria]
+true = "Yes - reusable length x 2 >= total steps (equality counts)"
+false = "No - reusable length x 2 < total steps"

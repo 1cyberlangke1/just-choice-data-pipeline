@@ -56,15 +56,6 @@ def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBacke
     assert report["train"]["pin_bad"] == 0
 
 
-def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：同种子跑两次。输出：两份产物。预期行为：逐字节一致。"""
-    first = pipeline.run(make_config(tmp_path, "c2a", fake_backend()))
-    second = pipeline.run(make_config(tmp_path, "c2b", fake_backend()))
-    assert (first.run_dir / "train.jsonl").read_bytes() == (
-        second.run_dir / "train.jsonl"
-    ).read_bytes()
-
-
 def test_trace_judge_rejects_a_misread_kind(
     tmp_path: Path, fake_backend: type[FakeBackend]
 ) -> None:

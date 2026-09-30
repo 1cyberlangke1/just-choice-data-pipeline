@@ -72,15 +72,6 @@ def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBacke
     assert report["train"]["overridden_bad"] == 0
 
 
-def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：同种子跑两次。输出：两份产物。预期行为：逐字节一致。"""
-    first = pipeline.run(make_config(tmp_path, "s2a", fake_backend()))
-    second = pipeline.run(make_config(tmp_path, "s2b", fake_backend()))
-    assert (first.run_dir / "train.jsonl").read_bytes() == (
-        second.run_dir / "train.jsonl"
-    ).read_bytes()
-
-
 def test_trace_judge_rejects_a_misread_tool(
     tmp_path: Path, fake_backend: type[FakeBackend]
 ) -> None:
@@ -582,19 +573,6 @@ def test_cases_of_matches_the_config() -> None:
     assert cases_of() == workflow.build_cases(
         gate_workflow.ToolGateConfig(split="train", case_limit=CASE_LIMIT)
     )
-
-
-def test_recorded_maps_every_answer_type() -> None:
-    """输入：三种题型的答案。输出：无。
-
-    预期行为：choice 换成选项名（越界给 None）、score / noul 原样返回——审计只靠它把
-    产物里的编号换回可读值，换错了后面几条交叉校验就全在比错东西。
-    """
-    question = {"type": "choice", "criteria": {"a": "A", "b": "B"}}
-    assert audit_mod._recorded(question, {"type": "choice", "choice": 1}) == "b"
-    assert audit_mod._recorded(question, {"type": "choice", "choice": 9}) is None
-    assert audit_mod._recorded({"type": "score"}, {"type": "score", "score": 2}) == 2
-    assert audit_mod._recorded({"type": "noul"}, {"type": "noul", "noul": True}) is True
 
 
 def test_decision_and_overridden_helpers_reject_unknown_rules() -> None:

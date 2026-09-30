@@ -83,30 +83,10 @@ CHOICE_FAMILIES: Final[tuple[str, ...]] = ("tool",)
 NOUL_FAMILIES: Final[tuple[str, ...]] = ("stated_", "member_")
 
 
-def _choice(
-    family: str, instructions: str, options: dict[str, str], answer: str
-) -> LabeledQuestion:
-    """输入：题族、题面、选项、金答案（选项名）。输出：一道 choice 题。
-
-    预期行为：选项描述重复直接报错——两个选项看起来一样，考生没法分辨，是构造 bug。
-    """
-    if len(set(options.values())) != len(options):
-        raise ValueError(f"{family} 的选项描述重复：{options}")
-    if answer not in options:
-        raise ValueError(f"{family} 的答案 {answer!r} 不在选项里：{sorted(options)}")
-    return LabeledQuestion(
-        family, {"type": "choice", "instructions": instructions, "criteria": options}, answer
-    )
+from jc.assemble import choice as _choice
 
 
-def _noul(
-    family: str, instructions: str, criteria: dict[str, str], answer: bool
-) -> LabeledQuestion:
-    """输入：题族、题面、判据（true / false 两行文案）、金答案。输出：一道 noul 题。"""
-    return LabeledQuestion(
-        family, {"type": "noul", "instructions": instructions, "criteria": dict(criteria)},
-        answer, shuffle=False,
-    )
+from jc.assemble import noul as _noul
 
 
 def _fill(text: str, **slots: str) -> str:

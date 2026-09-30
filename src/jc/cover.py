@@ -19,8 +19,9 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
+import random
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from itertools import product
+from itertools import combinations, product
 from typing import Final
 
 # 全枚举的规模上限：超过就换成对覆盖（PLAN 3.3 定的口径）。
@@ -38,8 +39,12 @@ def _always(dim_a: str, value_a: object, dim_b: str, value_b: object) -> bool:
     return True
 
 
-def _row_allowed(names: list[str], row: Mapping[str, JsonValue], rule: PairRule) -> bool:
-    """输入：维度名顺序、一行组合、取值对约束。输出：这一行的所有取值对是否都允许。"""
+def row_allowed(names: list[str], row: Mapping[str, JsonValue], rule: PairRule) -> bool:
+    """输入：维度名顺序、一行组合、取值对约束。输出：这一行的所有取值对是否都允许。
+
+    预期行为：`names` 决定比对的先后（A 在 B 前），只比**两两**取值——单维取值的合法性由
+    维度表自己保证。workflow 拿它当「这组特征写得出来吗」的判据（`compatible`）。
+    """
     for index, left in enumerate(names):
         for right in names[index + 1 :]:
             if not rule(left, row[left], right, row[right]):
@@ -71,7 +76,7 @@ def cover_dims(
         rows: list[dict[str, JsonValue]] = []
         for combo in product(*values):
             row = dict(zip(names, combo, strict=True))
-            if _row_allowed(names, row, rule):
+            if row_allowed(names, row, rule):
                 rows.append(row)
         return rows
     return _pairwise(names, values, rule)
@@ -189,3 +194,29 @@ def _pairwise(
                 pending.discard((left, row[left], right, row[right]))
         rows.append({names[index]: values[index][row[index]] for index in range(len(names))})
     return rows
+
+
+def near_miss_combos(
+    tag_ids: Sequence[str],
+    truth: tuple[str, ...],
+    rng: random.Random,
+    count: int = 3,
+) -> tuple[tuple[str, ...], ...]:
+    """输入：判据编号表、真值组合、随机源、要几个。输出：若干个「最像真值」的干扰组合。
+
+    预期行为：先按「与真值只差几处」排序，再从最近的一批里抽 `count` 个——差得越少越难分辨，
+    题目才有区分度；抽完按 (条数, 编号) 排好，保证同一入参必得同一结果。
+    真值本身永远不在候选里（干扰项不能等于答案）。
+    """
+    truth_set = set(truth)
+    near = sorted(
+        (
+            combo
+            for size in range(len(tag_ids) + 1)
+            for combo in combinations(tag_ids, size)
+            if set(combo) != truth_set
+        ),
+        key=lambda combo: (len(set(combo) ^ truth_set), combo),
+    )
+    picked = rng.sample(near[:8], count)
+    return tuple(sorted(picked, key=lambda combo: (len(combo), combo)))

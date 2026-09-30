@@ -298,14 +298,6 @@ def test_accessors_tolerate_non_text_state() -> None:
     assert render.gate_of(None, loc) == ()
 
 
-def test_cells_returns_none_for_a_bare_prefix() -> None:
-    """输入：不是数据行的几行。输出：无。预期行为：只有带前缀且有内容的行才算数据行。"""
-    loc = locales.load("zh")
-    assert render._cells("- ", loc) is None
-    assert render._cells("不是数据行", loc) is None
-    assert render._cells("- a | b", loc) == ("a", "b")
-
-
 def test_parse_state_on_non_text_and_unrelated_text_is_empty() -> None:
     """输入：非文本 state、一段无关文本。输出：无。预期行为：都给空结构，不抛异常。"""
     parsed = render.parse_state({"not": "text"})

@@ -135,12 +135,18 @@ def _partial_cut(text: str) -> int:
     return cut
 
 
-def build_prompt(loc: dict[str, JsonValue]) -> str:
+def build_prompt(loc: dict[str, JsonValue], topic: int) -> str:
     """组装提示词。
 
-    输入：语言字典。输出：完整提示词（不含答案）。
+    输入：语言字典、题材方向下标。输出：完整提示词（不含答案）。
     预期行为：**每条硬性要求都写清楚**——节数句数、每句一个具体数字、最短长度、两两不重复。
     这些是「受控合成」的规格：判据全在 `check_draft` 里机械复核，模型写歪了当场重渲染。
+    **语言约束紧跟开场白**：真机 en 侧出过整篇写成中文的样本（汉字占比 0.770）——提示词
+    通篇是目标语言并不足以让模型不换语言，得有一句明说的。
+
+    为什么还要给一个**题材方向**（范式 §9.57）：首版**一个样本级变量都没有**，同切分的提示词
+    逐字相同，标题当场塌成同一个字符串（真机 9 条 en 产物全是 `System Log Report 2026`）。
+    方向由 `spec.topic` 抽出来、只影响短文与标题怎么写，与判据无关。
     """
     prompt = loc["prompt"]
     return "\n".join(
@@ -149,6 +155,10 @@ def build_prompt(loc: dict[str, JsonValue]) -> str:
                 sections=features.SECTIONS,
                 per=features.SENTENCES_PER_SECTION,
                 n=features.SENTENCE_COUNT,
+            ),
+            str(prompt["lang_rule"]).format(language=loc["language_name"]),
+            str(prompt["topic_line"]).format(
+                topic=locales.pick(loc["prompt"]["topics"], topic)
             ),
             str(prompt["digits_rule"]),
             str(prompt["length_rule"]).format(min=MIN_SENTENCE_CHARS),
@@ -169,7 +179,7 @@ def build_task(spec: CitationSpec, loc: dict[str, JsonValue]) -> GenerationTask:
         task_id=spec.render_task_id,
         kind="choice",
         domain="citation",
-        prompt=build_prompt(loc),
+        prompt=build_prompt(loc, spec.topic),
         response_model=CitationDraft,
         spec={
             "case": spec.case.as_dict(),

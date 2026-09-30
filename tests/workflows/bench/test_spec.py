@@ -207,12 +207,12 @@ def test_the_thirty_tables_are_balanced_by_construction() -> None:
     预期行为：五族的分布都是**构造出来**的，不靠事后过滤——逐题答对恰好 450（占 900 的
     一半）、答对条数六档各 30、达标 90、最好三档各 60、差距两档各 60。逐题看还各占一半。
     """
-    hit: Counter = Counter()
-    per_item: Counter = Counter()
-    count: Counter = Counter()
-    passes: Counter = Counter()
-    best: Counter = Counter()
-    gap: Counter = Counter()
+    hit: Counter[bool] = Counter()
+    per_item: Counter[int] = Counter()
+    count: Counter[int] = Counter()
+    passes: Counter[bool] = Counter()
+    best: Counter[int] = Counter()
+    gap: Counter[int | None] = Counter()
     for name, layout in _grid(sp.TABLES):
         rows = sp.rows_of(sp.table_of(name), layout)
         for index, row in enumerate(rows):
@@ -240,11 +240,11 @@ def test_the_tiny_table_set_is_balanced_too() -> None:
     预期行为：小规格（`k0s0`..`k5s0`，六个 k 各一张）也是精确均匀的——逐题答对 90（占 180
     的一半）、条数六档各 6、达标 18、最好三档各 12、差距两档各 12。测试与冒烟跑的就是它。
     """
-    hit: Counter = Counter()
-    count: Counter = Counter()
-    passes: Counter = Counter()
-    best: Counter = Counter()
-    gap: Counter = Counter()
+    hit: Counter[bool] = Counter()
+    count: Counter[int] = Counter()
+    passes: Counter[bool] = Counter()
+    best: Counter[int] = Counter()
+    gap: Counter[int | None] = Counter()
     for name, layout in _grid(TINY_TABLES):
         rows = sp.rows_of(sp.table_of(name), layout)
         for row in rows:

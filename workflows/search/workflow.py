@@ -269,6 +269,18 @@ class SearchWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：必须与声明语言一致的正文（查询 / 标题 / 摘要）。
+
+        预期行为：只报模型写的三段文字；「来源与时效」那一行的取值词元由代码写，不报。
+        """
+        parsed = render.parse_state(sample.get("state"))
+        texts: dict[str, str] = {}
+        for name, value in (("查询", parsed.query), ("标题", parsed.title), ("摘要", parsed.snippet)):
+            if value.strip():
+                texts[name] = value
+        return texts
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

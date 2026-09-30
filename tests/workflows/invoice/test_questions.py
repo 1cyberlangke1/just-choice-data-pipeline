@@ -24,6 +24,19 @@ def test_families_for_drops_tax_consistent_without_a_tax_row(make_spec: object) 
     assert questions.families_for(make_spec(5, tax_state="ok")) == questions.FAMILIES
 
 
+def test_families_for_drops_bad_lines_on_short_docs(make_spec: object) -> None:
+    """输入：2 行 / 3 行的单据。输出：题族元组。
+
+    预期行为：`bad_lines` 的档位表是 0/1/2/3+，2 行的单据最多错 2 处、第 4 档恒取不到
+    （实测那一档被压到 0.077 的偏差），所以只在 ≥ `MIN_LINES_FOR_BAD_LINES` 行的单据上问。
+    """
+    short = make_spec(7, lines=2, defects=2)
+    assert len(short.items) == 2
+    assert "bad_lines" not in questions.families_for(short)
+    long = make_spec(7, lines=questions.MIN_LINES_FOR_BAD_LINES)
+    assert "bad_lines" in questions.families_for(long)
+
+
 @pytest.mark.parametrize("lang", LOCALES)
 def test_build_returns_one_question_per_family_in_order(lang: str, make_spec: object) -> None:
     """输入：规格、语言、问法编号。输出：题目列表。

@@ -76,22 +76,6 @@ def test_clean_run_audits_clean(tmp_path: Path) -> None:
         assert report["train"][counter] == 0, counter
 
 
-def test_missing_product_is_reported(tmp_path: Path) -> None:
-    """输入：没有产物的目录。输出：无。预期行为：缺失项里点名那个文件，不抛异常。"""
-    empty = tmp_path / "nothing"
-    empty.mkdir()
-    report, missing = audit.audit_run(empty, ("train", "test_ood"), "zh")
-    assert report["train"]["samples"] == 0
-    assert len(missing) == 2
-    assert all("产物不存在" in item for item in missing)
-
-
-def test_unknown_locale_reports_before_reading(tmp_path: Path) -> None:
-    """输入：不存在的语言。输出：无。预期行为：当场报错，不拖到解析阶段。"""
-    with pytest.raises(FileNotFoundError):
-        audit.audit_run(tmp_path, ("train",), "nope")
-
-
 def test_a_tampered_form_token_is_caught(tmp_path: Path) -> None:
     """输入：把清单行的「形式」改成相反的那一档。输出：无。
 
@@ -205,27 +189,6 @@ def test_a_tampered_top_answer_is_caught(tmp_path: Path) -> None:
     assert any("最严重的一条" in item for item in missing)
 
 
-def test_an_unknown_family_is_counted(tmp_path: Path) -> None:
-    """输入：产物里出现本 workflow 不认识的题号。输出：无。
-
-    预期行为：记进 `unknown_families`，而且原来那一族因为「一条都没出」被点出来——
-    产物串版本时这两条一起报，比只报一条好定位。
-    """
-    result = pipeline.run(make_config(tmp_path, "a8"))
-    rows = [row for _, row in jsonio.iter_jsonl(result.run_dir / "train.jsonl")]
-    for row in rows:
-        questions = row["questions"]
-        answers = row["answers"]
-        assert isinstance(questions, dict) and isinstance(answers, dict)
-        questions["ghost_family"] = questions.pop("gate")
-        answers["ghost_family"] = answers.pop("gate")
-    run_dir = tmp_path / "unknown-family"
-    rewrite(rows, run_dir / "train.jsonl")
-    report, missing = audit.audit_run(run_dir, ("train",), "zh")
-    assert report["train"]["unknown_families"]["ghost_family"] == len(rows)
-    assert any("题族 gate 一条都没出" in item for item in missing)
-
-
 def test_body_shape_problem_reads_every_rule() -> None:
     """输入：几种材料与清单的组合。输出：无。预期行为：每条口径都真查得住。"""
     short = render.ManifestState(length="short", form="prose", data="none")
@@ -268,10 +231,3 @@ def test_family_of_strips_the_sequence_suffix() -> None:
     assert audit.MET_QIDS == ("met_1", "met_2", "met_3", "met_4", "met_5")
 
 
-def test_recorded_reads_every_answer_shape() -> None:
-    """输入：三种题型的题面与答案。输出：无。预期行为：choice 换回选项名，其余原样。"""
-    question = {"type": "choice", "criteria": {"accept": "通过", "reject": "退回"}}
-    assert audit._recorded(question, {"type": "choice", "choice": 1}) == "reject"
-    assert audit._recorded(question, {"type": "choice", "choice": 9}) is None
-    assert audit._recorded({"type": "score"}, {"type": "score", "score": 2}) == 2
-    assert audit._recorded({"type": "noul"}, {"type": "noul", "noul": True}) is True

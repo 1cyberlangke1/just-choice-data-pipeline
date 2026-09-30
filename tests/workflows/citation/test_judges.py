@@ -84,15 +84,6 @@ def test_hygiene_rejects_a_state_without_a_document_heading() -> None:
     assert "文档" in verdict.reason
 
 
-def test_hygiene_rejects_fence_lines_anywhere() -> None:
-    """输入：整段被围栏包起来的 state。输出：无。预期行为：不通过，理由是残留。"""
-    spec, sample = faithful(CASE)
-    sample["state"] = f"```text\n{sample['state']}\n```"
-    verdict = judges.HygieneJudge("zh").judge(sample, spec)
-    assert not verdict.ok
-    assert "残留" in verdict.reason
-
-
 def test_hygiene_skips_without_a_spec_or_text_state() -> None:
     """输入：没有 spec、或 state 不是文本。输出：无。预期行为：记成「没判成」。"""
     judge = judges.HygieneJudge("zh")
@@ -261,13 +252,6 @@ def test_trace_prompt_carries_the_state() -> None:
     spec, sample = faithful(CASE)
     prompt = judges.build_trace_prompt(str(sample["state"]), locales.load("zh"))
     assert str(sample["state"]) in prompt
-
-
-def test_option_names_reads_the_written_order() -> None:
-    """输入：一道 choice 题。输出：无。预期行为：按产物里的书写顺序给出选项名。"""
-    question: dict[str, JsonValue] = {"type": "choice", "criteria": {"b": "x", "a": "y"}}
-    assert judges.option_names(question) == ["b", "a"]
-    assert judges.option_names({"type": "noul"}) == []
 
 
 def test_spec_labels_helper_is_the_construction_path() -> None:

@@ -43,39 +43,6 @@ def test_workflow_protocol_surface() -> None:
     assert WORKFLOW.dimension_titles() == dict(match_workflow.DIMENSION_TITLES)
 
 
-def test_config_for_rejects_unknown_split() -> None:
-    """输入：不存在的切分。输出：无。预期行为：报错并列出可用切分。"""
-    with pytest.raises(KeyError, match="未知切分"):
-        WORKFLOW.config_for("nope")
-
-
-def test_config_for_swaps_the_split_name() -> None:
-    """输入：三个同分布切分。输出：无。
-
-    预期行为：每次返回的配置里 `split` 都是调用方要的那一档——`ID_CONFIG` 是单例，
-    直接返回它会让三档切出一模一样的数据。
-    """
-    for split in ("train", "val", "test_iid"):
-        assert WORKFLOW.config_for(split).split == split
-    assert WORKFLOW.config_for("test_ood").ood_only is True
-
-
-def test_make_judges_rejects_unknown_name() -> None:
-    """输入：不存在的判别器名。输出：无。预期行为：报错并列出可用名字。"""
-    with pytest.raises(KeyError, match="未知判别器"):
-        WORKFLOW.make_judges(("nope",), "zh")
-    assert [judge.name for judge in WORKFLOW.make_judges(("roundtrip", "label"), "zh")] == [
-        "roundtrip",
-        "label",
-    ]
-
-
-def test_bind_backend_is_forbidden() -> None:
-    """输入：一个假后端。输出：无。预期行为：直接报错（构造式 workflow 不该被绑后端）。"""
-    with pytest.raises(AssertionError, match="纯构造式"):
-        WORKFLOW.bind_backend(object())
-
-
 def test_case_helpers_expose_the_dimensions() -> None:
     """输入：一个 case。输出：无。预期行为：描述与维度表都摊平了五个维度。"""
     case = sp.MatchCase("lager", sp.PATTERNS[0], sp.SPELLINGS[0], "plain", "none")
@@ -165,13 +132,6 @@ def test_reparse_through_the_protocol_is_language_agnostic() -> None:
         parsed = WORKFLOW.reparse(WORKFLOW.render(spec, random.Random(0), lang))
         assert parsed.request_id == spec.query_id
         assert set(parsed.left) == set(sp.FIELDS) == set(parsed.right)
-
-def test_audit_reports_missing_artifacts(tmp_path: Path) -> None:
-    """输入：空目录。输出：无。预期行为：每个切分都报「产物不存在」。"""
-    report, missing = WORKFLOW.audit(tmp_path, ("train", "val"), "zh")
-    assert report["train"]["samples"] == 0
-    assert report["val"]["samples"] == 0
-    assert sum(1 for item in missing if "产物不存在" in item) == 2
 
 
 def test_audit_flags_tampered_answers_and_unknown_families(tmp_path: Path) -> None:

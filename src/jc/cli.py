@@ -11,14 +11,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 from collections.abc import Mapping
 from pathlib import Path
 
 
-from . import pipeline, validate
+from . import jsonio, language, pipeline, validate
 from .jsontypes import JsonValue
-from .workflow import discover, load
+from .workflow import Workflow, discover, load
 
 
 def _load_backend(path: str) -> object:
@@ -36,6 +35,28 @@ def _load_backend(path: str) -> object:
     return build_backend(load_config(path), probe=True)
 
 
+def _declared_locales(run_dir: Path, split: str) -> tuple[str, ...]:
+    """输入：run 目录、切分名。输出：这一份产物 manifest 里记的语言（没记 / 读不了给空元组）。
+
+    预期行为：manifest 不存在时给空元组——老产物没有它，不假装知道；解析失败也给空元组，
+    因为这是审计的**旁路**判据，不该因为一个坏 manifest 把整次审计炸掉（坏 manifest 本身
+    会在别处报出来）。
+    """
+    manifest = run_dir / f"manifest-{split}.json"
+    if not manifest.is_file():
+        return ()
+    try:
+        meta = jsonio.loads(manifest.read_text(encoding="utf-8"))
+    except (jsonio.StrictJsonError, OSError):
+        return ()
+    if not isinstance(meta, dict):
+        return ()
+    recorded = meta.get("locales")
+    if not isinstance(recorded, list):
+        return ()
+    return tuple(str(item) for item in recorded)
+
+
 def _locale_for_split(run_dir: Path, split: str, explicit: str | None) -> str:
     """输入：run 目录、切分名、显式指定的语言（可能为 None）。输出：读这个切分该用的语言。
 
@@ -47,11 +68,7 @@ def _locale_for_split(run_dir: Path, split: str, explicit: str | None) -> str:
     """
     if explicit:
         return explicit
-    manifest = run_dir / f"manifest-{split}.json"
-    if not manifest.is_file():
-        return "zh"
-    meta = json.loads(manifest.read_text(encoding="utf-8"))
-    recorded = [str(item) for item in meta.get("locales", [])] if isinstance(meta, dict) else []
+    recorded = list(_declared_locales(run_dir, split))
     if len(recorded) > 1:
         print(
             f"提示：{run_dir.name}/{split} 的 manifest 记了多种语言 {recorded}——这一份产物混了语言，"
@@ -59,6 +76,50 @@ def _locale_for_split(run_dir: Path, split: str, explicit: str | None) -> str:
             "或用 --locale 指定一种（那时只保证那一种语言的条目可信）。"
         )
     return recorded[0] if recorded else "zh"
+
+
+def _language_problem(
+    workflow: Workflow, path: Path, declared: tuple[str, ...], limit: int = 3
+) -> str | None:
+    """输入：workflow、产物路径、这一份产物声明的语言。输出：一行问题（带样例）；全过给 None。
+
+    预期行为：逐行拿 workflow 自己声明的**自然语言正文**（`Workflow.language_texts`）去比
+    声明的语言，报前 `limit` 条样例（id + 行号 + 理由）。**零 token、不碰网络、不改产物**：
+    它查的是已经落盘的东西。反解不了的样本（坏 state）跳过——那由契约校验与领域审计负责报，
+    在这里再报一遍只是噪声。
+
+    workflow 没实现 `language_texts` 时**如实报出来**，不静默跳过：跳过等于「这条产物查过了，
+    没问题」，而实际上它一次都没查。真 workflow 由 `tests/workflows/test_protocol.py` 兜住。
+    """
+    if not hasattr(workflow, "language_texts"):
+        return f"{path.name}: workflow {workflow.name} 没有实现 `Workflow.language_texts`，语言检查跳过了"
+    samples: list[str] = []
+    total = 0
+    try:
+        for lineno, row in jsonio.iter_jsonl(path):
+            if not isinstance(row, dict):
+                continue
+            try:
+                texts = workflow.language_texts(row)
+            except Exception:  # noqa: BLE001 —— 反解不了的样本不在这里报（见 docstring）
+                continue
+            if not texts:
+                continue
+            problem = language.sample_problem(texts, declared)
+            if problem is None:
+                continue
+            total += 1
+            if len(samples) < limit:
+                samples.append(f"{row.get('id', '（无 id）')}（第 {lineno} 行）{problem}")
+    except jsonio.StrictJsonError:
+        return None  # 解析不了的行已经由契约校验报过
+    if not total:
+        return None
+    return (
+        f"{path.name}: {total} 条产物的文本与声明语言对不上（例如 "
+        + "；".join(samples)
+        + "）"
+    )
 
 
 def _add_workflow_arg(parser: argparse.ArgumentParser) -> None:
@@ -212,6 +273,21 @@ def main(argv: list[str] | None = None) -> int:
                 f"{issue.sample_id or '（无 id）'}（第 {issue.line} 行）" for issue in issues[:3]
             )
             problems.append(f"{split}: 契约校验不通过（{counts_text}；例如 {examples}）")
+        # 产物文本必须与它**声明的**语言一致。语言取 `manifest-<split>.json`，**不是**调用方给的
+        # `--locale`——「与声明一致」问的是产物自己说了什么。哪些字段算「自然语言正文」由 workflow
+        # 自己声明（`Workflow.language_texts`），通用层只提供判据（`jc.language`）。零 token，
+        # 也不进渲染路径：它查的是已经落盘的东西（实测 `rerank` 的 en 侧整段写成中文、`citation`
+        # 的 en 侧有一条写成中文文档，都是这么溜进去的）。
+        for split in splits:
+            path = Path(args.dir) / f"{split}.jsonl"
+            if not path.is_file():
+                continue
+            declared = _declared_locales(run_dir, split)
+            if not declared:
+                continue  # 没声明语言就无从谈「与声明一致」（老产物 / 没有 manifest 的产物）
+            problem = _language_problem(workflow, path, declared)
+            if problem:
+                problems.append(f"{split}: {problem}")
         if problems:
             print("审计不通过：")
             for item in problems:
@@ -258,4 +334,8 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {item['key']}：n={item['total']} 最大偏差={item['max_dev']:.3f} "
                 f"噪声地板={item['noise']:.3f}"
             )
+    unjudged = [item for item in result.stats.get("balance", []) if not item.get("judged", True)]
+    if unjudged:
+        names = "、".join(item["key"] for item in unjudged)
+        print(f"样本量不足、没判的题族（{len(unjudged)} 个）：{names}")
     return 0

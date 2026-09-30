@@ -31,7 +31,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import cover_dims, row_allowed
 
 # ---------- 维度表 ----------
 
@@ -439,13 +439,7 @@ def build_cases(max_full: int, dims: dict[str, tuple[str, ...]] | None = None) -
 
 def compatible(tags: TagSet) -> bool:
     """输入：一组特征。输出：这组特征写得出来吗（没有任何被禁的取值对）。"""
-    values = tags.as_dict()
-    names = list(DIMS)
-    for index, left in enumerate(names):
-        for right in names[index + 1 :]:
-            if not allow_pair(left, values[left], right, values[right]):
-                return False
-    return True
+    return row_allowed(list(DIMS), tags.as_dict(), allow_pair)
 
 
 #: choice 题族允许出现的选项名（题面只收本题允许的，别的取值留给反解提示词用）。

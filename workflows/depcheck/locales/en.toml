@@ -1,0 +1,152 @@
+# English copy for the dependency & licence risk gate (depcheck) workflow.
+#
+# Input: read by `workflows.depcheck.locales.load("en")`.
+# Output: a dict.
+# Expected behaviour (every point is pinned by a test):
+# - the four section marks are pairwise non-prefixes (fact_mark / rule_mark / act_mark / content_mark);
+# - `[level.*]` keys line up with `features.LEVELS`, `[act.*]` keys with `features.ACTS`;
+# - `[fact.*]` keys line up with `features.TAG_IDS`, each with name / rule / avoid;
+# - `[eco.*]` keys line up with `features.ECOSYSTEMS`;
+# - no mark's `avoid` copy trips a **different** mark (test_locales scans them one by one);
+# - the criterion text and the avoid copy contain no braces at all (they get pasted into the prompt,
+#   where braces are slot markers);
+# - every placeholder in the prompt and question templates is filled (rendering is strict).
+
+lang = "en"
+language_name = "English"
+
+[state]
+fact_mark = "[Risk marks]"
+rule_mark = "[Level rule]"
+act_mark = "[Dispositions]"
+content_mark = "[Dependency under review]"
+tag_sep = ": "
+rule_sep = " -- "
+rule_formula = "level = 1 + the weights of the marks that hit, capped at {max} (whether a mark hits is decided by its own criterion above)"
+
+[fact.D1]
+name = "copyleft licence"
+rule = "the `license:` line names one of `AGPL` / `GPL` / `SSPL` (whole word; `LGPL` does not count) -- **that line only**, the same words elsewhere do not count"
+avoid = "naming a copyleft licence identifier (`AGPL` / `GPL` / `SSPL` of that kind) on the `license:` line"
+
+[fact.D2]
+name = "repository archived"
+rule = "the `status:` line says `archived` (upstream has archived it and no longer maintains it) -- **that line only**"
+avoid = "writing `archived` on the `status:` line"
+
+[fact.D3]
+name = "known vulnerabilities"
+rule = "the `advisories:` line has a **non-zero** decimal integer after `count=` (at least one known advisory) -- **that line only**"
+avoid = "putting a non-zero number after `count=` on the `advisories:` line"
+
+[fact.D4]
+name = "not at 1.0 yet"
+rule = "the version on the `version:` line **starts with `0.`** (no stable release yet) -- **that line only**"
+avoid = "writing a version that starts with `0.` on the `version:` line"
+
+[level.L1]
+name = "level 1 (approve)"
+
+[level.L2]
+name = "level 2 (watch)"
+
+[level.L3]
+name = "level 3 (review)"
+
+[level.L4]
+name = "level 4 (replace)"
+
+[level.L5]
+name = "level 5 (replace)"
+
+[act.approve]
+name = "goes straight into the dependency tree"
+
+[act.watch]
+name = "goes in, but is logged for a re-check in six months"
+
+[act.review]
+name = "a human owner reviews it before it is added"
+
+[act.replace]
+name = "swap it for another dependency before adding it"
+
+[eco.npm]
+desc = "npm (the Node.js ecosystem): package names look like lower-case letters, digits and hyphens, and versions are dot-separated numbers"
+
+[eco.pypi]
+desc = "PyPI (the Python ecosystem): package names look like lower-case letters and underscores, and versions are dot-separated numbers"
+
+[eco.cargo]
+desc = "crates.io (the Rust ecosystem): package names look like lower-case letters and hyphens, and versions have three numeric parts"
+
+[prompt]
+intro = "You write synthetic data. Write **one screen of dependency material** -- the few lines a review leaves behind before a package is added to the dependency tree, six lines, and it has to read naturally: copy the key names and colons from the format spec below, and keep the whole screen between {min} and {max} characters."
+lang_rule = "Write the key names and the **values** such as `count=` in plain English exactly as given (they are machine format), but write the `note:` line in {language}."
+text_only = "This screen is **text only**: do not actually install the package, contact any registry, or look anything up in a vulnerability database (the criteria only read the literal text -- checking changes nothing)."
+eco_line = "This package comes from: {ecosystem}."
+category_line = "What it is used for: {category}. The package name and the note both have to land on it; do not write a sentence that would fit any package."
+format_header = "**Format spec** (six lines; copy each key name and colon, invent the values):"
+hits_header = "This screen **must trip** the following risk marks. Tripping one means the shape below **really appears on the line it names** (moving the shape to another line, rewording it, or dropping a character does not count):"
+hits_line = "- The criterion for \"{name}\" is: {rule} -- the record must really contain **content that satisfies this criterion, on its own line**"
+vary_rule = "The words in the criteria are only **examples of the shape**: invent the package name, the version, the licence identifier and the note; organise the record yourself. But **the shape the criterion asks for must appear verbatim** (the identifiers and the digit counts are written as given, not \"put another way\") -- just **do not** paste the criterion text itself into the record."
+no_hits = "This screen **must not trip any** of the marks: none of the four criteria below may hold -- it has to be an **unremarkable package that can go straight into the dependency tree**."
+miss_header = "At the same time, this screen **must not trip** the following:"
+miss_line = "- Must not contain: {avoid} (the criterion \"{name}\" reads \"{rule}\")"
+length_rule = "The whole screen is {min}~{max} characters and all six keys must **sit on their own line followed by a colon**: no title, no bullets, no explanation, no fences."
+self_check = "Before answering, check each item: does every required shape **really appear as a shape and on the required line** (really on the `license:` line, really on the `status:` line, really on the `advisories:` line, really on the `version:` line)? And is every forbidden shape really absent from the record? Is the `note:` line in {language}? Does it describe **this package itself** (what it is for, where it will be used, who maintains it, why it is being added now) rather than restating the criteria, and does it **avoid passing a risk verdict** (no mention of \"has known vulnerabilities\", \"is archived\", \"carries a copyleft licence\" or \"is a mature version\") and naming any mark? Does it really land on the **use case** named above (rather than being a sentence that would fit any package)? Is the `version:` line written in the **shape** named above, with the last part as given and a different version from record to record? Are all six keys present, each on its own line, each followed by a colon?"
+output = "Output only one JSON object with the field packet (that six-line record string); no explanation, no fences."
+version_line = "Write the `version:` line in the **shape** `{version}`: the last numeric part is that value, invent the first two parts (dot-separated numbers, no `v` prefix); **change the version from record to record** instead of reusing one number."
+license_line = "Write the `license:` line as the SPDX identifier `{license}` — **copy that value verbatim** (keep the case and the hyphens); do not swap in a different licence, and do not add anything else to that line."
+
+# Use-case table: the spec stores an **index**, so this table has to be the same length as the other
+# languages' (locked by test_locales.py). Every entry is a use case any ecosystem has, so it never
+# fights with `ecosystem`.
+categories = [
+  "logging and tracing: writing structured logs to a file or a collector",
+  "an HTTP client: sending requests with retries and timeouts",
+  "schema validation: checking data that comes from outside against a schema",
+  "a database driver: talking to one database and running queries",
+  "serialization: converting objects to bytes and back",
+  "command-line parsing: turning argv into structured config",
+  "dates and times: parsing, formatting and timezone conversion",
+  "image processing: resizing, cropping and format conversion",
+  "template rendering: filling data into text templates",
+  "a task queue: handing slow work to background workers",
+]
+
+[prompt.format]
+package = "`package: <package name>` -- invent a package name (follow the naming habit of the ecosystem above)"
+version = "`version: <version>` -- write a plain dot-separated numeric version (**no** `v` prefix and no other decoration)"
+license = "`license: <SPDX identifier>` -- invent a licence identifier shaped like an SPDX one (name plus version, of a real licence)"
+status = "`status: <active or archived>` -- write `active` if upstream still maintains it, `archived` if upstream has archived it and no longer maintains it"
+advisories = "`advisories: count=<number of known advisories>` -- put the count after `count=` (a decimal integer; write 0 when there are none)"
+note = "`note: <one line of notes>` -- one line in the target language that **the reviewer** can act on, about **this package only**: what problem it solves, where it will be used, who maintains it (**name the maintainer only -- do not judge how well it is maintained**), and why it is being added to the tree now. Do **not** pass a risk verdict on this line: do not say whether it \"has known vulnerabilities\", \"is archived\", \"carries a copyleft licence\" or \"is a mature version\", and do **not** name any mark or mention this screen's format requirements. This line is material only -- the criteria read nothing but the structured keys above."
+
+[fam.flag]
+q = ["Does this dependency trip the \"{name}\" mark?", "By the criterion \"{name}\" ({rule}), does this dependency count as tripping it?"]
+criteria_true = "it trips this one"
+criteria_false = "it does not trip this one"
+
+[fam.grade]
+q = ["By the level rule above, what level does this dependency get?", "Put the marks that hit into the weight formula: what risk level does this dependency get?"]
+
+[fam.combo]
+q = ["Which risk marks does this dependency actually trip?", "Which set of risk marks does it trip?"]
+none = "none of them"
+joiner = " + "
+
+[fam.act]
+q = ["According to the dispositions above, which disposition does this dependency take?", "By the level and the disposition table, what should be done with this dependency?"]
+
+[verify]
+intro = "Below is one screen of dependency material: first the risk-mark table, the level rule and the disposition table, then the record itself. **Every mark line also prints its own mechanical criterion and the line it looks at** -- compare against that criterion line by line and judge purely literally which marks this dependency trips, then run the weight formula once for the level. Do not reason semantically, and **do not actually install the package, contact any registry or look anything up**."
+state_header = "[Material under grading]"
+q = "Which risk marks does this dependency trip? For each one give the **mark id** and **the exact original text that tripped it** -- copy it verbatim, do not rewrite or abbreviate; if it trips none, return an empty array. Do not report a mark whose text you cannot copy: if you cannot copy it, it does not count. **The quote must satisfy that criterion on its own**: wherever the criterion looks, copy that spot **together with its key name** (copying a bare value without the line it sits on does not count). **Read the whole record from start to finish for every mark**, do not just look at the beginning. Finally, answer the risk level once more (an integer from 1 to 5, the one the weight formula gives)."
+
+[hygiene]
+# Risk-verdict words that must not appear on the `note:` line (case-insensitive substring match).
+# The table is per language because each language phrases a verdict differently; `render.check_draft`
+# and `judges.HygieneJudge` share this one copy. Only verdict words are listed, never the required
+# content -- so "maintained" is absent while "no longer maintained" is present.
+verdict_words = ["vulnerab", "archiv", "copyleft", "no longer maintained", "unmaintained"]

@@ -99,6 +99,34 @@ def test_link_judge_passes_when_consistent() -> None:
     assert judges_mod.LinkJudge().judge({"state": "没有链接"}, spec).ok is False
 
 
+def test_link_address_reaches_the_render_task() -> None:
+    """输入：一条带链接的规格。输出：无。
+
+    预期行为：`MailSpec` 按样本序号派生的路径段与 IP 真的进了渲染任务的提示词（范式 §9.25 /
+    §9.60 的渲染期变量：它不进 case 空间、不进 `stats_dimensions`，只改链接地址怎么写）。真机
+    `mail-kimi-ood-c` 六条里五条把提示词里的示例 IP 原样抄了下来，所以这条地址必须逐条不同。
+    """
+    from workflows.mail import render
+
+    spec = MailSpec(
+        tags=features.TagSet("known_vendor", "none", "none", "ip_mismatch", "formal"),
+        phrasing=0,
+        split="train",
+        seq=3,
+    )
+    assert spec.link_path == features.link_path_at(3)
+    assert spec.link_ip == features.link_ip_at(3)
+    task = render.build_task(
+        spec.tags,
+        locales.load("zh"),
+        spec.render_task_id,
+        link_path=spec.link_path,
+        link_ip=spec.link_ip,
+    )
+    assert f"/{spec.link_path}" in task.prompt
+    assert spec.link_ip in task.prompt
+
+
 @pytest.mark.parametrize(
     ("link", "state"),
     [

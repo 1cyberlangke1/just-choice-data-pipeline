@@ -14,9 +14,44 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Final
 
-from jc import validate
+from jc import jsonio, validate
 from jc import workflow as workflow_mod
+
+#: 走 LLM 但**没有**「模型写的自然语言正文」的 workflow：模型写的是代码 / 命令行。
+#: 它们必须报空表——报了正文就会把「以代码为主的 state」当坏数据（真机 zh 侧汉字占比低到 0.099）。
+LLM_WITHOUT_PROSE: Final[dict[str, str]] = {
+    "lint": "模型写的是那段源码（state = 一行中文抬头 + 源码）",
+    "review": "模型写的是那段代码改动（body 就是 diff 本身）",
+    "shell": "模型写的是命令行（PowerShell / bash 的调用本身）",
+}
+
+
+def assert_language_texts_are_declared(
+    wf: workflow_mod.Workflow, run_dir: Path, split: str, label: str, *, prose: bool
+) -> None:
+    """输入：workflow、run 目录、切分、标签、这一族该不该有自然语言正文。输出：无（断言）。
+
+    预期行为：该有正文的必须**真报出字段**——空表意味着 `jc audit` 的语言判据对它永远是空转，
+    等于「声明了要查」而实际上一次都没查；不该有的必须报空表——报了就会把代码 / 命令行 /
+    ASCII 图喂进判据，把好数据当坏数据。两边都不许悄悄滑过去。
+    """
+    rows = [row for _, row in jsonio.iter_jsonl(run_dir / f"{split}.jsonl")]
+    assert rows, f"{label} 的产物是空的，这条尺子量不到东西"
+    first = rows[0]
+    assert isinstance(first, dict), f"{label} 的产物头一行不是对象：{first!r}"
+    declared = wf.language_texts(first)
+    if prose:
+        assert declared, (
+            f"{label} 声明了「没有自然语言正文」——走 LLM 的 workflow 得说清哪几段是模型写的正文，"
+            "否则「产物文本与声明语言一致」这条尺子对它永远是空转"
+        )
+    else:
+        assert not declared, (
+            f"{label} 报了自然语言正文 {sorted(declared)}——这一族的 state 是代码 / 命令行 / ASCII 图，"
+            "按语言判会把好数据当坏数据"
+        )
 
 
 def assert_contract(run_dir: Path, split: str, label: str) -> None:

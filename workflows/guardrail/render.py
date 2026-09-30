@@ -127,7 +127,10 @@ def build_prompt(loc: dict[str, JsonValue], case: GuardrailCase) -> str:
     prompt = loc["prompt"]
     hits = case.clauses()
     missing = [clause for clause in features.CLAUSE_IDS if clause not in hits]
-    lines = [str(prompt["intro"]).format(min=MIN_CONTENT_CHARS, max=MAX_CONTENT_CHARS)]
+    lines = [
+        str(prompt["intro"]).format(min=MIN_CONTENT_CHARS, max=MAX_CONTENT_CHARS),
+        str(prompt["lang_rule"]).format(language=loc["language_name"]),
+    ]
     if hits:
         lines.append(str(prompt["hits_header"]))
         for clause in hits:

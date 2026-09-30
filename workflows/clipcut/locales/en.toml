@@ -1,0 +1,68 @@
+# 片段筛选与去冗余（clipcut）workflow 的英文文案。
+#
+# 输入：`workflows.clipcut.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为（与 zh.toml 逐项对齐）：抬头 / 区块抬头两两不互为前缀且不与中文撞车；
+# `[topic.*]` 与 `features` 的主题键一一对应；`[flag.*]` 只有 yes / no；
+# 四个题族的问法模板互不相同；题族的键集合与中文版完全一致。
+
+lang = "en"
+language_name = "English"
+
+[meta]
+request = "Clip selection request"
+segments = "Segments"
+paren_open = " ("
+paren_close = ")"
+
+[topic]
+T1 = "opening remarks"
+T2 = "product demo"
+T3 = "audience question"
+T4 = "closing summary"
+T5 = "data verification"
+
+[flag]
+yes = "highlight"
+no = "no highlight"
+
+[rules]
+lines = [
+  "Retention rule: a segment is kept if and only if it contains a highlight AND it is the first occurrence of its topic.",
+  "When a topic appears more than once, only its first occurrence is eligible; later occurrences are dropped even if they contain a highlight.",
+  "A repeated topic is judged by topic name alone, regardless of highlights; a blocked segment is one that contains a highlight but was dropped because its topic was not the first occurrence.",
+]
+
+[fam.keep_count]
+q = [
+  "How many segments of this screen should be kept in total?",
+  "Counting by the retention rule, how many segments survive?",
+]
+levels = [
+  "keep none",
+  "keep 1 segment",
+  "keep 2 segments",
+  "keep 3 segments",
+  "keep 4 segments",
+]
+
+[fam.first_kept]
+q = [
+  "Among the kept segments, which one comes first?",
+  "By the retention rule, which segment is the first one kept?",
+]
+criteria = { s1 = "segment 1", s2 = "segment 2", s3 = "segment 3", s4 = "segment 4", none = "none is kept" }
+
+[fam.blocked_any]
+q = [
+  "Is there any segment that contains a highlight but was blocked by de-duplication because its topic had appeared earlier?",
+  "Does this screen contain a segment that was eligible (it has a highlight) yet dropped by de-duplication?",
+]
+criteria = { true = "yes", false = "no" }
+
+[fam.dup_any]
+q = [
+  "Does this screen contain any segment whose topic repeats an earlier one?",
+  "Is there a segment whose topic already appeared in an earlier segment?",
+]
+criteria = { true = "yes", false = "no" }

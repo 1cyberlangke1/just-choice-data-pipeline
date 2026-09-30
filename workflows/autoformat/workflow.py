@@ -267,6 +267,19 @@ class AutoformatWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：hygiene / roundtrip / trace）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：必须与声明语言一致的正文（块序号 → 块文字）。
+
+        预期行为：只报**散文块**——代码块里是命令行（工具名与选项，与语言无关），报进去会把
+        「一份以代码为主的文档」误判成写错了语言。反解不出来（坏 state）给空表：那由契约校验报。
+        """
+        doc = render.parse_state(str(sample.get("state", "")))
+        return {
+            f"第 {index} 块": block.text
+            for index, block in enumerate(doc.blocks, start=1)
+            if block.kind != features.KIND_CODE and block.text.strip()
+        }
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

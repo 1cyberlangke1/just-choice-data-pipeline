@@ -18,10 +18,13 @@ class CitationSpec:
 
     字段：`case` 注入特征；`phrasing` 问法编号；`split` 切分名；`seq` 样本序号；
     `plan` 引文计划。
+    `topic` 是**写短文时的样本级旋钮**（题材方向下标，见 `features.TOPIC_IDS`）：它只改短文与标题
+    怎么写，与 case、标签、切分都无关——所以它不算维度，也不进 case 空间。
     """
 
     case: CitationCase
     phrasing: int
+    topic: int
     split: str
     seq: int
     plan: CitationPlan
@@ -51,6 +54,7 @@ def spec_to_dict(spec: CitationSpec) -> dict[str, JsonValue]:
     return {
         "case": spec.case.as_dict(),
         "phrasing": spec.phrasing,
+        "topic": spec.topic,
         "split": spec.split,
         "seq": spec.seq,
         "true_section": spec.plan.true_section,

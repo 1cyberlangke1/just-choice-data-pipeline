@@ -12,6 +12,10 @@ tone = "tone"
 intro = "Below is the **feature sheet** for one email. Write it as a natural, believable email."
 official_domain_line = "official domain: {domain}"
 bullet = "- {dim}: {brief} (how: {hint})"
+# The link address is given per sample (paradigm 9.25 / 9.60): the `hint`s describe the shape only,
+# and the concrete address is named here, so the model cannot copy one finished address into the
+# whole batch. When the sheet says there is no link, this line does not appear at all.
+link_address_line = "Link address: always use `/{path}` as the path segment, and if the sheet above says the target is an IP address, use `{ip}`. Copy those two values verbatim; invent everything else (the brand domain, the lookalike domain, the shortener domain), and do not reuse any other address that appears in this sheet."
 rules = [
   "Never introduce a feature that is not on the sheet: if the sheet says there is no link, no URL may appear anywhere (signature included) and there must be no \"click here\" wording; write only the one request the sheet names (when the sheet asks for nothing, make no request at all) and never smuggle in a second one",
   "Write 3-8 natural sentences; the signature is its **own field** and every mail needs one (at least a sign-off), and the \"official domain\" line goes in the signature",
@@ -20,7 +24,7 @@ rules = [
   "No URL in the body; the body may invite a click (\"click here\", \"sign in at\") only when the sheet's request is explicitly to click a link - when the request is anything else, the body must not even nudge the reader (\"you can check this at\", \"see the details\", \"for more information\"), it just states the matter",
   "Plain text only: no HTML or Markdown markup anywhere (e.g. <br>, <b>, <hr>, **bold**) - use real line breaks to break lines",
   "The pressure / incentive signals in the text must match the technique exactly: \"no pressure and no incentive\" allows no deadline, no consequence and no reward; \"time pressure\" must not describe a consequence; \"consequences\" may also give a deadline",
-  "When the sheet says the link text does not match its target, write both addresses - the displayed text and the real target (e.g. https://www.example-bank.com/verify (actually points to http://example-bank-secure.example/verify)); with a single address the reader cannot tell",
+  "When the sheet says the link text does not match its target, write both addresses in the form \"displayed address (actually points to real address)\"; with a single address the reader cannot tell",
   "A mail that claims an organisation must end with a line \"official domain: <domain>\" giving that organisation's real domain; a personal mail that claims no organisation must not have that line",
   "Address a plain ordinary person; do not use any real company, brand or person",
   "Do not explain the features and do not write anything like \"this is a phishing email\"",
@@ -85,35 +89,35 @@ hint = "no URL anywhere (signature included); leave the link field as an empty s
 
 [feature.link.official_honest]
 brief = "there is a link on the official domain and its text matches the target"
-hint = "e.g. https://www.example-bank.com/notices/123, and the link text is that address or the organisation name"
+hint = "write the link target as the full URL \"the organisation's official domain + the path segment given below\" (invent a plausible official domain), and make the link text that address or the organisation name"
 
 [feature.link.official_mismatch]
 brief = "there is a link on the official domain but its text pretends to be a different address"
-hint = "give both addresses: the displayed text is some other address (actually points to https://www.example-bank.com/verify)"
+hint = "give both addresses: the displayed text is some **other** address (invent that fake domain), and the real target is \"the official domain + the path segment given below\""
 
 [feature.link.lookalike_honest]
 brief = "there is a link on a lookalike domain and its text matches the target"
-hint = "if the brand is example-bank.com, use a similar domain such as example-bank-secure.example"
+hint = "invent a brand official domain first, then build a similar fake domain on top of it (add a suffix such as `-secure` / `-login`, or swap the top-level domain), point the link target at the fake domain, and make the link text that address"
 
 [feature.link.lookalike_mismatch]
 brief = "there is a link on a lookalike domain and its text pretends to be the official address"
-hint = "give both addresses: the displayed text is the official domain (actually points to the lookalike, e.g. http://example-bank-secure.example/verify)"
+hint = "give both addresses: the displayed text is an address on the official domain (invent that domain), and the real target is \"the lookalike domain + the path segment given below\""
 
 [feature.link.ip_honest]
 brief = "the link target is a bare IP address and its text matches the target"
-hint = "e.g. http://203.0.113.47/verify and the link text is that address"
+hint = "write the link target as \"http:// + the IP given below + the path segment given below\", and make the link text that address"
 
 [feature.link.ip_mismatch]
 brief = "the link target is a bare IP address but its text pretends to be the official domain"
-hint = "give both addresses: the displayed text is the official domain (actually points to http://203.0.113.47/verify)"
+hint = "give both addresses: the displayed text is an address on the official domain (invent that domain), and the real target is the IP address given below"
 
 [feature.link.shortener_honest]
 brief = "the link uses a shortener service and its text matches the target"
-hint = "e.g. https://s.example/abc123 and the link text is that short address"
+hint = "write the link target in the shape of a shortener (a very short domain + the path segment given below); invent the short domain, and make the link text that short address"
 
 [feature.link.shortener_mismatch]
 brief = "the link target is a shortener but its text pretends to be the official domain"
-hint = "give both addresses: the displayed text is the official domain (actually points to https://s.example/abc123)"
+hint = "give both addresses: the displayed text is an address on the official domain (invent that domain), and the real target is \"the short domain + the path segment given below\""
 
 [feature.tone.formal]
 brief = "formal and written"

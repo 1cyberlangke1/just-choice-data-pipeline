@@ -303,6 +303,21 @@ class RerankWorkflow:
                 raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
         return tuple(out)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：必须与声明语言一致的正文（查询 + 每条候选）。
+
+        预期行为：只报模型写的查询与候选原文；抬头标记、编号、排序口径都是代码按语言写的，不报。
+        真机实测：en 侧出现过整段写成中文（汉字占比 0.577）、zh 侧出现过整段写成英文（0.081），
+        这条判据就是为它们加的。
+        """
+        parsed = render.parse_state(sample.get("state"))
+        texts: dict[str, str] = {}
+        if parsed.query:
+            texts["查询"] = parsed.query
+        for index, candidate in enumerate(parsed.candidates, start=1):
+            texts[f"第 {index} 条候选"] = candidate
+        return texts
+
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str
     ) -> tuple[dict[str, JsonValue], list[str]]:

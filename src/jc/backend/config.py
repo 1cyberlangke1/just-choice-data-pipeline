@@ -11,7 +11,7 @@ from jc.jsontypes import JsonValue
 
 import os
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
