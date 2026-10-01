@@ -27,7 +27,11 @@ BAD_LABELS = {
 
 
 def _run(tmp_path: Path, run_id: str = "audit") -> Path:
-    """输入：临时目录、run id。输出：run 目录。预期行为：跑一小批，全部合格。"""
+    """输入：临时目录、run id。输出：run 目录。预期行为：跑一小批，全部合格。
+
+    语言闸关掉——本包的假后端只写英文（夹具局限，理由见
+    `tests/workflows/autoformat/test_pipeline.make_config`）。
+    """
     result = pipeline.run(
         pipeline.RunConfig(
             workflow="autoformat",
@@ -39,6 +43,7 @@ def _run(tmp_path: Path, run_id: str = "audit") -> Path:
             run_id=run_id,
             config_override=AutoformatConfig(split="train", case_limit=CASE_LIMIT),
             backend=FakeBackend(),
+            language_gate=False,
         )
     )
     assert result.accepted == CASE_LIMIT

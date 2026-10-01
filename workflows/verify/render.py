@@ -53,7 +53,6 @@ class VerifyDraft(BaseModel):
     """
 
     claim: str = Field(
-        min_length=1,
         description="agent 的收尾话：一句话，说清楚这次做完了什么、口气有多满",
     )
 

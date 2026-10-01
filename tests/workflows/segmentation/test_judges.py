@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import pytest
 
 from jc.backend.types import AllProvidersDown, TransportError
@@ -210,6 +211,8 @@ def test_read_judge_skips_without_a_spec() -> None:
         ("form", MARKERS["form"], True),
         # 空白重排不算抄错（模型复述时常常把空格换成换行）。
         ("form", MARKERS["form"].replace(" ", "\n"), True),
+        # 引文被装进 JSON 数组字符串（范式 §9.88）：拆成候选之后照样算数。
+        ("form", json.dumps([MARKERS["form"]]), True),
         # 引文不在正文里 / 引文按正则不算这一类，都不算数。
         ("form", "正文里没有这句话", False),
         ("form", MARKERS["receipt"], False),

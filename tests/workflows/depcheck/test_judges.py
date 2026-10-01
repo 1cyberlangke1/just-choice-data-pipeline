@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Final
 
@@ -35,6 +36,7 @@ def test_quote_holds_needs_the_quote_and_the_whole_record() -> None:
     """
     body = packet_of(("D1",))
     assert judges.quote_holds("D1", quote_for("D1"), body)
+    assert judges.quote_holds("D1", json.dumps([quote_for("D1")]), body)  # 引文被装进 JSON 数组字符串（范式 §9.88）
     assert not judges.quote_holds("D1", "license: MIT", body)
     assert not judges.quote_holds("D2", quote_for("D2"), body)
     assert not judges.quote_holds("D9", quote_for("D1"), body)

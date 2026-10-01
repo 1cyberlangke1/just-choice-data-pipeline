@@ -55,8 +55,8 @@ DATE_PATTERN: Final[re.Pattern[str]] = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 class MeetingTextDraft(BaseModel):
     """后端为**一场**会写的两段文本。"""
 
-    title: str = Field(min_length=1, description="会议标题，4~12 个字，像真实的会议名")
-    agenda: str = Field(min_length=1, description="会议议题，一句话，10~30 个字")
+    title: str = Field(description="会议标题，4~12 个字，像真实的会议名")
+    agenda: str = Field(description="会议议题，一句话，10~30 个字")
 
 
 class ScheduleDraft(BaseModel):

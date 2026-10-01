@@ -103,7 +103,7 @@ hint = "标题与摘要的主体都要岔到别的话题上去（不能只是顺
 
 [feature.spam.clean]
 brief = "这条结果是干净内容"
-hint = "像一篇正常网页的标题与摘要"
+hint = "像一篇正常网页的标题与摘要：写具体事实，**别**写成满屏形容词的导流话术（即使话题不是那句查询的）"
 
 [feature.spam.spam]
 brief = "这条结果是垃圾内容"
@@ -114,6 +114,13 @@ intro = "下面是一条搜索结果页。请按给定的选项反解它的特�
 state_header = "【结果页全文】"
 questions_header = "【问题】"
 option_line = "   - {name}：{desc}"
+
+# 反解提示词里 `spam` 那一题的选项名用**取值本身**（`clean` / `spam`），不是数据集那道
+# noul 题的 criteria key（`true` / `false`）：草稿要的是前者，两套词摆在一起模型得自己翻译，
+# 实测就是翻译错（en 侧 6 条里 5 条把 `clean` 读成 `spam`）。
+[verify.trace_options.spam]
+spam = "满屏关键词堆砌 / 导流话术 / 纯广告——整页只为推销或引流而生"
+clean = "像一篇正常网页的标题与摘要——讲的是别的话题也算正常网页，不能因为跑题就判成垃圾"
 
 [fam.query_kind]
 q = [
@@ -144,7 +151,7 @@ q = [
 ]
 [fam.spam.criteria]
 true = "是垃圾内容：关键词堆砌 / 导流软文 / 纯广告"
-false = "不是垃圾内容：正常网页的标题与摘要"
+false = "不是垃圾内容：正常网页的标题与摘要——讲的是**别的话题**也算正常网页，不能因为跑题就判成垃圾"
 
 [fam.rule]
 q = [

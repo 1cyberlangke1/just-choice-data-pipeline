@@ -17,7 +17,6 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
-import hashlib
 import random
 from collections import Counter
 from dataclasses import dataclass
@@ -25,10 +24,10 @@ from pathlib import Path
 from typing import Final
 
 from jc import jsonio
-from jc.backend.types import GenerationBackend
+from jc.cover import hash_bucket, slice_by_bucket
 from jc.judge import Judge
 from jc.knobs import require_pool
-from jc.workflow import LabeledQuestion, SplitSpec, register
+from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
 
 from . import features, judges as judges_mod, locales, questions, render
 from .features import TagSet
@@ -126,12 +125,7 @@ def ood_dims() -> list[dict[str, tuple[str, ...]]]:
 
 
 def bucket_of(case: TagSet, seed: int = SPLIT_SEED) -> int:
-    """输入：tag 组合、种子。输出：0~99 的桶号。
-
-    预期行为：同一组合必得同一桶，不同组合近似均匀——切分单位是**组合**，不是样本。
-    """
-    payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
-    return int(hashlib.sha256(f"{seed}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100
+    return hash_bucket(case, seed)
 
 
 def cases_for(config: MailConfig) -> list[TagSet]:
@@ -146,26 +140,13 @@ def cases_for(config: MailConfig) -> list[TagSet]:
                 seen.setdefault(tuple(case.as_dict().items()), case)
         cases = list(seen.values())
     else:
-        cases = _slice(
-            features.build_cases(config.cover_limit, dims=id_dims()), config.split
+        cases = slice_by_bucket(
+            features.build_cases(config.cover_limit, dims=id_dims()), config.split, bucket_of, SPLIT_BUCKETS
         )
     return cases[: config.case_limit] if config.case_limit else cases
 
 
-def _slice(cases: list[TagSet], split: str) -> list[TagSet]:
-    """按桶号排序后按比例切片。
-
-    输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
-    预期行为：先按 (桶号, 组合) 排序再切片，比例才是**精确**的——只按桶号过滤时，
-    48 个组合的哈希方差会让 val 只剩个位数；同一组合永远落在同一段。
-    """
-    ordered = sorted(cases, key=lambda case: (bucket_of(case), tuple(case.as_dict().items())))
-    low, high = SPLIT_BUCKETS[split]
-    total = len(ordered)
-    return ordered[low * total // 100 : high * total // 100]
-
-
-class MailWorkflow:
+class MailWorkflow(BackendHolder):
     """邮件安全分诊：声明、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
     name = WORKFLOW_NAME
@@ -173,28 +154,16 @@ class MailWorkflow:
     kinds = frozenset({"choice", "noul", "score"})
     needs = frozenset({"text"})  # 文本外壳由后端写：本 workflow 不是纯构造式
     judges: tuple[str, ...] = ("link", "link_text", "sender_identity", "hygiene", "trace")
-
-    def __init__(self) -> None:
-        """输入：无。输出：实例。预期行为：后端要等 `bind_backend` 才注入。"""
-        self.backend: GenerationBackend | None = None
-
-    def bind_backend(self, backend: GenerationBackend) -> None:
-        """输入：生成后端。输出：无。预期行为：存下后端，`render` 与 `trace` 判别器要用。"""
-        self.backend = backend
-
-    def split_names(self) -> tuple[str, ...]:
-        """输入：无。输出：支持的切分名。"""
-        return ("train", "val", "test_iid", "test_ood")
+    split_names_tuple = ("train", "val", "test_iid", "test_ood")
+    cases_for_fn = staticmethod(cases_for)
+    dimension_titles_map = DIMENSION_TITLES
+    pkg_locales = locales
 
     def config_for(self, split: str) -> MailConfig:
         """输入：切分名。输出：该切分的采样参数。预期行为：未知切分直接报错。"""
         if split not in self.split_names():
             raise KeyError(f"未知切分 {split!r}（可用：{', '.join(self.split_names())}）")
         return MailConfig(split=split)
-
-    def build_cases(self, config: MailConfig) -> list[TagSet]:
-        """输入：采样参数。输出：tag 组合列表。"""
-        return cases_for(config)
 
     def case_label(self, case: TagSet) -> str:
         """输入：一个 case。输出：一行可读描述。"""
@@ -211,22 +180,10 @@ class MailWorkflow:
             "tone": case.tone,
         }
 
-    def dimension_titles(self) -> dict[str, str]:
-        """输入：无。输出：{维度名: 中文标题}。"""
-        return dict(DIMENSION_TITLES)
-
     def plan_sample(
         self, rng: random.Random, config: MailConfig, case: TagSet, seq: int
     ) -> SplitSpec:
-        """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。"""
-        return SplitSpec(
-            name=config.split,
-            params={
-                "tags": case,
-                "phrasing": rng.choice(config.phrasing_pool),
-                "seq": seq,
-            },
-        )
+        return plan_with_phrasing(config, rng, case, seq, config.phrasing_pool, key="tags")
 
     def sample(self, rng: random.Random, split: SplitSpec) -> MailSpec:
         """输入：独立 RNG、生成计划。输出：真值规格。"""
@@ -252,6 +209,7 @@ class MailWorkflow:
             )
         )
         render.check_official_domain(spec.tags, draft.data)
+        render.check_signature(draft.data)
         return render.to_state(draft.data, loc)
 
     def ask(self, spec: MailSpec, rng: random.Random, locale: str) -> list[LabeledQuestion]:
@@ -341,9 +299,6 @@ class MailWorkflow:
         _ = locale  # 本 workflow 的审计只用产物本身，不需要语言文件
         return report, missing
 
-    def available_locales(self) -> list[str]:
-        """输入：无。输出：支持的语言列表。"""
-        return locales.available()
 
 
 register(WORKFLOW_NAME)(MailWorkflow)

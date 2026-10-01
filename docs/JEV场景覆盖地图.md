@@ -1,42 +1,89 @@
 # JEV 场景覆盖地图
 
-> 目标：把 awesome-jev 里的社区项目按**场景簇**归堆，与本仓库已发布的 48 家 workflow 对齐，
+> 目标：把 awesome-jev 里的社区项目按**场景簇**归堆，与本仓库已发布的 51 家 workflow 对齐，
 > 给出「已覆盖 / 部分覆盖 / 没覆盖」三态，并列出下一步该造哪几家、按什么顺序造。
-> 数据来源：`tmp/docs/awesome-jev.rows.json`（916 条，字段：名字 / ★ / 语言 / 收录日期 / 中文描述）
-> 复现脚本：`tmp/scene_map.py`（关键词分桶；一条可落进多簇）
-> 写作日期：2026-09-30
+> 数据来源：`tmp/docs/awesome-jev.rows-live.json`（**2026-10-01 重抓的 965 条**，字段：名字 / ★ /
+> 语言 / 收录日期 / 中文描述；上一版是 `tmp/docs/awesome-jev.rows.json` 的 916 条）
+> 复现脚本：`tmp/scene_rows.py`（重抓 markdown → 行表）、`tmp/scene_buckets.py <行表> <输出>`
+> （关键词分桶 + 人工归位表；一条可落进多簇）
+> 写作日期：2026-09-30（2026-10-01 补 §1 的三遍口径差异、§4 逐条归位，以及 §1 末条的重抓对账）
 
 ## 1. 方法与口径
 
 - 分桶是**关键词正则**，不是人工标注：描述里出现「工具调用」就落进工具簇。所以一个项目常落进
-  多簇（它既有工具、又有场景），各簇条数之和远大于 916。
-- 273 条（30%）一条簇都没落进——多是 SDK / 适配器 / 模型权重 / 榜单这类**基础设施**，它们
-  不描述任务场景，本来就不该进场景簇。这 30% 与本项目无关（我们不发布 SDK）。
+  多簇（它既有工具、又有场景），各簇条数之和（旧快照 936 / 新快照 979）远大于场景总数
+  （旧 602 / 新 625）。
+- 第一遍说「273 条（30%）一条簇都没落进」——多是 SDK / 适配器 / 模型权重 / 榜单这类**基础设施**，
+  它们不描述任务场景，本来就不该进场景簇。这部分与本项目无关（我们不发布 SDK）。
 - 「覆盖」判的是**任务形状**（问什么、答案从哪来），不是关键词撞车。例：`jev-search` 与我们的
   `search` 都提「搜索」，但它问的是「选哪个来源」，我们问的是「这条结果可不可信」——两个任务。
 - 判据表里「状态」三档：**覆盖**（同一个任务形状已经有 workflow）／**部分**（同一族但少一个
   关键轴）／**缺口**（没有对应的 workflow）。
+- **三次分桶的数字对不上，如实记**：第一遍是 `tmp/scene_map.py`（16 个粗簇，脚本已不在仓库里，
+  数字我至今复现不出来），第二遍是 `tmp/docs/awesome-jev.buckets.json`（30 个场景簇），
+  第三遍是 `tmp/scene_buckets.py`（**2026-10-01 重写，可复现**：关键词表 + 人工归位表 + 自检）。
+  第二遍说「基础设施 242 + 场景 674，其中 133 条关键词一条都没命中」；第三遍的关键词表写得不一样，
+  没命中是 **200 条**——**这不是 bug，是口径差异**（词表宽窄不同），三遍的簇名与条数都不可互相加总。
+  **§2 起统一改用第三遍的口径**。
+- **「未归类」不是缺口，是关键词表不够宽**：第三遍的 200 条已**逐条人工归位**（脚本里的 `MANUAL`
+  表，键是「名字 + ★数」，重名条目靠 ★ 区分；漏一条、或表里留了陈条，都当场报错）。结论：**128 条
+  本来就属于已有场景簇**（关键词漏词而已），**72 条是工具 / 适配器 / 插件 / 演示 / 模型权重 / 校准
+  与评测脚本**——不描述任务场景，归基础设施。归位后（**916 条旧快照**）：**基础设施 314 + 场景
+  602**；按 2026-10-01 的 **965 条新快照**重算是**基础设施 340 + 场景 625**（关键词判 268 +
+  人工判 72；未命中的 202 条里 130 条落回已有簇）。
+- **2026-10-01 重抓：社区清单涨了**。README 徽章已经是 **962 个项目**，按 github 链接数行表是
+  **965 条**（多出的 3 条是「仓库内代码引用」，即别人仓库里的 PR / 示例）。重抓脚本
+  `tmp/scene_rows.py`（把 markdown 表格解析成行表，列数不固定——少数行没有「收录时间」那一列），
+  行表落在 `tmp/docs/awesome-jev.rows-live.json`；分桶脚本改成可带参数跑：
+  `python tmp/scene_buckets.py tmp/docs/awesome-jev.rows-live.json tmp/docs/awesome-jev.buckets3.json`。
+  **新增 49 条逐条看过**：落进已有簇的按新快照计入 §2 的条数；关键词一条没命中的 3 条已归位
+  （`FluidUse` → 浏览器与 GUI 操作、`1 Million Emojis` → 游戏与模拟控制、`Tiltmeter` 见 §5）。
+  **没有新簇**——簇名不变，所以 §3 / §4 的判定不用改，只有 §2 的条数按新快照更新。
 
 ## 2. 场景簇 → 已覆盖的 workflow
 
-| 场景簇 | 社区代表（★） | 本仓库的 workflow | 状态 |
-|---|---|---|---|
-| 代码与仓库（223） | oh-my-pi（★32394）、openwork（★23654） | `review` / `findtriage` / `lint` / `sqlreview` / `testimpact` / `citation` | 覆盖 |
-| 评估与打分（158） | json-render（★17982）、laya（★17709） | `rubric` / `tracescore` / `bench` / `verify` | 覆盖 |
-| 路由与分类（133） | PyGPT（★1941）、agentconnect（★1428） | `modelroute` / `routing` / `skillpick` | 覆盖 |
-| 浏览器与计算机操作（83） | Jev Ultrafast（★9291）、Jev-cu（★584） | `browser` / `elementpick` | 覆盖 |
-| 内容审核与安全（76） | litellm 的护栏、jev-shield | `guardrail` / `promptinject` / `adblock` / `alertrisk` | 覆盖 |
-| 检索与重排（73） | genoffice（★7541）、xerj（★2365） | `rerank` / `search` / `siftrank` / `sourceselect` | 覆盖 |
-| 终端与命令行（55） | ai-cli（★807）、jev-pruner（★130） | `shell` / `debugstep` | 覆盖 |
-| 抽取与解析（54） | tax-doc-classifier（★314）、docjev（★307） | `invoice` | 覆盖 |
-| 记忆与上下文（51） | fast-jev-compaction（★4427）、memsearch（★2654） | `memorygate` / `compact` | 覆盖 |
-| 游戏与模拟（49） | typesafe-mario（★286） | `maze` / `sim` | 覆盖 |
-| 消息与客服（41） | jev-chat-jarvis（★1696）、jev-chat-windows（★467） | `mail` / `chatgate` / `routing` | 覆盖 |
-| 文档与数据（39） | xerj（★2365）、docjev（★307） | `segmentation` / `autoformat` | 覆盖 |
-| 工具调用与门控（36） | litellm（★59363）、pi-warden（★96） | `toolgate` / `functions` | 覆盖 |
-| 日志与监控（27） | claude-code-trace（★370）、Stratum（★51） | `logtriage` / `alertrisk` | 部分（缺「根因」，且那部分不可靠） |
-| 交易与金融（22） | TradingAgents（★108478）、Jev-X-Sentiment-Analysis（★162） | `quoteread` | 覆盖 |
-| 音频与视频（19） | summarize（★223）、jevmeter（★70） | `subqa` / `clipcut` | 覆盖 |
+口径：第三遍分桶的 **29 个场景簇**，条数是**关键词命中 + 人工归位**合并后的结果。一条可落进多簇，
+所以 29 簇条数之和（979）**大于**场景总数（625），别拿它当分母。条数按 **2026-10-01 重抓的
+965 条快照**（`tmp/docs/awesome-jev.buckets3.json`）重算，不是旧快照的 916 条。
+
+| 场景簇 | 条数 | 社区代表（★） | 本仓库的 workflow | 状态 |
+|---|---|---|---|---|
+| 浏览器与 GUI 操作 | 81 | Jev Ultrafast（★9291）、reticle（★828）、FluidUse（★212） | `browser` / `elementpick` | 覆盖 |
+| 游戏与模拟控制 | 77 | typesafe-mario（★286）、embodied-jev（★164）、beebots（★153） | `maze` / `sim` | 覆盖 |
+| 模型路由与降级 | 69 | cua（★25790）、PyGPT（★1941）、mu（★325） | `modelroute` / `routing` | 覆盖 |
+| 分类与分诊 | 66 | PyGPT（★1941）、jev-chat-windows（★467）、Quicksilver（★75） | `routing` / `findtriage` / `posttriage` / `receiptcat` / `hirecheck` / `match` | 覆盖 |
+| 评测与基准 | 62 | openwork（★23654）、decapod（★233）、LangWatch（★4883） | `rubric` / `tracescore` / `bench` / `verify` | 覆盖 |
+| 工具调用门控/护栏 | 55 | litellm（★59363）、fast-jev-compaction（★4427）、XavierJev（★1） | `toolgate` / `functions` / `guardrail` | 覆盖 |
+| 内容生成与改写 | 45 | siftrank（★210）、grok-bot-jev（★70）、transcript-lens（★16） | `subqa`（有界选择那半） | 部分（主观生成不做） |
+| 上下文压缩与保留 | 43 | fast-jev-compaction（★4427）、distill（★688）、omp-statify（★1） | `compact` / `memorygate` | 覆盖 |
+| 验证与核验 | 42 | cua（★25790）、Canny（★52）、Keel（★314） | `verify` / `citation` / `depcheck` | 覆盖 |
+| 打分与评分 | 39 | xerj（★2365）、claude-code-trace（★370） | `rubric` / `tracescore` / `bench` | 覆盖 |
+| 技能选择/建议 | 38 | agent-desktop（★1441）、pi-warden（★96） | `skillpick` | 覆盖 |
+| 搜索/检索与重排 | 38 | genoffice（★7541）、memsearch（★2654）、jevgrep（★864） | `rerank` / `search` / `siftrank` / `sourceselect` | 覆盖 |
+| 代码审查与 diff 门控 | 37 | celesto（★958）、perch（★171） | `review` / `lint` / `sqlreview` / `findtriage` / `testimpact` | 覆盖 |
+| 安全与风险 | 31 | Jev-cu（★584）、jev-secret-detection、XavierJev（★1） | `promptinject` / `guardrail` / `alertrisk` | 覆盖 |
+| 客服与消息回复 | 31 | jev-chat-jarvis（★1696）、jevbot（★13）、Goutoujunshi Jev Chat（★198） | `mail` / `chatgate` / `turntake` | 覆盖 |
+| 抽取与结构化 | 29 | tax-doc-classifier（★314）、docjev（★307）、Jev PowerShell（★8） | `invoice` / `receiptcat` / `autoformat` | 覆盖 |
+| 金融与交易 | 25 | TradingAgents（★108478）、QuantStudio（★58）、Eikos Arena（★7） | `quoteread` | 覆盖 |
+| 内容审核与合规 | 22 | SREGym（★295）、scam-shield | `guardrail` / `adblock` / `alertrisk` | 覆盖 |
+| 数据与特征 | 22 | NanoJev（★1074）、tasksource（★197） | — | 不做（数据集工作区，不描述任务场景） |
+| 命令与终端 | 21 | surf-cli（★624）、jevyoumean（★13）、XavierJev（★1） | `shell` / `debugstep` | 覆盖 |
+| 日志与遥测 | 20 | claude-code-trace（★370）、Stratum（★51）、mu（★325） | `logtriage` / `causechain` / `alertrisk` | 覆盖 |
+| 排序与推荐 | 17 | xerj（★2365）、siftrank（★210） | `siftrank` / `rerank` | 覆盖 |
+| 记忆与检索过滤 | 14 | memsearch（★2654）、total-agent-memory（★69）、jevmem（★92） | `memorygate` / `cachereuse` / `compact` | 覆盖 |
+| 规划与任务分解 | 14 | foreman（★406）、stanley-code（★113） | `planstep` / `browser` | 覆盖 |
+| 文档与票据 | 12 | xerj（★2365）、tax-doc-classifier（★314） | `invoice` / `segmentation` / `autoformat` | 覆盖 |
+| 意图识别 | 11 | jev-chat-windows（★467）、crush-monitor（★183） | `routing` / `modelroute` | 覆盖 |
+| 诊断与调试 | 8 | llm-debugger-vscode-extension（★359）、SREGym（★295） | `debugstep` | 覆盖 |
+| 情感与情绪 | 8 | TradingAgents（★108478）、JevIntent（★52） | `sentiment` | 覆盖 |
+| 去重与近似重复 | 2 | jev-recall（★33）、jlink（★2） | `match` / `clipcut` | 覆盖 |
+
+表外还有一家**没挂上任何簇**的 workflow，如实记在这里：`hybrid`（会议日程：日期 / 时刻 / 时长 /
+会议室 / 主持人由构造器算，每场会的标题与议题交给后端写）。重抓的 965 条里**没有一条**讲
+「日程 / 会议排期」，所以它**没有对应的社区簇**——不写进这张表不是漏了，是确实对不上谁。
+`subqa` 原先也没写进表：它挂在「内容生成与改写」那一簇的**有界选择那半**上（社区里的
+`transcript-lens` ★16 与 `Jev Subtitle Translator` ★1 两条都落进这一簇），这一格原来写的是
+`skillpick` / `elementpick`——那两家各自覆盖别的簇，写在这里是串了。
 
 ## 3. 缺口清单（按「标签能不能算出来」排序）
 
@@ -78,16 +125,63 @@
 
 ### C 档：不做
 
-7. **根因分析**（`Stratum` ★51）——「根因」不是从表里算得出来的，只能问模型，正是范式 §0 说的
-   D 档。做出来也只是一堆看起来像答案的文本。
+7. ~~**根因分析**（`Stratum` ★51）~~ —— **已覆盖**：第 51 家 `causechain`（2026-10-01）。
+   原先判它「只能问模型」是因为把「根因」当成对一段自然语言日志的**语义**结论；把**依赖图**
+   与**三种事件形状的判据**当成注入特征（由代码写进 state）之后，根因 = 出错服务里没有任何
+   出错下游的那一个，**从文本按字面算得出来**——这一条改判的依据就在这里，见范式 §9.90。
 8. **主观风格润色 / 语气改写**——同上。
 
-## 4. 下一步
+## 4. 对账：细簇逐条归位（2026-10-01 补）
 
-**A 档与 B 档都做完了，下一步没有排定的名单。** 再往前只有两条路：要么去
-`tmp/docs/awesome-jev.rows.json` 里重新分桶找新的场景簇，要么往已有的 48 家里加题族
-（例如 `findtriage` 目前六族，还能加「这条发现该给谁看」这一类）。C 档（根因分析、
-主观润色）不做——它们正是范式 §0 说的 D 档。
+第二遍里**没判的 4 簇**现在都有结论：
+
+| 簇 | 条数 | 社区例子（★） | 判定 |
+|---|---|---|---|
+| 规划与任务分解 | 14 | `foreman`（★406）、`glowbom-oss`（★163）、`stanley-code`（★113） | **已覆盖**：第 49 家 `planstep`（2026-10-01）——偏序任务推进，四个答案全由依赖图算出来 |
+| 内容生成与改写 | 44 | `Instinct`、`forma-system1-experiment`、`mimicry` | **一半覆盖、一半不做**：有界选择那半由 `subqa` 覆盖（字幕对质检，社区那两条 `transcript-lens` / `Jev Subtitle Translator` 正是它）；按风格改写、`jev-paint` 这类主观生成是 C 档不做（同 §3.8） |
+| 情感与情绪 | 8 | `yanwai`、`jev-dev` | **已覆盖**：第 50 家 `sentiment`（2026-10-01）——情绪弧线的倾向、转折、落差与回升，全由词表算出来 |
+| 数据与特征 | 22 | `NanoJev`（★1074）、`tasksource`（★197） | **不做**：数据集工作区 / 探索器，不描述任务场景，归基础设施那一类 |
+
+第二遍说的「133 条未归类从没逐条看过」也清完了：第三遍重跑得 200 条，已逐条归位（§1 第二条）。
+**没有一条落到「找不到家」**——不是我们漏了场景，是关键词表漏了词。
+
+所以现在的口径是：**29 簇里 27 覆盖、1 部分（内容生成与改写）、1 不做（数据与特征）**；
+§3 的缺口清单（A 档 3 条 + B 档 3 条 + C 档里的根因分析）**全部做完**。
+2026-10-01 拿 965 条的新快照重算过一遍（§1 最后一条），**结论不变**——新涨的 49 条都落在
+已有簇里，没有新簇、没有新的「找不到家」。
+
+## 5. 下一步
+
+社区侧已经清点完了：**没有未判的簇，也没有未归类的条目**（§1 / §4）。2026-10-01 重抓的
+965 条里新涨 49 条，逐条看过：**46 条落在已有簇**，2 条关键词没命中但已归位（`FluidUse` 的
+「从辅助功能状态选表单动作」→ `elementpick` 的查表形状；`1 Million Emojis` 的「选下一格画什么」
+→ `sim` / `maze` 的格子形状）。
+
+**唯一一个值得单说的新条目是 `Tiltmeter`**（★0，类别「框架与集成」）：它记录决策模型的读数，
+对「模型版本变化 / 分布漂移 / 阈值拥挤 / 估计准确率下降」四种情况告警。**判定：不做**，
+理由是它判的对象是**概率读数的分布**，而本仓库的口径是「答案只有 choice / noul / score、
+不做概率输出」——把概率分布当输入，等于要求产物里带概率，与第一原则冲突。
+它的四种判断本身都能算（窗口对基线的计数比较），所以**真要做得先改口径**，不是加一家能解决的。
+这条**如实记在这里，不偷偷划掉**。
+
+再往前只有一条路——往已有的 51 家里加题族，而不是新开一家。**2026-10-01 先做了一家**：
+`causechain` 从四族加到五族，新增 `count`（受影响服务数，**score 题**，这一家唯一的 score 族，
+`kinds` 从 `choice/noul` 变成 `choice/noul/score`）。同一批候选里的「哪一跳断了」**试过之后
+不加**——本 workflow 的传播模型里它等价于「断在哪个服务」，化归成 `root` / `hop` / `isroot`
+已经在问的（判据见范式 §9.92）。真机复验：`cc-10c-zh` / `cc-10c-en` 各 10 条、收 10 拒 0、
+三个判别器全过、审计零缺失。
+
+**同日第二家**：`findtriage` 从六族加到七族，新增 `owner`（这条发现该进谁的队列，choice 四档）。
+原先记的候选描述（「在 state 里多印一张『谁负责哪类文件』的归属表」）**与这一家的记录表对不上**
+——它的记录表只有「序号 / 行号 / 本次改动 / 符号」四列，没有文件路径那一列，要按文件类型归属
+得先改表格式（会连着 render / 判别器 / 审计一起动）。所以改成按**可判的三件事**归属
+（指向的行在不在表里 × 引用符号在不在表里 × 那一行本次碰过没有），口径印进 state 第五段。
+真机：`ft-10a-zh` 收 10 拒 0、`ft-10b-en` 收 7 拒 3（3 条全在反解读者身上，产物审计零缺失）。
+两家的判据与踩坑见范式 §9.92 / §9.93。
+
+**至此 §5 上写下的候选全部做完或明确否掉**：`causechain` 的 `count` 做了、「哪一跳断了」否掉，
+`findtriage` 的「该给谁看」做了。C 档只剩主观润色不做（根因分析已经做出来了，见 §3.7）
+——它正是范式 §0 说的 D 档。
 
 注：B 档原先排第一的「候选回复挑选」**已经由 `chatgate` 覆盖**，已从名单里划掉——这一条是
 写地图时把「判该不该回」与「在三条候选里挑一条」看成了两件事，实际 `chatgate` 两族都有。
@@ -97,7 +191,13 @@
 来源选择（要求只写在查询里，注入式）——第 46 家 `sourceselect`；
 改动引入性判定（三轴处置 + 口径表排序决定分布，注入式）——第 47 家 `findtriage`；
 界面元素定位（唯一解代替次序约定 + 拼出来的格子要有可逆拼法，构造式，零 token）——
-第 48 家 `elementpick`（做完这一家，§2 里「浏览器与计算机操作」那一簇从「部分」变成「覆盖」）。
+第 48 家 `elementpick`（做完这一家，§2 里「浏览器与计算机操作」那一簇从「部分」变成「覆盖」）；
+偏序任务推进（依赖图 + 四条推进规则全印在 state 与题面，构造式，零 token）——第 49 家 `planstep`
+（做完这一家，「规划与任务分解」从「部分」变成「覆盖」）；
+情绪弧线（五档情绪词表 + 五条判读规则，构造式，零 token）——第 50 家 `sentiment`
+（做完这一家，「情感与情绪」从「没做」变成「覆盖」）。
+多服务时间线根因定位（依赖图 + 传播规则 + 三种事件形状判据由代码写、六个服务的现场日志由模型
+写，注入式）——第 51 家 `causechain`（做完这一家，「日志与遥测」从「部分」变成「覆盖」）。
 
 每一家都按现有骨架走：`features`（纯函数算标签）+ `render`（代码写结构、模型写文本）+
 `questions`（四族）+ `judges`（零 token 优先）+ `audit`（按字面重推）+ 六个测试文件 +

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import recognize_locale
 from jc.workflow import DraftError
 
 from . import features, locales
@@ -69,6 +70,11 @@ class ParsedLint:
     rule: str | None
     genre: str | None
     gate: tuple[str, ...]
+
+    @property
+    def found(self) -> bool:
+        """输入：无。输出：片段抬头认出来了没有。预期行为：就是 `genre` 在不在。"""
+        return self.genre is not None
 
 
 def rule_name(loc: dict[str, JsonValue], rule: str) -> str:
@@ -280,9 +286,4 @@ def detect_locale(state: object) -> str | None:
     预期行为：审计拿它按 state **自己**的语言取规范表——一次 run 里混了 zh / en 时，
     用调用方给的那一种去比会平白报一堆「处置办法表对不上」。
     """
-    if not isinstance(state, str):
-        return None
-    for lang in locales.available():
-        if parse_with(state, locales.load(lang)).genre is not None:
-            return lang
-    return None
+    return recognize_locale(state, locales, parse_with)

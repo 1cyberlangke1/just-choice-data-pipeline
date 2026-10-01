@@ -105,7 +105,7 @@ BARE_GENERICS: Final[frozenset[str]] = frozenset(
         "Pattern", "Match",
         # typing 里的旧写法（大写别名）
         "Dict", "List", "Set", "FrozenSet", "Tuple", "Type",
-        "DefaultDict", "Deque", "OrderedDict",
+        "DefaultDict", "Deque",
         # typing 的特化形式：裸用时类型参数同样是隐式 Any（`x: Optional` = `Optional[Any]`）
         "Optional", "Union", "Annotated", "Final", "ClassVar",
     }

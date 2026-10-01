@@ -871,3 +871,75 @@ def test_journal_slice_past_the_shared_products_reports_a_human_error(
     )
     with pytest.raises(ValueError, match="rejected.jsonl"):
         pipeline.run(config)
+
+
+class ProseWorkflow(BackendWorkflow):
+    """假 workflow：声明一段「模型写的自然语言正文」，用来验语言闸。
+
+    输入/输出：同 `BackendWorkflow`，只多实现 `language_texts`。
+    预期行为：正文**写死中文**、不随语言变（假后端不认语言），所以「声明 zh 时过、声明 en
+    时被拒」正好把闸的两条路都走一遍。
+    """
+
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：{字段名: 正文}。预期行为：只报自然语言正文，不报代码。"""
+        del sample
+        return {"正文": "这段正文是中文写的，长度够判书写系统了。"}
+
+    def available_locales(self) -> list[str]:
+        return ["zh", "en"]
+
+
+def test_language_gate_rejects_prose_in_the_wrong_language(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """输入：正文写死中文的假 workflow，一次声明 zh、一次声明 en。
+
+    输出：两次 `RunResult`。
+    预期行为：zh 那次全合格；en 那次**一条都不入库**，拒绝理由点名「与声明的语言对不上」
+    以及出问题的字段名。语言闸就该在生成期挡住写歪语言的那一条，而不是等审计事后点名
+    ——`docs/项目现状.md` 里那个「生成期不拦」的洞就是这一条。
+    """
+    monkeypatch.setattr(pipeline, "load", lambda name: ProseWorkflow())
+    ok = pipeline.run(
+        pipeline.RunConfig(
+            workflow="fake_llm", out_root=tmp_path, run_id="zh", backend=StubBackend()
+        )
+    )
+    assert ok.accepted == 2
+    assert ok.rejected == []
+    bad = pipeline.run(
+        pipeline.RunConfig(
+            workflow="fake_llm",
+            locales=("en",),
+            out_root=tmp_path,
+            run_id="en",
+            backend=StubBackend(),
+        )
+    )
+    assert bad.accepted == 0
+    assert {row["code"] for row in bad.rejected} == {"E_ASSEMBLE"}
+    assert all("对不上" in str(row["reason"]) for row in bad.rejected)
+    assert all("正文" in str(row["reason"]) for row in bad.rejected)
+
+
+def test_language_gate_can_be_turned_off(tmp_path: Path, monkeypatch: object) -> None:
+    """输入：同一个假 workflow，声明 en，但把闸关掉。
+
+    输出：`RunResult`。
+    预期行为：全合格——闸是配置项，关掉就回到「只查结构、不查语言」的老行为。夹具不忠实的
+    那几个包（假后端只写一种语言）就是靠它跑通端到端的，理由写在各家的 `make_config` 上。
+    """
+    monkeypatch.setattr(pipeline, "load", lambda name: ProseWorkflow())
+    result = pipeline.run(
+        pipeline.RunConfig(
+            workflow="fake_llm",
+            locales=("en",),
+            out_root=tmp_path,
+            run_id="off",
+            backend=StubBackend(),
+            language_gate=False,
+        )
+    )
+    assert result.accepted == 2
+    assert result.rejected == []

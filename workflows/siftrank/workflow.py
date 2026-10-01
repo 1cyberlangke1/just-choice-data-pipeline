@@ -32,7 +32,7 @@ from typing import Final
 from jc import jsonio
 from jc.backend.types import GenerationBackend
 from jc.judge import Judge
-from jc.workflow import LabeledQuestion, SplitSpec, family_of, register
+from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, family_of, plan_with_phrasing, register
 
 from . import judges as judges_mod
 from . import locales, parse, questions, render
@@ -104,7 +104,7 @@ def cases_for(config: RankConfig) -> list[RankCase]:
 
 
 @register(WORKFLOW_NAME)
-class SiftRankWorkflow:
+class SiftRankWorkflow(StandardMethods):
     """多批次排名聚合：四个批次的排名 → 头名 / 一对条目的比较 / 相关条目数 / 批次是否一致。"""
 
     name = WORKFLOW_NAME
@@ -112,10 +112,10 @@ class SiftRankWorkflow:
     kinds = frozenset({"choice", "noul", "score"})
     needs: frozenset[str] = frozenset()  # 构造式：批次与答案都由代码算出来，不需要后端
     judges: tuple[str, ...] = ("roundtrip", "label")
-
-    def split_names(self) -> tuple[str, ...]:
-        """输入：无。输出：支持的切分名。"""
-        return tuple(SPLIT_BUCKETS) + ("test_ood",)
+    split_names_tuple = tuple(SPLIT_BUCKETS) + ("test_ood",)
+    cases_for_fn = staticmethod(cases_for)
+    dimension_titles_map = DIMENSION_TITLES
+    pkg_locales = locales
 
     def config_for(self, split: str) -> RankConfig:
         """输入：切分名。输出：该切分的采样参数。
@@ -130,34 +130,10 @@ class SiftRankWorkflow:
             return replace(ID_CONFIG, split=split)
         raise KeyError(f"未知切分：{split!r}（可用：{self.split_names()}）")
 
-    def build_cases(self, config: RankConfig) -> list[RankCase]:
-        """输入：采样参数。输出：case 矩阵（顺序稳定）。"""
-        return cases_for(config)
-
-    def case_label(self, case: RankCase) -> str:
-        """输入：一个 case。输出：一行可读描述（报告与文件名用）。"""
-        return case.describe()
-
-    def stats_dimensions(self, case: RankCase) -> dict[str, JsonValue]:
-        """输入：一个 case。输出：{维度名: 取值}（三个维度全摊平）。"""
-        return case.as_dict()
-
-    def dimension_titles(self) -> dict[str, str]:
-        """输入：无。输出：{维度名: 中文标题}。"""
-        return dict(DIMENSION_TITLES)
-
     def plan_sample(
         self, rng: random.Random, config: RankConfig, case: RankCase, seq: int
     ) -> SplitSpec:
-        """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。
-
-        预期行为：问法在这里抽（同一 case 的多条样本会用不同问法）；case 与序号一起放进
-        params，`sample` 阶段不再做任何随机决策。
-        """
-        return SplitSpec(
-            name=config.split,
-            params={"case": case, "phrasing": rng.choice(config.phrasings), "seq": seq},
-        )
+        return plan_with_phrasing(config, rng, case, seq, config.phrasings)
 
     def sample(self, rng: random.Random, split: SplitSpec) -> RankSpec:
         """输入：独立 RNG、生成计划。输出：真值规格（请求号与四个答案都在这里定死）。"""
@@ -280,10 +256,6 @@ class SiftRankWorkflow:
                 missing.append(f"{split}: 出现未知题族 {dict(counts['unknown_families'])}")
             report[split] = counts
         return report, missing
-
-    def available_locales(self) -> list[str]:
-        """输入：无。输出：支持的语言列表。"""
-        return locales.available()
 
     def bind_backend(self, backend: GenerationBackend) -> None:
         """空操作：多批次排名聚合是纯构造式（`needs` 为空），管线不会给后端，也不该给。

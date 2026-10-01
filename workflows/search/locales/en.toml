@@ -101,7 +101,7 @@ hint = "the title and the snippet must both be mainly about another subject (not
 
 [feature.spam.clean]
 brief = "this result is clean"
-hint = "like the title and snippet of an ordinary page"
+hint = "like the title and snippet of an ordinary page: concrete facts about the subject, **not** marketing filler (even when the subject is not the query's)"
 
 [feature.spam.spam]
 brief = "this result is spam"
@@ -112,6 +112,13 @@ intro = "Below is one search result page. Infer its features using the given opt
 state_header = "[Full page]"
 questions_header = "[Questions]"
 option_line = "   - {name}: {desc}"
+
+# 反解提示词里 `spam` 那一题的选项名用**取值本身**（`clean` / `spam`），不是数据集那道
+# noul 题的 criteria key（`true` / `false`）：草稿要的是前者，两套词摆在一起模型得自己翻译，
+# 实测就是翻译错（en 侧 6 条里 5 条把 `clean` 读成 `spam`）。
+[verify.trace_options.spam]
+spam = "keyword stuffing / a funnel article / a plain ad — the page exists to sell or funnel"
+clean = "the title and snippet of an ordinary page — a page about another subject is not spam, however irrelevant it looks"
 
 [fam.query_kind]
 q = [
@@ -142,7 +149,7 @@ q = [
 ]
 [fam.spam.criteria]
 true = "spam: keyword stuffing / a funnel article / a plain ad"
-false = "not spam: the title and snippet of an ordinary page"
+false = "not spam: the title and snippet of an ordinary page — a page about **another subject** is not spam, however irrelevant it looks"
 
 [fam.rule]
 q = [

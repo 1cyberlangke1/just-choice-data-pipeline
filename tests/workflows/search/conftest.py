@@ -20,6 +20,7 @@ import pytest
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
+from tests.workflows._fakes import draft
 from workflows.search import features
 
 #: 每个查询意图的底稿（切题 + 干净那一格）。另外两维由 `_derive` 叠上去——
@@ -179,16 +180,8 @@ class FakeBackend:
 
     @staticmethod
     def _draft(data: dict[str, JsonValue]) -> Draft:
-        """输入：草稿数据。输出：`Draft`。预期行为：填满必填的记账字段。"""
-        return Draft(
-            data=data,
-            raw_text="<fake>",
-            backend="fake",
-            provider="fake",
-            model="fake-model",
-            mode="json_schema",
-            usage={},
-        )
+        """输入：草稿数据。输出：`Draft`。预期行为：记账字段填假值（共用工厂 `_fakes.draft`）。"""
+        return draft(data)
 
 
 @pytest.fixture

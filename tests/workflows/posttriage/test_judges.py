@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
@@ -12,6 +13,7 @@ from tests.workflows.posttriage.conftest import (
     quote_for,
     sample_of,
     spec_for,
+    text_of,
     trace_report,
 )
 from workflows.posttriage import features, judges, locales, render
@@ -76,6 +78,15 @@ def test_frame_rejects_a_state_without_a_content_block() -> None:
     verdict = judges.FrameJudge("zh").judge(sample, spec_for(CASE))
     assert not verdict.ok
     assert "正文" in verdict.reason
+
+
+def test_quote_holds_accepts_a_quote_wrapped_in_a_json_array() -> None:
+    """输入：引文被反解装进 JSON 数组字符串（范式 §9.88）。输出：无。
+
+    预期行为：拆成候选之后照旧算站得住——模型把「抄几段」当成了「交数组」只是打包方式不同，
+    不该把一条真命中丢成误报（存量那 20 条就是这么丢的）。
+    """
+    assert judges.quote_holds("S1", json.dumps([quote_for("S1")]), text_of(CASE))
 
 
 def test_trace_drops_an_overclaim_whose_quote_is_real_but_off_criterion() -> None:

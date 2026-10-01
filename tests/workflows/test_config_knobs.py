@@ -50,6 +50,8 @@ from workflows.quoteread.spec import QuoteConfig
 from workflows.sourceselect.workflow import SourceSelectConfig
 from workflows.findtriage.workflow import FindTriageConfig
 from workflows.elementpick.workflow import ElementConfig
+from workflows.planstep.spec import PlanConfig
+from workflows.sentiment.spec import SentimentConfig
 
 #: (config 类, 旋钮名)：每个取值表清空后都必须当场报错。
 #: 类那一格写 `type[object]` 是**如实**的：这些 config 各是独立的 dataclass，没有共同基类，
@@ -154,6 +156,8 @@ EMPTY_POOLS: tuple[tuple[type[object], str], ...] = (
     (ElementConfig, "extras"),
     (ElementConfig, "shadows"),
     (ElementConfig, "phrasings"),
+    (PlanConfig, "phrasings"),
+    (SentimentConfig, "phrasings"),
 )
 
 #: (config 类, 旋钮名)：区间类旋钮，元素个数不对时必须当场报错。
@@ -222,6 +226,8 @@ def test_bad_bounds_report_field(config_cls: type[object], field: str) -> None:
         SourceSelectConfig,
         FindTriageConfig,
         ElementConfig,
+        PlanConfig,
+        SentimentConfig,
     ],
 )
 def test_defaults_still_construct(config_cls: type[object]) -> None:

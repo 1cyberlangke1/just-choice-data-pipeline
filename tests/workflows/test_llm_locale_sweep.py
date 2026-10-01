@@ -33,6 +33,8 @@ from jc import pipeline
 from jc import workflow as workflow_mod
 
 from tests.workflows._contract import (
+    LOCALE_FAITHFUL_FAKES,
+    LOCALE_PARAM_BUT_UNFAITHFUL,
     LLM_WITHOUT_PROSE,
     assert_audit_ignores_the_callers_locale,
     assert_audit_reads_a_mixed_file,
@@ -70,6 +72,52 @@ def test_the_prose_exemption_list_names_real_llm_workflows() -> None:
     assert LLM_WITHOUT_PROSE, "豁免清单空了？那 lint / review / shell 就该报出正文了"
 
 
+def test_locale_faithful_fakes_are_real() -> None:
+    """输入：无。输出：无。
+
+    预期行为：`LOCALE_FAITHFUL_FAKES` 里的名字必须都是**真的**走 LLM 的 workflow。名字写错、
+    某家后来改成纯构造时这条会红，语言闸的开合就不会跟着一份腐烂的名单跑。
+
+    名单是**量出来的**，不是按构造签名推的：口径见 `tmp/probe_lang.py`——逐家按每种声明语言跑
+    一批假后端，再拿 `Workflow.language_texts` 喂 `jc.language.sample_problem`，两侧都零对不上
+    的才算「按语言造文本」。所以这里**不**断言假后端收 `locale`：`findtriage` 就是从
+    `task.spec["locale"]` 现取语言、构造函数里根本没这个参数，签名判据会把它误判成不忠实。
+    """
+    unknown = sorted(set(LOCALE_FAITHFUL_FAKES) - set(LLM_WORKFLOWS))
+    assert not unknown, f"名单里的这些名字不是走 LLM 的 workflow：{unknown}"
+    assert LOCALE_FAITHFUL_FAKES, "名单空了？那语言闸在端到端里就一次都没开过"
+
+
+def test_any_fake_that_takes_a_locale_is_listed() -> None:
+    """输入：无。输出：无。
+
+    预期行为：假后端只要**收**语言参数（`locale` / `lang` / `language` 任一），它就有能力按语言
+    造文本，那就必须出现在 `LOCALE_FAITHFUL_FAKES` 里——否则语言闸在端到端里对它白关着，
+    「en 的读法错」这类 bug 在它身上永远测不出来。`browser` 的夹具参数就叫 `lang` 而不是
+    `locale`，此前正是这么漏掉的（`tmp/probe_lang.py` 量出来才发现）。
+
+    `findtriage` 那种从 `task.spec["locale"]` 现取语言的查不出来（构造函数里没这个参数），
+    只能靠探针量；这条只管能查的那一半，查不出的那半由 `LOCALE_FAITHFUL_FAKES` 的注释写明。
+
+    「收语言参数」只是**有资格**按语言造文本，不等于真按了——`autoformat` 的夹具收 `locale`、
+    正文却永远写英文（`tmp/probe_lang.py` 实测 zh 侧 10/10 对不上），这类夹具的局限记在
+    `LOCALE_PARAM_BUT_UNFAITHFUL` 里，不算「该进名单却漏了」。
+    """
+    capable = sorted(
+        name
+        for name in LLM_WORKFLOWS
+        if any(
+            key
+            in inspect.signature(
+                importlib.import_module(f"tests.workflows.{name}.conftest").FakeBackend
+            ).parameters
+            for key in ("locale", "lang", "language")
+        )
+    )
+    missing = sorted(set(capable) - set(LOCALE_FAITHFUL_FAKES) - set(LOCALE_PARAM_BUT_UNFAITHFUL))
+    assert not missing, f"这些假后端收语言参数却没进名单，闸对它们白关着：{missing}"
+
+
 def config_for(name: str, tmp_path: Path, locale: str, split: str) -> pipeline.RunConfig:
     """借该 workflow 自己的测试配置，只把语言、切分与 run 名换掉。
 
@@ -86,13 +134,27 @@ def config_for(name: str, tmp_path: Path, locale: str, split: str) -> pipeline.R
     kwargs: dict[str, object] = {"split": split}
     if "backend" in inspect.signature(tests.make_config).parameters:
         maker = conftest.FakeBackend
-        # 假后端替模型写字，而标记类文案（步骤词、提示框关键词、署名前缀）是语言相关的：
-        # 接受 `locale` 的假后端要按目标语言现造，不接受说明它的草稿与语言无关（命令、正文）。
-        kwargs["backend"] = (
-            maker(locale=locale) if "locale" in inspect.signature(maker).parameters else maker()
-        )
+        # 假后端替模型写字，而标记类文案（步骤词、提示框关键词、署名前缀）是语言相关的：**收语言
+        # 参数**的假后端要按目标语言现造。参数名两家不统一（多数叫 `locale`，`browser` 叫 `lang`），
+        # 所以按名字试一遍；都不收，说明它的草稿与语言无关（命令、正文），那就照默认造。
+        takes = [
+            name
+            for name in ("locale", "lang", "language")
+            if name in inspect.signature(maker).parameters
+        ]
+        kwargs["backend"] = maker(**{takes[0]: locale}) if takes else maker()
     cfg = tests.make_config(tmp_path, run_id, **kwargs)
-    return dataclasses.replace(cfg, locales=(locale,), run_id=run_id)
+    # 语言闸（`jc.pipeline` 的 `language_gate`）要求「模型写的自然语言正文」与声明的语言一致。
+    # 只有**按语言造文本**的假后端才兑现得了这条——其余假后端只写一种语言，闸一开就会把它们的
+    # 另一种语言那一侧全判成拒稿，而那是夹具的局限、不是渲染的 bug。谁算「按语言造文本」写在
+    # `LOCALE_FAITHFUL_FAKES` 里（量出来的，见 `_contract` 的注释），`test_locale_faithful_fakes_are_real`
+    # 盯着那份名单；闸本身另有一条 `tests/core` 的定点测试专门验它拒得掉。
+    return dataclasses.replace(
+        cfg,
+        locales=(locale,),
+        run_id=run_id,
+        language_gate=name in LOCALE_FAITHFUL_FAKES,
+    )
 
 
 @pytest.mark.parametrize("split", ("train", "test_ood"))

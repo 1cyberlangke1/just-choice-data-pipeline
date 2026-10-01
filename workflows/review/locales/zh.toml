@@ -123,6 +123,17 @@ state_header = "【改动全文】"
 questions_header = "【问题】"
 option_line = "   - {name}：{desc}"
 
+# 反解提示词里这两族的选项名用**取值本身**（`yes` / `no`），不是数据集那道 noul 题的
+# criteria key（`true` / `false`）：草稿要的是前者，两套词摆在一起模型得自己翻译，实测就是
+# 翻译错（真机拒稿理由全是「注入 yes，反解成 no」）。见 `jc.llmjudge.trace_options`。
+[verify.trace_options.secret]
+yes = "**新增行**里出现了形如 `db_password = \"…\"` 的写法（写在代码里或说明文字里都算）"
+no = "新增行里没有这种写法（只在删除行上出现不算）"
+
+[verify.trace_options.debug]
+yes = "**新增行**里出现了 print( / console.log( / logger.debug( 这类调用"
+no = "新增行里一处这种调用都没有（只在删除行上出现不算）"
+
 [fam.secret]
 q = [
   "改动的新增行里有没有出现「凭据名 = 带引号的值」这种写法？",

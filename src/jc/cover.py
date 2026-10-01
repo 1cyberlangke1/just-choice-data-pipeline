@@ -20,14 +20,26 @@ from __future__ import annotations
 from jc.jsontypes import JsonValue
 
 import random
+import hashlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from itertools import combinations, product
-from typing import Final
+from typing import Final, Protocol, TypeVar
 
 # 全枚举的规模上限：超过就换成对覆盖（PLAN 3.3 定的口径）。
 FULL_ENUM_LIMIT: Final[int] = 10_000
 
 Pair = tuple[str, JsonValue, str, JsonValue]
+
+
+class HasDict(Protocol):
+    """能报出自己那一组取值的东西（本仓库所有 case 类型都满足）。"""
+
+    def as_dict(self) -> Mapping[str, JsonValue]:
+        """输入：无。输出：`{维度名: 取值}`。"""
+
+
+#: case 的占位类型：`slice_by_bucket` 只要求「有桶号、能报取值」，不关心是哪种 case。
+CaseT = TypeVar("CaseT", bound=HasDict)
 
 #: 取值对约束：收 `(维度A, 取值A, 维度B, 取值B)`（A 在 `dims` 里更靠前），返回能否共存。
 PairRule = Callable[[str, object, str, object], bool]
@@ -220,3 +232,30 @@ def near_miss_combos(
     )
     picked = rng.sample(near[:8], count)
     return tuple(sorted(picked, key=lambda combo: (len(combo), combo)))
+
+
+def slice_by_bucket(
+    cases: Sequence[CaseT],
+    split: str,
+    bucket_of: Callable[[CaseT], int],
+    buckets: Mapping[str, tuple[int, int]],
+) -> list[CaseT]:
+    """输入：同分布 case 列表、切分名、桶号函数、切分表。输出：该切分的 case（顺序稳定）。
+
+    预期行为：先按 (桶号, 组合) 排序再切片，比例才是**精确**的——不排序就切，同一批 case
+    换个生成顺序就会落进不同切分，切分不可复现。`buckets[split]` 是 `(下界, 上界)` 百分位。
+    """
+    ordered = sorted(cases, key=lambda case: (bucket_of(case), tuple(case.as_dict().items())))
+    low, high = buckets[split]
+    total = len(ordered)
+    return ordered[low * total // 100 : high * total // 100]
+
+
+def hash_bucket(case: CaseT, seed: int) -> int:
+    """输入：一个 case、种子。输出：0~99 的哈希桶号。
+
+    预期行为：只按 `as_dict()` 报出来的那组取值算，与切分名无关——同一组取值永远落在同一个
+    桶里，所以「同一组取值不跨切分」是**算出来的**，不是靠人排的。36 个包各抄一份，只留这一份。
+    """
+    payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
+    return int(hashlib.sha256(f"{seed}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100

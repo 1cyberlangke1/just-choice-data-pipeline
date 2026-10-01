@@ -72,7 +72,6 @@ class RoutingDraft(BaseModel):
     """
 
     body: str = Field(
-        min_length=1,
         description="这条工单的正文：一段话，像用户真的提交上来的那段",
     )
 

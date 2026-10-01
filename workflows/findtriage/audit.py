@@ -1,12 +1,14 @@
 """改动引入性判定的产物审计：读 JSONL 逐条核对纯代码能重算的那部分。
 
-能重算的有五件，全都在产物里的改动记录 + 那两行文本上机械可判：
+能重算的有六件，全都在产物里的改动记录 + 那两行文本上机械可判：
 
 - `cite` 必须等于「发现里写的那个行号在记录里是第几行」（查不到就是 `none`）；
 - `introduced` / `supported` 必须等于按口径在记录表上重推的结果；
 - `actionable` 必须等于「修法里有没有反引号记号」——这是提示词与 `check_draft` 一起
   钉死的可判形式，审计照同一条重推；
 - `triage` 必须等于把上面三件代进口径表算出来的处置档；
+- `owner` 必须等于把「指向哪一行 / 引用哪个符号」代进**归属表**算出来的去处（同一个
+  `features.owner_for`，构造侧与审计侧共用）；
 - `decoy` 必须等于「表里有没有一行是证据符号的近形」。
 
 证据符号本身依赖那条发现的措辞，审计按「先取表内出现过的记号、没有再取表外第一个」重认
@@ -75,6 +77,7 @@ def audit_run(
             "supported_bad": 0,
             "actionable_bad": 0,
             "triage_bad": 0,
+            "owner_bad": 0,
             "decoy_bad": 0,
             "unknown_families": Counter(),
         }
@@ -121,6 +124,8 @@ def audit_run(
                 counts["actionable_bad"] += 1
             if recorded.get("triage") != features.triage_for(introduced, supported, actionable):
                 counts["triage_bad"] += 1
+            if recorded.get("owner") != features.owner_for(rows, cited_line, symbol):
+                counts["owner_bad"] += 1
             decoy = any(item.symbol == features.near_form(symbol) for item in rows)
             if recorded.get("decoy") is not decoy:
                 counts["decoy_bad"] += 1
@@ -141,6 +146,8 @@ def audit_run(
             missing.append(f"{split}: {counts['actionable_bad']} 条的「修法落不落地」与修法原文对不上")
         if counts["triage_bad"]:
             missing.append(f"{split}: {counts['triage_bad']} 条的处置档与口径表重推的对不上")
+        if counts["owner_bad"]:
+            missing.append(f"{split}: {counts['owner_bad']} 条的归属与归属表重推的对不上")
         if counts["decoy_bad"]:
             missing.append(f"{split}: {counts['decoy_bad']} 条的诱饵判断与记录表重推的对不上")
         report[split] = counts

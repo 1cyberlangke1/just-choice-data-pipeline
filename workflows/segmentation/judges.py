@@ -26,9 +26,9 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
-from jc.judge import squash as _squash
+from jc.judge import quote_hit as _quote_hit
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
-from jc.judge import Verdict
+from jc.judge import Verdict, verify_prompt
 from jc.jsontypes import JsonValue
 
 from . import features, locales, render
@@ -66,23 +66,8 @@ class ReadDraft(BaseModel):
 
 
 def build_read_prompt(state: str, loc: dict[str, JsonValue]) -> str:
-    """组装反解提示词。
-
-    输入：渲染好的 state、语言字典。输出：提示词。
-    预期行为：把整段 state（含种类表、切分规则与逐页正文）原样交给后端，只问「出现了哪几类」——
-    反解用的口径与渲染期用的机械口径是同一份（判据连同原文都印在 state 里），否则「答对了」与
-    「标签对了」不是一回事。
-    """
-    return "\n".join(
-        [
-            str(loc["verify"]["intro"]),
-            "",
-            str(loc["verify"]["state_header"]),
-            state,
-            "",
-            str(loc["verify"]["q"]),
-        ]
-    )
+    """组装反解提示词（口径见 `jc.judge.verify_prompt`）。"""
+    return verify_prompt(state, loc)
 
 
 def quote_holds(cls: str, quote: str, body: str) -> bool:
@@ -92,10 +77,11 @@ def quote_holds(cls: str, quote: str, body: str) -> bool:
     不算抄错），且引文本身满足该种类的机械判据（`features.PATTERNS`）。抄不出原文、或抄出来
     的那段按正则根本不算命中，一律不算数。
     """
-    if not quote or _squash(quote) not in _squash(body):
+    hit = _quote_hit(quote, body)
+    if not hit:
         return False
     pattern = features.PATTERNS.get(cls)
-    return bool(pattern and pattern.search(quote))
+    return bool(pattern and pattern.search(hit))
 
 
 def _dropped_note(dropped: list[str]) -> str:

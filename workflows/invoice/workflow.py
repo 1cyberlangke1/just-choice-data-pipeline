@@ -19,7 +19,6 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
-import hashlib
 import random
 from collections import Counter
 from dataclasses import replace
@@ -28,8 +27,9 @@ from typing import Final
 
 from jc import jsonio
 from jc.backend.types import GenerationBackend
+from jc.cover import hash_bucket, slice_by_bucket
 from jc.judge import Judge
-from jc.workflow import LabeledQuestion, SplitSpec, family_of, register
+from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, family_of, plan_with_phrasing, register
 
 from . import locales, parse, questions, render
 from . import spec as spec_mod
@@ -71,25 +71,7 @@ DIMENSION_TITLES: Final[dict[str, str]] = {
 
 
 def bucket_of(case: InvoiceCase, seed: int = SPLIT_SEED) -> int:
-    """输入：case、种子。输出：0~99 的桶号。
-
-    预期行为：同一组合必得同一桶，不同组合近似均匀——切分单位是**组合**，不是样本；
-    不用内置 `hash()`（它对字符串每进程随机化），否则切分会随进程漂移。
-    """
-    payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
-    return int(hashlib.sha256(f"{seed}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100
-
-
-def _slice(cases: list[InvoiceCase], split: str) -> list[InvoiceCase]:
-    """输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
-
-    预期行为：先按 (桶号, 组合) 排序再切片，比例才是**精确**的——只按桶号过滤时，
-    哈希方差会让 val 只剩个位数；同一组合永远落在同一段。
-    """
-    ordered = sorted(cases, key=lambda case: (bucket_of(case), tuple(case.as_dict().items())))
-    low, high = SPLIT_BUCKETS[split]
-    total = len(ordered)
-    return ordered[low * total // 100 : high * total // 100]
+    return hash_bucket(case, seed)
 
 
 def cases_for(config: InvoiceConfig) -> list[InvoiceCase]:
@@ -101,11 +83,11 @@ def cases_for(config: InvoiceConfig) -> list[InvoiceCase]:
     cases = spec_mod.build_cases(config)
     if config.split == "test_ood":
         return cases
-    return _slice(cases, config.split)
+    return slice_by_bucket(cases, config.split, bucket_of, SPLIT_BUCKETS)
 
 
 @register(WORKFLOW_NAME)
-class InvoiceWorkflow:
+class InvoiceWorkflow(StandardMethods):
     """单据字段抽取：声明、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
     name = WORKFLOW_NAME
@@ -113,10 +95,10 @@ class InvoiceWorkflow:
     kinds = frozenset({"choice", "noul", "score"})
     needs: frozenset[str] = frozenset()  # 抽取式：素材与答案都由构造器算出来，不需要后端
     judges: tuple[str, ...] = ("roundtrip", "label")
-
-    def split_names(self) -> tuple[str, ...]:
-        """输入：无。输出：四个切分（同分布三档 + 一个值留出的 OOD 档）。"""
-        return ("train", "val", "test_iid", "test_ood")
+    split_names_tuple = ("train", "val", "test_iid", "test_ood")
+    cases_for_fn = staticmethod(cases_for)
+    dimension_titles_map = DIMENSION_TITLES
+    pkg_locales = locales
 
     def config_for(self, split: str) -> InvoiceConfig:
         """输入：切分名。输出：该切分的采样参数。
@@ -130,34 +112,10 @@ class InvoiceWorkflow:
             return OOD_CONFIG
         return replace(ID_CONFIG, split=split)
 
-    def build_cases(self, config: InvoiceConfig) -> list[InvoiceCase]:
-        """输入：采样参数。输出：case 矩阵（顺序稳定）。"""
-        return cases_for(config)
-
-    def case_label(self, case: InvoiceCase) -> str:
-        """输入：一个 case。输出：一行可读描述（报告与文件名用）。"""
-        return case.describe()
-
-    def stats_dimensions(self, case: InvoiceCase) -> dict[str, JsonValue]:
-        """输入：一个 case。输出：{维度名: 取值}（8 个维度全摊平）。"""
-        return case.as_dict()
-
-    def dimension_titles(self) -> dict[str, str]:
-        """输入：无。输出：{维度名: 中文标题}。"""
-        return dict(DIMENSION_TITLES)
-
     def plan_sample(
         self, rng: random.Random, config: InvoiceConfig, case: InvoiceCase, seq: int
     ) -> SplitSpec:
-        """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。
-
-        预期行为：问法在这里抽（同一 case 的多条样本会用不同问法）；
-        case 与序号一起放进 params，`sample` 阶段不再做任何随机决策。
-        """
-        return SplitSpec(
-            name=config.split,
-            params={"case": case, "phrasing": rng.choice(config.phrasings), "seq": seq},
-        )
+        return plan_with_phrasing(config, rng, case, seq, config.phrasings)
 
     def sample(self, rng: random.Random, split: SplitSpec) -> spec_mod.InvoiceSpec:
         """输入：独立 RNG、生成计划。输出：真值规格（金额、日期、明细全在这里定死）。"""
@@ -286,10 +244,6 @@ class InvoiceWorkflow:
             report[split] = counts
         _ = locale  # 反解用合并标签表（语言无关），不需要具体语言文件
         return report, missing
-
-    def available_locales(self) -> list[str]:
-        """输入：无。输出：支持的语言列表。"""
-        return locales.available()
 
     def bind_backend(self, backend: GenerationBackend) -> None:
         """空操作：单据是纯构造式（`needs` 为空），管线不会给后端，也不该给。

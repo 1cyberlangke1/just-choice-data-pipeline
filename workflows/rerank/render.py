@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import recognize_locale
 from jc.workflow import DraftError
 
 from . import features, locales
@@ -70,6 +71,11 @@ class ParsedRerank:
     terms: tuple[str, ...]
     candidates: tuple[str, ...]
     rule: tuple[str, ...]
+
+    @property
+    def found(self) -> bool:
+        """输入：无。输出：查询抬头认出来了没有。预期行为：就是 `query` 在不在。"""
+        return self.query is not None
 
 
 def cand_ref(loc: dict[str, JsonValue], index: int) -> str:
@@ -322,12 +328,7 @@ def detect_locale(state: object) -> str | None:
     认下来，于是「先试的那一种」会抢走所有 state。抬头是渲染时按语言写死的，拿它当判据才
     分得开（这条坑在 lint 上踩过一次，见范式 §9.22）。
     """
-    if not isinstance(state, str):
-        return None
-    for lang in locales.available():
-        if parse_with(state, locales.load(lang)).query is not None:
-            return lang
-    return None
+    return recognize_locale(state, locales, parse_with)
 
 
 def parse_state(state: object) -> ParsedRerank:

@@ -16,7 +16,11 @@ from tests.workflows.rubric.conftest import FakeBackend
 
 
 def make_config(tmp_path: Path, run_id: str, *, split: str = "train") -> pipeline.RunConfig:
-    """构造一个小 case 集合的运行配置（指向 tmp 目录）。"""
+    """构造一个小 case 集合的运行配置（指向 tmp 目录）。
+
+    预期行为：**关掉语言闸**——本包的假后端只写英文（夹具局限，理由见
+    `tests/workflows/rubric/test_pipeline.make_config`）。
+    """
     return pipeline.RunConfig(
         workflow="rubric",
         split=split,
@@ -27,6 +31,7 @@ def make_config(tmp_path: Path, run_id: str, *, split: str = "train") -> pipelin
         run_id=run_id,
         config_override=rubric_workflow.RubricConfig(split=split, case_limit=6),
         backend=FakeBackend(),
+        language_gate=False,
     )
 
 

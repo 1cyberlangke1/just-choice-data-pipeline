@@ -57,7 +57,6 @@ class CompactDraft(BaseModel):
     """
 
     content: str = Field(
-        min_length=1,
         description="这一块上下文正文：一行（或一段），像真实会话里那一段那样",
     )
 

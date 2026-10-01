@@ -9,11 +9,15 @@
 """
 
 from __future__ import annotations
+from . import jsonio
 from jc.jsontypes import JsonValue
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+
+if TYPE_CHECKING:  # 只在类型检查时引入：通用层不装 [llm] extra 也要能跑
+    from .backend.types import GenerationBackend
 
 #: LLM 判别器的名字前缀（`llm:solvable`）。通用层负责装配它们（要后端），
 #: 各 workflow 只管在自己的判别器名单里写名字，不必重复接线。
@@ -27,6 +31,73 @@ def squash(text: str) -> str:
     免得同一句话因为排版不同被判成两回事。
     """
     return " ".join(text.split())
+
+
+def quote_candidates(raw: str) -> tuple[str, ...]:
+    """输入：反解交回来的引文字段（声明是 str）。输出：候选引文，按原顺序去重，至少一条。
+
+    预期行为：字段本该是**一段**原样抄出来的文本，读者却常把「抄了几段」直接塞进来——一整个
+    JSON 数组字符串、一串连外层方括号都丢了的带引号元素、几段用换行拼在一起、每段外面还各自
+    裹一层 JSON 引号（真机实测四种都出过，见范式 §9.88）。这里把包装一层层拆掉：`_as_array`
+    拆数组 → 按行拆 → 剥外层引号。**拆出来的每一段仍须原样出现在正文里才算数**（由 `quote_hit`
+    判），所以拆包装只会少丢真命中，不会多认误报。
+    """
+    pieces: list[str] = []
+    for chunk in _as_array(raw) or (raw,):
+        for line in chunk.splitlines() or [chunk]:
+            if not line.strip():
+                continue
+            pieces.append(line)
+            bare = _unquote(line)
+            if bare != line and bare.strip():
+                pieces.append(bare)
+    unique = tuple(dict.fromkeys(pieces))
+    return unique or (raw,)
+
+
+def _as_array(raw: str) -> tuple[str, ...] | None:
+    """输入：一段文本。输出：它作为「JSON 字符串数组」读出来的元素（读不出来就是 None）。
+
+    预期行为：认两种写法——**本身就是数组**（`["甲", "乙"]`），以及读者连外层方括号一起丢了、
+    只剩一串带引号的元素（`"甲", "乙"`）。空数组、没有字符串元素、语法坏，一律给 None，
+    由调用方退回原文。
+    """
+    text = raw.strip()
+    form = text if text.startswith("[") and text.endswith("]") else f"[{text}]"
+    try:
+        loaded = jsonio.loads(form)
+    except jsonio.StrictJsonError:
+        return None
+    if not isinstance(loaded, list):
+        return None
+    items = tuple(item for item in loaded if isinstance(item, str) and item.strip())
+    return items or None
+
+
+def _unquote(text: str) -> str:
+    """输入：一段文本。输出：剥掉最外层 JSON 引号之后的文本（不是 JSON 字符串就原样返回）。"""
+    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+        try:
+            loaded = jsonio.loads(text)
+        except jsonio.StrictJsonError:
+            return text
+        if isinstance(loaded, str):
+            return loaded
+    return text
+
+
+def quote_hit(quote: str, body: str) -> str:
+    """输入：引文字段、正文。输出：第一条**原样出现在正文里**的候选（都没有就是空串）。
+
+    预期行为：逐个候选按空白折叠后比对，返回命中的那一条**原文**——调用方接着拿它比机械判据，
+    比的是候选本身而不是整个数组字符串（拿整串去比必然为假，那条命中会被当成误报丢掉）。
+    """
+    squashed_body = squash(body)
+    for candidate in quote_candidates(quote):
+        squashed = squash(candidate)
+        if squashed and squashed in squashed_body:
+            return candidate
+    return ""
 
 
 def leftover_in(state: str, lines: Iterable[str], tags: Iterable[str]) -> str:
@@ -105,3 +176,58 @@ def run_judges(
                 raise
             out.append((judge.name, Verdict(False, reason=f"判别器异常：{exc}")))
     return out
+
+
+class JudgeModule(Protocol):
+    """一个 workflow 的 `judges` 模块：三件套判别器由各包自己定义。"""
+
+    HygieneJudge: Callable[[str], Judge]
+    FrameJudge: Callable[[str], Judge]
+    TraceJudge: Callable[["GenerationBackend", str], Judge]
+
+
+def standard_judges(
+    names: tuple[str, ...],
+    locale: str,
+    module: JudgeModule,
+    backend: "GenerationBackend | None",
+) -> tuple[Judge, ...]:
+    """输入：判别器名单、语言、workflow 的 judges 模块、后端。输出：判别器实例。
+
+    预期行为：`hygiene` / `frame` 只吃语言，`trace` 还要后端（没被注入直接报错——
+    静默降级会让「文本由模型写」这个前提失效），未知名字直接报错并列出可用名字。
+    19 个包的 `make_judges` 逐字相同，机制只留这一份，各包只管把模块与后端交进来。
+    """
+    out: list[Judge] = []
+    for name in names:
+        if name == "hygiene":
+            out.append(module.HygieneJudge(locale))
+        elif name == "frame":
+            out.append(module.FrameJudge(locale))
+        elif name == "trace":
+            if backend is None:
+                raise RuntimeError("trace 判别器需要后端，但还没被 bind_backend 注入")
+            out.append(module.TraceJudge(backend, locale))
+        else:
+            raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
+    return tuple(out)
+
+
+def verify_prompt(state: str, loc: dict[str, JsonValue]) -> str:
+    """组装反解提示词。
+
+    输入：渲染好的 state、语言字典。输出：提示词。
+    预期行为：把整段 state（判据表 / 档位表 / 素材原文都在里面）原样交给后端，只问一句
+    「踩了哪几条」——反解用的口径与渲染期用的机械口径是同一份，否则「答对了」与
+    「标签对了」不是一回事。18 个包各抄一份，机制只留这一份。
+    """
+    return "\n".join(
+        [
+            str(loc["verify"]["intro"]),
+            "",
+            str(loc["verify"]["state_header"]),
+            state,
+            "",
+            str(loc["verify"]["q"]),
+        ]
+    )

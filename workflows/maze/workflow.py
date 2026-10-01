@@ -21,7 +21,7 @@ from pathlib import Path
 
 from jc.backend.types import GenerationBackend
 from jc.judge import Judge
-from jc.workflow import LabeledQuestion, SplitSpec, register
+from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, register
 
 # 说明：audit / judges 都在模块级 import 本模块的解析函数，所以这里**不能在模块级 import 它们**
 # （会形成 workflow → audit → workflow 的循环），改为在用到的方法里延迟导入。
@@ -321,7 +321,7 @@ def _pick_families(
 
 
 @register(WORKFLOW_NAME)
-class MazeWorkflow:
+class MazeWorkflow(StandardMethods):
     """迷宫 workflow（纯构造式）。"""
 
     name = WORKFLOW_NAME
@@ -329,12 +329,11 @@ class MazeWorkflow:
     kinds = frozenset({"choice", "noul", "score"})
     needs: frozenset[str] = frozenset()  # 纯构造式：不需要任何后端
     judges: tuple[str, ...] = ("roundtrip", "label")
+    split_names_tuple = ("train", "val", "test_iid", "test_ood")
+    dimension_titles_map = DIMENSION_TITLES
+    pkg_locales = locales
 
     # ---------- 声明与计划 ----------
-
-    def split_names(self) -> tuple[str, ...]:
-        """四个切分：同分布三档 + 一个留出格式/符号/尺寸/问法的 OOD 档。"""
-        return ("train", "val", "test_iid", "test_ood")
 
     def config_for(self, split: str) -> spec_mod.MazeConfig:
         """输入：切分名。输出：该切分的采样参数（test_ood 用更大迷宫与更全格式）。"""
@@ -371,10 +370,6 @@ class MazeWorkflow:
             )
         return cases
 
-    def case_label(self, case: spec_mod.MazeCase) -> str:
-        """case 的一行描述（用于报告与文件名）。"""
-        return case.describe()
-
     def stats_dimensions(self, case: spec_mod.MazeCase) -> dict[str, JsonValue]:
         """把 case 摊平成统计维度：{维度名: 取值}。"""
         return {
@@ -386,10 +381,6 @@ class MazeWorkflow:
             "deviation": case.deviation,
             "cut": case.cut,
         }
-
-    def dimension_titles(self) -> dict[str, str]:
-        """维度的中文标题（让统计报告好读）。"""
-        return dict(DIMENSION_TITLES)
 
     def plan_sample(
         self, rng: random.Random, config: spec_mod.MazeConfig, case: spec_mod.MazeCase, seq: int
@@ -512,10 +503,6 @@ class MazeWorkflow:
         from . import audit as audit_mod  # 延迟导入：避免与 audit 互相 import 成环
 
         return audit_mod.audit_run(run_dir, splits, locale)
-
-    def available_locales(self) -> list[str]:
-        """支持的语言列表。"""
-        return locales.available()
 
     def bind_backend(self, backend: GenerationBackend) -> None:
         """空操作：迷宫是纯构造式（`needs` 为空），管线不会给后端，也不该给。

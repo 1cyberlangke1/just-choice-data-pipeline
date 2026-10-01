@@ -127,3 +127,6 @@ false = "no entry carries a step word, the entries are just parallel"
 
 [verify]
 ask = "Below is a plain-text memo with its markup stripped and its prose hard-wrapped; every line starts with a line id such as L001. Read **the text alone** and answer three things: (1) the sequence of content-block kinds, where the only allowed values are heading / paragraph / list_item / quote / code / callout; (2) if there is a callout, which kind it is (note / tip / warning), otherwise an empty string; (3) if there is a list, whether it is ordered - the test is **step words**: if every entry carries a word such as {steps} it is ordered, if no entry carries one it is not; if there is no list, false. Blocks are separated by blank lines, and inside a list each item counts as its own block."
+# The criteria for the six kinds, copied from the examinee's own question (`type_desc`).
+kinds_header = "Criteria (use these, do not guess from habit):"
+kinds_line = "- {kind} ({name}): {desc}"

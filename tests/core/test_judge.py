@@ -6,6 +6,7 @@
 """
 
 from __future__ import annotations
+import json
 from jc.jsontypes import JsonValue
 
 
@@ -114,3 +115,37 @@ def test_leftover_in_prefers_whole_lines_then_tags() -> None:
     assert judge_mod.leftover_in("正文<br>更多", lines, tags) == "<br>"
     assert judge_mod.leftover_in("正文```尾", lines, tags) == ""
     assert judge_mod.leftover_in("干净的正文", lines, tags) == ""
+
+
+def test_quote_candidates_unwraps_a_json_array_string() -> None:
+    """输入：几种引文字段。输出：候选元组。
+
+    预期行为：字段里塞了 JSON 数组（模型把「抄几段」当成了「交数组」，范式 §9.88）就拆成多条、
+    按原顺序；普通字符串原样一条；语法坏的、不是数组的、候选全是空串的，一律退回原文——
+    只拆包装，不丢证据。
+    """
+    assert judge_mod.quote_candidates("原文一段") == ("原文一段",)
+    assert judge_mod.quote_candidates(json.dumps(["甲", "乙"])) == ("甲", "乙")
+    assert judge_mod.quote_candidates("甲\n乙") == ("甲", "乙")
+    assert judge_mod.quote_candidates('"甲", "乙"') == ("甲", "乙")
+    assert judge_mod.quote_candidates('"甲"') == ("甲",)
+    assert judge_mod.quote_candidates(json.dumps(["甲", 3, "", "  "])) == ("甲",)
+    assert judge_mod.quote_candidates('[不是数组') == ("[不是数组",)
+    assert judge_mod.quote_candidates('["甲", ]') == ('["甲", ]',)
+    assert judge_mod.quote_candidates("[]") == ("[]",)
+    assert judge_mod.quote_candidates(json.dumps([{"a": 1}])) == (json.dumps([{"a": 1}]),)
+
+
+def test_quote_hit_picks_the_first_candidate_that_is_really_in_the_body() -> None:
+    """输入：引文字段、正文。输出：命中的那条候选（都没有就是空串）。
+
+    预期行为：逐条按空白折叠比对、返回候选**原文**——反解把引文装进数组字符串时，拿整串去比
+    必然为假，那条命中会被当成误报丢掉（范式 §9.88 的存量 20 条）。
+    """
+    body = "第一段\n第二段"
+    assert judge_mod.quote_hit("第一段", body) == "第一段"
+    assert judge_mod.quote_hit(" 第一段 ", body) == " 第一段 "
+    assert judge_mod.quote_hit(json.dumps(["没有这句", "第二段"]), body) == "第二段"
+    assert judge_mod.quote_hit(json.dumps(["没有这句"]), body) == ""
+    assert judge_mod.quote_hit("", body) == ""
+    assert judge_mod.quote_hit("   ", body) == ""

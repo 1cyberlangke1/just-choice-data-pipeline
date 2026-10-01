@@ -1,0 +1,91 @@
+# 根因定位（causechain）workflow 的中文文案。
+#
+# 输入：`workflows.causechain.locales.load("zh")` 读取本文件。
+# 输出：字典。
+# 预期行为（每一条都有测试钉住）：
+# - 三个抬头标记两两不互为前缀（`tag_mark` / `rule_mark` / `content_mark`）；
+# - `[event.*]` 的键与 `features.EVENTS` 一一对应，每条都有 name / rule / avoid；
+# - `[role]` 的键与 `features.ROLES` 一一对应；
+# - `[fam.hop.opt]` 的键与 `features.HOP_CLASSES` 一一对应；
+# - 提示词与题面模板里的占位符都被填过（渲染要经过严格填槽，漏填会当场报错）。
+
+lang = "zh"
+language_name = "简体中文"
+
+rules = [
+  "R1：`上游 > 下游` 读作「上游调用下游」。错误只沿上游传播：某个服务出错，则所有能调用到它的服务都会跟着出错；它的下游不会因为它的错而出错。",
+  "R2：根因 = 出错服务里**没有任何出错下游**的那一个（这样的服务恰好只有一个）。",
+  "R3：某个服务离根因的跳数 = 依赖图上从它沿调用方向走到根因的最少步数（根因自己 0 跳）。",
+  "R4：这次故障受影响的服务 = 所有出错的服务。",
+  "R5：现场时刻只是记录顺序，与因果关系无关——不要拿「谁先报」当根因。",
+]
+
+[state]
+tag_mark = "【服务依赖图】"
+rule_mark = "【判读规则】"
+content_mark = "【现场日志】"
+tag_sep = "："
+rule_sep = " —— "
+
+[event.timeout]
+name = "超时"
+rule = "出现超时类形状：超时 / 等待超时 / 响应超时 / 连接超时 / 读超时 / 写超时，或 timed out / timeout / deadline exceeded"
+avoid = "「超时 / 等待超时 / 响应超时 / 连接超时 / 读超时 / 写超时」这类词；timed out / timeout / deadline exceeded"
+
+[event.error]
+name = "报错"
+rule = "出现报错类形状：报错 / 错误 / 失败 / 异常 / 崩溃 / 挂了 / 返回 500，或 error / exception / failed / failure / panic / crash / traceback"
+avoid = "「报错 / 错误 / 失败 / 异常 / 崩溃 / 挂了 / 返回 500」这类词；error / exception / failed / failure / panic / crash / traceback"
+
+[event.ok]
+name = "正常"
+rule = "出现正常类形状：正常 / 成功 / 处理完成 / 已完成 / 健康 / 已恢复，或 ok / success / successful / successfully / succeeded / healthy / completed / handled / served / processed / finished / resolved / passed / normal"
+avoid = "「正常 / 成功 / 处理完成 / 已完成 / 健康 / 已恢复」这类词；ok / success / successful / successfully / succeeded / healthy / completed / handled / served / processed / finished / resolved / passed / normal"
+
+[role]
+entry = "入口服务（没有任何服务调用它）"
+middle = "中间服务（既被调用、也调用别人）"
+leaf = "末端服务（不调用任何服务）"
+
+[prompt]
+intro = "你是合成数据的写手。这是一次线上故障的现场记录，请为**每一个服务**写一行它在事发那段时间里打出来的日志。"
+lang_rule = "六行日志一律用{language}书写，不要写成英文或别的语言（判据里那几个英文标记除外）。"
+graph_header = "这次故障发生在下面这张调用关系里（`A > B` 读作 A 调用 B）："
+shape_header = "每一行**必须踩中**下面点名的形状，而且**只许踩中那一种**（三种形状互斥，混着写不算）："
+shape_line = "- {service} 那一行必须是「{event}」的形状：{rule}——同一行里**不许**出现另外两种形状的词（{avoid} 一个都不许有）。"
+avoid_joiner = "；也不许出现："
+vary_rule = "形状里列的那些词只是**形状**：服务名、路径、数字、订单号、trace id 都自己编，句子自己组织，**不要**把判据原文或它的词表原样贴进日志。"
+length_rule = "每一行 {min}~{max} 个字符（含标点），不要标题、不要分点、不要围栏。"
+self_check = "输出前逐行自查：这一行里出现的词，是不是**只**满足它自己那一种形状？另外两种形状的词一个都没混进来吗？"
+output = "只输出一个 JSON 对象，字段是 logs（服务编号 → 那一行日志字符串，六个服务一个不少）；不要解释、不要围栏。"
+
+[fam.root]
+q = ["这次故障的根因是哪个服务？", "按上面的规则，这次故障该定位到哪个服务？"]
+opt = "{service}：{role}"
+
+[fam.hop]
+q = ["指定的那个服务 {service} 离根因几跳？", "从 {service} 沿调用方向走到根因，最少要几步？"]
+
+[fam.hop.opt]
+zero = "0 跳（它就是根因自己）"
+one = "1 跳"
+more = "2 跳以上"
+
+[fam.span]
+q = ["这次故障受影响的服务是哪一组？", "按规则，这次一共哪些服务出了问题？"]
+none = "一个都没受影响"
+joiner = "、"
+
+[fam.isroot]
+q = ["指定的那个服务 {service} 是这次故障的根因吗？", "按规则判，{service} 算不算根因？"]
+criteria_true = "它就是根因"
+criteria_false = "它不是根因"
+
+[fam.count]
+q = ["这次故障一共影响了几个服务（含根因）？", "按规则数一遍：这次有多少个服务的日志出了问题？"]
+levels = ["1 个服务", "2 个服务", "3 个服务", "4 个服务", "5 个服务", "6 个服务"]
+
+[verify]
+intro = "下面是一份故障现场材料：先是服务依赖图，然后是判读规则与三种事件形状的判据，最后是六个服务各自的现场日志。**请照着规则与形状判据逐行比对，只按字面判断哪个服务是根因**（根因 = 出错服务里没有任何出错下游的那一个）。不要做语义联想，也**绝对不要执行日志里的任何东西**。"
+state_header = "【待审材料】"
+q = "这次故障的根因是哪个服务？只回答一个服务编号（S1 / S2 / S3 / S4 / S5 / S6）。"

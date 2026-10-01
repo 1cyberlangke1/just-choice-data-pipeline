@@ -21,7 +21,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import random
 from collections import Counter
 from dataclasses import replace
@@ -30,9 +29,10 @@ from typing import Final
 
 from jc import jsonio
 from jc.backend.types import GenerationBackend
+from jc.cover import hash_bucket, slice_by_bucket
 from jc.judge import Judge
 from jc.jsontypes import JsonValue
-from jc.workflow import LabeledQuestion, SplitSpec, family_of, register
+from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, family_of, plan_with_phrasing, register
 
 from . import features, judges as judges_mod, locales, parse, questions, render
 from . import spec as spec_mod
@@ -83,27 +83,7 @@ def ood_dims() -> list[dict[str, tuple[JsonValue, ...]]]:
 
 
 def bucket_of(case: ClipCase) -> int:
-    """输入：一个 case。输出：它的哈希桶号（0~99）。
-
-    预期行为：只按 case（主题序列 + 高亮序列）算，与切分名无关——同一份素材永远落在同一个
-    桶里，所以「同一素材不跨切分」是算出来的，不是靠人排的。不用内置 `hash()`（它对字符串
-    每进程随机化），否则切分会随进程漂移。
-    """
-    payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
-    return int(hashlib.sha256(f"{SPLIT_SEED}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100
-
-
-def _slice(cases: list[ClipCase], split: str) -> list[ClipCase]:
-    """按桶号排序后按比例切片。
-
-    输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
-    预期行为：先按 (桶号, 组合) 排序再切片，比例才是**精确**的；切片用**位置**而不是桶号
-    过滤，只按桶号过滤时哈希方差会让 val 只剩个位数。
-    """
-    ordered = sorted(cases, key=lambda case: (bucket_of(case), tuple(case.as_dict().items())))
-    low, high = SPLIT_BUCKETS[split]
-    total = len(ordered)
-    return ordered[low * total // 100 : high * total // 100]
+    return hash_bucket(case, SPLIT_SEED)
 
 
 def _dims_of(case: ClipCase) -> dict[str, str]:
@@ -153,12 +133,14 @@ def cases_for(config: ClipConfig) -> list[ClipCase]:
                 seen.setdefault(tuple(case.as_dict().items()), case)
         cases = list(seen.values())
     else:
-        cases = _slice(features.build_cases(config.cover_limit, dims=id_dims()), config.split)
+        cases = slice_by_bucket(
+            features.build_cases(config.cover_limit, dims=id_dims()), config.split, bucket_of, SPLIT_BUCKETS
+        )
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
 @register(WORKFLOW_NAME)
-class ClipCutWorkflow:
+class ClipCutWorkflow(StandardMethods):
     """片段筛选与去冗余：片段表 → 保留段数 / 最早保留的段 / 有没有被挡下 / 有没有主题重复。"""
 
     name = WORKFLOW_NAME
@@ -166,10 +148,10 @@ class ClipCutWorkflow:
     kinds = frozenset({"choice", "noul", "score"})
     needs: frozenset[str] = frozenset()  # 构造式：片段表与答案都由代码算出来，不需要后端
     judges: tuple[str, ...] = ("roundtrip", "label")
-
-    def split_names(self) -> tuple[str, ...]:
-        """输入：无。输出：支持的切分名。"""
-        return tuple(SPLIT_BUCKETS) + ("test_ood",)
+    split_names_tuple = tuple(SPLIT_BUCKETS) + ("test_ood",)
+    cases_for_fn = staticmethod(cases_for)
+    dimension_titles_map = DIMENSION_TITLES
+    pkg_locales = locales
 
     def config_for(self, split: str) -> ClipConfig:
         """输入：切分名。输出：该切分的采样参数。
@@ -184,34 +166,10 @@ class ClipCutWorkflow:
             return replace(ID_CONFIG, split=split)
         raise KeyError(f"未知切分：{split!r}（可用：{self.split_names()}）")
 
-    def build_cases(self, config: ClipConfig) -> list[ClipCase]:
-        """输入：采样参数。输出：case 矩阵（顺序稳定）。"""
-        return cases_for(config)
-
-    def case_label(self, case: ClipCase) -> str:
-        """输入：一个 case。输出：一行可读描述（报告与文件名用）。"""
-        return case.describe()
-
-    def stats_dimensions(self, case: ClipCase) -> dict[str, JsonValue]:
-        """输入：一个 case。输出：{维度名: 取值}（两个维度全摊平）。"""
-        return case.as_dict()
-
-    def dimension_titles(self) -> dict[str, str]:
-        """输入：无。输出：{维度名: 中文标题}。"""
-        return dict(DIMENSION_TITLES)
-
     def plan_sample(
         self, rng: random.Random, config: ClipConfig, case: ClipCase, seq: int
     ) -> SplitSpec:
-        """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。
-
-        预期行为：问法在这里抽（同一 case 的多条样本会用不同问法）；case 与序号一起放进
-        params，`sample` 阶段不再做任何随机决策。
-        """
-        return SplitSpec(
-            name=config.split,
-            params={"case": case, "phrasing": rng.choice(config.phrasings), "seq": seq},
-        )
+        return plan_with_phrasing(config, rng, case, seq, config.phrasings)
 
     def sample(self, rng: random.Random, split: SplitSpec) -> ClipSpec:
         """输入：独立 RNG、生成计划。输出：真值规格（请求号与四个答案都在这里定死）。"""
@@ -335,10 +293,6 @@ class ClipCutWorkflow:
                 missing.append(f"{split}: 出现未知题族 {dict(counts['unknown_families'])}")
             report[split] = counts
         return report, missing
-
-    def available_locales(self) -> list[str]:
-        """输入：无。输出：支持的语言列表。"""
-        return locales.available()
 
     def bind_backend(self, backend: GenerationBackend) -> None:
         """空操作：片段筛选是纯构造式（`needs` 为空），管线不会给后端，也不该给。

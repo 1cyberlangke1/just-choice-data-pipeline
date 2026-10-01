@@ -27,6 +27,29 @@ LLM_WITHOUT_PROSE: Final[dict[str, str]] = {
     "shell": "模型写的是命令行（PowerShell / bash 的调用本身）",
 }
 
+#: 假后端**按声明的语言**造正文的那几家——只有它们能在端到端里把语言闸（`jc.pipeline` 的
+#: `language_gate`）打开。其余假后端只写一种语言（多为中文，`autoformat` / `citation` /
+#: `rerank` / `rubric` 只写英文），闸一开就会把**夹具的局限**报成拒稿。这份名单是量出来的
+#: （口径见 `tmp/probe_lang.py`：逐家按每种声明语言跑一批假后端，再拿 `Workflow.language_texts`
+#: 喂 `jc.language.sample_problem`），不是猜的；`test_locale_faithful_fakes_are_real` 盯着它别腐烂。
+LOCALE_FAITHFUL_FAKES: Final[dict[str, str]] = {
+    "alertrisk": "「告警描述」那一行按语言现造",
+    "browser": "「用户请求」那一行按语言现造（构造参数叫 `lang`，不是 `locale`）",
+    "depcheck": "「依赖备注」那一行按语言现造",
+    "findtriage": "「发现」「修法」两行按语言现造",
+    "hirecheck": "「候选人备注」那一行按语言现造",
+    "receiptcat": "「收据行」按语言现造",
+    "testimpact": "「提交标题」那一行按语言现造",
+}
+
+#: 假后端**收**语言参数、却**不按它造文本**的那几家——不能进 `LOCALE_FAITHFUL_FAKES`，否则
+#: 语言闸一开，它们的另一种语言那一侧会全红，那是夹具的局限、不是被测代码的 bug。放进这里
+#: 是为了让 `test_any_fake_that_takes_a_locale_is_listed` 还能继续当闸用：谁新写了一个
+#: 「收语言参数且真按语言造文本」的夹具却忘了进 `LOCALE_FAITHFUL_FAKES`，测试就会红。
+LOCALE_PARAM_BUT_UNFAITHFUL: Final[dict[str, str]] = {
+    "autoformat": "构造参数收 `locale`，但正文永远写英文（zh 侧实测 10/10 对不上）",
+}
+
 
 def assert_language_texts_are_declared(
     wf: workflow_mod.Workflow, run_dir: Path, split: str, label: str, *, prose: bool

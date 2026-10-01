@@ -39,6 +39,7 @@ packages = [
     "workflows",
     "workflows.maze",
     "workflows.cachereuse",
+    "workflows.causechain",
     "workflows.clipcut",
     "workflows.quoteread",
     "workflows.sourceselect",
@@ -85,6 +86,8 @@ packages = [
     "workflows.siftrank",
     "workflows.receiptcat",
     "workflows.elementpick",
+    "workflows.planstep",
+    "workflows.sentiment",
 ]
 
 [tool.setuptools.package-dir]
@@ -95,6 +98,7 @@ workflows = "workflows"
 jc = ["locales/judge/*.toml"]
 "workflows.maze" = ["locales/*.toml"]
 "workflows.cachereuse" = ["locales/*.toml"]
+"workflows.causechain" = ["locales/*.toml"]
 "workflows.clipcut" = ["locales/*.toml"]
 "workflows.quoteread" = ["locales/*.toml"]
 "workflows.sourceselect" = ["locales/*.toml"]
@@ -141,6 +145,8 @@ jc = ["locales/judge/*.toml"]
 "workflows.siftrank" = ["locales/*.toml"]
 "workflows.receiptcat" = ["locales/*.toml"]
 "workflows.elementpick" = ["locales/*.toml"]
+"workflows.planstep" = ["locales/*.toml"]
+"workflows.sentiment" = ["locales/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

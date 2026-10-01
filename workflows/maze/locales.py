@@ -34,8 +34,3 @@ def phrasing(loc: dict[str, JsonValue], family: str, index: int, **kwargs: str) 
     for key, value in kwargs.items():
         out = out.replace("{" + key + "}", value)
     return out
-
-
-def phrasing_count(loc: dict[str, JsonValue], family: str) -> int:
-    """某题族有多少种问法。"""
-    return len(loc["fam"][family]["q"])

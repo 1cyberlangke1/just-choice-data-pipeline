@@ -17,6 +17,7 @@ from jc.jsontypes import JsonValue
 import pytest
 
 from jc.backend.types import Draft
+from tests.workflows._fakes import draft
 from workflows.mail import features
 
 
@@ -121,16 +122,8 @@ class FakeBackend:
 
     @staticmethod
     def _draft(task: object, data: dict[str, JsonValue]) -> Draft:
-        """输入：任务、草稿数据。输出：`Draft`。预期行为：填满必填的记账字段。"""
-        return Draft(
-            data=data,
-            raw_text="<fake>",
-            backend="fake",
-            provider="fake",
-            model="fake-model",
-            mode="json_schema",
-            usage={},
-        )
+        """输入：草稿数据。输出：`Draft`。预期行为：记账字段填假值（共用工厂 `_fakes.draft`）。"""
+        return draft(data)
 
 
 @pytest.fixture

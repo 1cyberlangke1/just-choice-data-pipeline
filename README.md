@@ -28,7 +28,7 @@ docs/            调研与范式笔记
 分层规矩：`src/jc/` **不认识任何具体 workflow**（不出现领域词表、不 import `workflows`），
 workflow 靠「导入即注册」挂上来（`jc workflows` 列名单）。加一个新 workflow 不用改通用层一行。
 
-## workflow 目录（48 个）
+## workflow 目录（51 个）
 
 「构造」= 答案由代码算出来，**零 token**；「注入」= 结构与判据由代码写、**文本由后端写**。
 
@@ -40,6 +40,7 @@ workflow 靠「导入即注册」挂上来（`jc workflows` 列名单）。加�
 | `bench` | 评测与基准（一屏记录与全部判断） | 构造 | label / roundtrip |
 | `browser` | 浏览器 / GUI 操作 | 注入 | frame / hygiene / trace |
 | `cachereuse` | 缓存复用判定（两条操作轨迹逐步对齐，可复用长度是前缀） | 构造 | roundtrip / label |
+| `causechain` | 根因定位（依赖图、判读规则与事件形状表由代码写、六个服务的现场日志由模型写） | 注入 | hygiene / frame / trace |
 | `chatgate` | 聊天回复门控（判据表、毛病表、档位表由代码写、一条消息与三条候选由模型写） | 注入 | frame / hygiene / trace |
 | `citation` | 引文核查（文档骨架由代码写、短文正文由模型写） | 注入 | frame / hygiene / trace |
 | `clipcut` | 片段筛选与去冗余（片段表与高亮标记由代码写，保留规则先到先得） | 构造 | roundtrip / label |
@@ -60,6 +61,7 @@ workflow 靠「导入即注册」挂上来（`jc workflows` 列名单）。加�
 | `maze` | 迷宫（导航、连通性、局部结构） | 构造 | label / roundtrip |
 | `memorygate` | 记忆写入门控（入库判据表与处置档位表由代码写、候选记忆由模型写） | 注入 | frame / hygiene / trace |
 | `modelroute` | 模型路由与降级（候选表与门槛由代码写） | 注入 | frame / hygiene / trace |
+| `planstep` | 有界任务推进（任务表与四条推进规则由代码写，下一步取决于前置是否全部完成） | 构造 | roundtrip / label |
 | `promptinject` | 提示注入检测（判据表与阈值表由代码写、不可信内容由模型写） | 注入 | frame / hygiene / trace |
 | `posttriage` | 社交帖子分诊（信号判据表与处置阈值表由代码写、一条帖子由模型写） | 注入 | frame / hygiene / trace |
 | `quoteread` | 行情读数判读（读数表、单位换算表与档位表由代码写，先换算成基准点再比档） | 构造 | roundtrip / label |
@@ -70,6 +72,7 @@ workflow 靠「导入即注册」挂上来（`jc workflows` 列名单）。加�
 | `rubric` | 打分与评分（材料清单与三张表由代码写） | 注入 | frame / hygiene / trace |
 | `search` | 检索结果判读（规则表与来源行由代码写） | 注入 | frame / hygiene / trace |
 | `segmentation` | 文档包切分（种类表、切分规则与页序抬头由代码写、逐页正文由模型写） | 注入 | hygiene / frame / read |
+| `sentiment` | 情感与情绪（情绪词表与四条判读规则由代码写，符号、转折位置、落差与回升全算得出来） | 构造 | roundtrip / label |
 | `shell` | 命令审批（bash / PowerShell 两种方言） | 注入 | destructive / dialect / elevated / hygiene / trace |
 | `siftrank` | 多批次排名聚合（四个批次的排名聚合成一条相关性顺序，肘部切出相关条目） | 构造 | roundtrip / label |
 | `sim` | 游戏与模拟控制（一屏局面与全部判断） | 构造 | label / roundtrip |
@@ -83,7 +86,7 @@ workflow 靠「导入即注册」挂上来（`jc workflows` 列名单）。加�
 | `turntake` | 回合结束判定（未完判据表与处置档位表由代码写、用户输入由模型写） | 注入 | frame / hygiene / trace |
 | `verify` | 完成声明核验（事实与门槛由代码写） | 注入 | frame / hygiene / trace |
 
-十二个纯构造 workflow（`bench` / `cachereuse` / `clipcut` / `elementpick` / `functions` / `invoice` / `match` / `maze` / `quoteread` / `siftrank` / `sim` / `skillpick`）
+十四个纯构造 workflow（`bench` / `cachereuse` / `clipcut` / `elementpick` / `functions` / `invoice` / `match` / `maze` / `planstep` / `quoteread` / `sentiment` / `siftrank` / `sim` / `skillpick`）
 声明 `needs` 为空——管线不会初始化任何后端，**全程不调模型**。
 
 每个 workflow 都出 `train` / `val` / `test_iid` / `test_ood` 四个切分，语言有 `zh` 与 `en`。
@@ -148,6 +151,13 @@ python -m pytest -q          # 全库
 （`jc.language`：汉字占比，en ≤ 0.30、zh ≥ 0.15，阈值与实测数据见 `docs/可靠合成数据范式.md`
 §9.41）。零 token，查的是已经落盘的产物——真机上 `rerank` 的 en 侧整段写成中文、`citation`
 的 en 侧有一条写成中文文档，此前就是这么溜进去的。
+
+**生成期也堵**：`jc.pipeline` 的 `RunConfig.language_gate`（默认开）在组装完一条样本之后，
+拿同一个判据再查一遍**这条**样本声明的语言；不一致就抛 `DraftError`，走「判别器拒稿 → 重渲染」
+那条路，重渲染用完仍不一致才不入库。区别在时机：审计是**事后**兜底（产物已经落盘），闸是
+**当场**拦（写不进去）。关掉它只有一个正当理由：夹具（假后端）本身不按语言造文本——那是测试的
+局限，不是产物的豁免，所以只有端到端测试里那些假后端会关（名单与口径见
+`tests/workflows/_contract.py` 的 `LOCALE_FAITHFUL_FAKES`）。
 
 **兜底之外还要在源头堵**：走 LLM 的 workflow，每种语言的提示词里都必须有一句明说的语言
 约束（`全部用{language}写` / `Write everything in {language}`）——提示词通篇是目标语言只是

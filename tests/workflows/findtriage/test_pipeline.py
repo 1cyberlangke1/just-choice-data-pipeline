@@ -36,7 +36,7 @@ def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBacke
     """输入：假后端（从不撒谎）。输出：RunResult。
 
     预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，
-    而且六族可重算的答案全部与产物里的改动记录自洽。
+    而且七族可重算的答案全部与产物里的改动记录自洽。
     """
     result = pipeline.run(make_config(tmp_path, "s1", fake_backend()))
     assert result.accepted == CASE_LIMIT

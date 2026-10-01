@@ -18,6 +18,7 @@ def test_criteria_keys_match_the_feature_tables() -> None:
         assert list(loc["fam"]["introduced"]["criteria"]) == list(features.INTRODUCED)
         assert list(loc["fam"]["supported"]["criteria"]) == list(features.SUPPORTED)
         assert list(loc["fam"]["triage"]["criteria"]) == list(features.TRIAGES)
+        assert list(loc["fam"]["owner"]["criteria"]) == list(features.OWNERS)
         assert list(loc["fam"]["actionable"]["criteria"]) == ["true", "false"]
         assert list(loc["fam"]["decoy"]["criteria"]) == ["true", "false"]
         assert str(loc["fam"]["cite"]["opt"]["none"]).strip()
@@ -34,6 +35,19 @@ def test_rule_table_order_matches_the_code() -> None:
         assert list(loc["rules"]) == list(features.RULES)
         for name in features.RULES:
             assert str(loc["rules"][name]["text"]).strip()
+
+
+def test_owner_table_order_matches_the_code() -> None:
+    """输入：两语言归属口径。输出：无。
+
+    预期行为：locale 里 `owners` 的书写顺序必须与 `features.OWNER_RULES` 一致——归属口径是
+    **按优先级从上往下**读的，顺序变了「第一条命中的说了算」就换人了。
+    """
+    for lang in locales.available():
+        loc = locales.load(lang)
+        assert list(loc["owners"]) == list(features.OWNER_RULES)
+        for name in features.OWNER_RULES:
+            assert str(loc["owners"][name]["text"]).strip()
 
 
 def test_every_prompt_dimension_value_has_text() -> None:

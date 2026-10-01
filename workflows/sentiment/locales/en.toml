@@ -1,0 +1,100 @@
+# 情感与情绪（sentiment）workflow 的英文文案。
+#
+# 输入：`workflows.sentiment.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为（与 zh.toml 逐项对齐）：三种结构词元与中文**完全一致**；
+# 抬头 / 场景抬头 / 区块抬头两两不互为前缀且不与中文撞车；`[topic]` 与 `features.TOPICS`
+# 一一对应；`[word]` 五档各 `features.WORD_SLOTS` 个词、二十个词互不相同且不跨档重复；
+# 四个题族的问法模板互不相同；题族的键集合与中文版完全一致。
+
+lang = "en"
+language_name = "English"
+
+[meta]
+request = "Sentiment arc request"
+topic = "Scene"
+words = "Emotion words"
+turns = "Dialogue"
+rules = "Reading rules"
+cell_sep = "|"
+word_sep = "/"
+rules_prefix = "- "
+
+[topic.support]
+title = "support chat"
+role_a = "customer"
+role_b = "agent"
+
+[topic.standup]
+title = "team standup"
+role_a = "host"
+role_b = "member"
+
+[topic.review]
+title = "product review"
+role_a = "presenter"
+role_b = "reviewer"
+
+[topic.interview]
+title = "job interview"
+role_a = "interviewer"
+role_b = "candidate"
+
+[topic.neighbors]
+title = "neighbour talk"
+role_a = "neighbour A"
+role_b = "neighbour B"
+
+[word]
+"2" = ["delighted", "thrilled", "over the moon", "beaming"]
+"1" = ["fairly pleased", "a bit happy", "fine with it", "mildly glad"]
+"0" = ["no strong feeling", "neutral about it", "neither way", "flat"]
+"-1" = ["a bit annoyed", "somewhat unhappy", "slightly let down", "uneasy"]
+"-2" = ["furious", "deeply disappointed", "seething", "heartbroken"]
+
+[rules]
+lines = [
+  "Rule 1: the sentiment score of a turn is given by the table above — +2 is the best, -2 is the worst, and 0 is neither.",
+  "Rule 2: the overall tone is the sign of the sum of the turn scores — above 0 is \"positive\", below 0 is \"negative\", and equal to 0 is \"neutral\".",
+  "Rule 3: turn i (i counting from 2) is a turning point if and only if it and the turn before it have opposite signs; 0 never forms a turning point with any sign.",
+  "Rule 4: the largest drop is the maximum of (previous turn score minus next turn score) over all adjacent pairs; if nothing ever gets worse it is 0.",
+  "Rule 5: turn i (i counting from 2) is a rebound if and only if the turn before it is negative and that turn is positive.",
+]
+
+[fam.tone]
+q = [
+  "What is the overall emotional tone of this dialogue?",
+  "Adding up all turn scores, which way does this dialogue lean?",
+  "Is this dialogue overall positive, negative, or neutral?",
+]
+criteria = { pos = "positive", neg = "negative", flat = "neutral" }
+
+[fam.pivot]
+q = [
+  "At which turn does the first turning point appear?",
+  "Where does this dialogue change its tune for the first time?",
+  "By rule 3, which turn carries the earliest turning point?",
+]
+criteria = { t2 = "turn 2", t3 = "turn 3", t4 = "turn 4", t5 = "turn 5", none = "there is no turning point" }
+
+[fam.drop]
+q = [
+  "What is the largest drop between two adjacent turns?",
+  "How far does the sentiment fall in its single worst step?",
+  "By rule 4, what is the largest drop across adjacent turns?",
+]
+levels = [
+  "the largest drop is 0 (nothing ever gets worse)",
+  "the largest drop is 1",
+  "the largest drop is 2",
+  "the largest drop is 3",
+  "the largest drop is 4",
+]
+
+[fam.rebound]
+q = [
+  "Does this dialogue contain a rebound, where a negative turn is followed by a positive one?",
+  "By rule 5, is there a rebound anywhere in this dialogue?",
+  "Does any turn flip straight from negative to positive?",
+]
+criteria = { true = "there is a rebound", false = "there is no rebound" }

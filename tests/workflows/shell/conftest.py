@@ -17,6 +17,7 @@ import pytest
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
+from tests.workflows._fakes import draft
 
 #: 每个 (方言, 动作) 一条与特征一致、且能被零 token 判别器读出来的命令。
 #: 命令本身只是**字符串**——夹具从不执行它们（本 workflow 也不执行任何命令）。
@@ -157,16 +158,8 @@ class FakeBackend:
 
     @staticmethod
     def _draft(data: dict[str, JsonValue]) -> Draft:
-        """输入：草稿数据。输出：`Draft`。预期行为：填满必填的记账字段。"""
-        return Draft(
-            data=data,
-            raw_text="<fake>",
-            backend="fake",
-            provider="fake",
-            model="fake-model",
-            mode="json_schema",
-            usage={},
-        )
+        """输入：草稿数据。输出：`Draft`。预期行为：记账字段填假值（共用工厂 `_fakes.draft`）。"""
+        return draft(data)
 
 
 @pytest.fixture

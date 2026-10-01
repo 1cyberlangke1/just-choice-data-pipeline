@@ -74,7 +74,6 @@ class ScoreDraft(BaseModel):
     """
 
     body: str = Field(
-        min_length=1,
         description="待评的那几行材料：整段行文，或者用 - 开头的行分条列出",
     )
 

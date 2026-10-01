@@ -11,6 +11,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from jc.workflow import DraftError
+
 from workflows.mail import features, locales, render
 
 
@@ -34,18 +36,22 @@ def _draft(**overrides: str) -> dict[str, str]:
 
 
 def test_signature_is_a_required_non_empty_field() -> None:
-    """落款漏了或写成空串都要校验失败。
+    """落款漏了或写成空串都要拦下来。
 
     输入：缺落款 / 空落款两份草稿。输出：无。
-    预期行为：实跑里模型会整块漏掉落款，链接与「官方域名」行跟着一起蒸发；
-    放进 schema 才能结构上挡住，而不是靠提示词里多写一条规则。
+    预期行为：实跑里模型会整块漏掉落款，链接与「官方域名」行跟着一起蒸发，所以两条路都要堵：
+    **漏字段**由 schema 的必填挡（`ValidationError`），**空串**由 `render.check_signature` 挡
+    （`DraftError` → 重渲染）。空串不再写成 `min_length=1`：字符串长度约束会让英伟达那条路
+    把换行压平（见 `tests/core/test_draft_schema.py`），把关位置挪到渲染期，能力不减。
     """
     without = _draft()
     del without["signature"]
     with pytest.raises(ValidationError):
         render.MailDraft(**without)
-    with pytest.raises(ValidationError):
-        render.MailDraft(**_draft(signature=""))
+    with pytest.raises(DraftError):
+        render.check_signature(_draft(signature=""))
+    with pytest.raises(DraftError):
+        render.check_signature(_draft(signature="   "))
     assert render.MailDraft(**_draft()).signature
 
 

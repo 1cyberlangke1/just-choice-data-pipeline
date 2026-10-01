@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import pytest
 
 from jc.backend.types import Draft
@@ -186,6 +187,7 @@ def test_quote_holds_needs_both_the_quote_and_the_criterion() -> None:
     assert judges.quote_holds("D1", quote_for("D1"), body)
     # 引文首尾多带了换行：折叠之后一致，照样算抄对了（模型常这么答）。
     assert judges.quote_holds("D1", f"\n{quote_for('D1')}\n", body)
+    assert judges.quote_holds("D1", json.dumps([quote_for("D1")]), body)  # 引文被装进 JSON 数组字符串（范式 §9.88）
     assert not judges.quote_holds("D1", quote_for("D4"), body)  # 抄出来了但不合判据
     assert not judges.quote_holds("D1", "count=3", body)  # 抄出来了但不合判据
     assert not judges.quote_holds("D9", "count=3", body)  # 不认识的编号

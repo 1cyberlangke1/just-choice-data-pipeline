@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import random
 from pathlib import Path
 
@@ -56,8 +57,15 @@ def test_audit_accepts_the_other_locales_tables(
     「等于任一语言的规范表」判定，而不是拿调用方给的那一种语言去比。反面实测过：
     混语言的产物按 zh 口径审计，8 条里 4 条被误判成「门控表与规范表对不上」；
     这份全 en 的产物更是 8 条全中。
+
+    语言闸在这里关掉：假后端只写中文（它不认 `locale`），所以这份「en 产物」的正文其实是
+    中文，闸一开只会把夹具的局限报成拒稿。这条问的是**审计**认不认另一种语言的表。
     """
-    result = pipeline.run(make_config(tmp_path, "loc", fake_backend(), lang="en"))
+    result = pipeline.run(
+        dataclasses.replace(
+            make_config(tmp_path, "loc", fake_backend(), lang="en"), language_gate=False
+        )
+    )
     assert result.accepted == CASE_LIMIT
     report, missing = workflow_mod.load("browser").audit(result.run_dir, ("train",), "zh")
     assert missing == []

@@ -168,6 +168,40 @@ def test_cite_key_and_near_form() -> None:
     assert F.near_form("parse_timeout") == "parse_timeouts"
 
 
+def test_owner_for_follows_the_priority_table() -> None:
+    """输入：几组构造出来的记录表 + 行号 + 符号。输出：无。
+
+    预期行为：归属口径**从上往下第一条命中**——行号查不到先回记录维护者，其次符号查不到回
+    规则维护者，再次本次碰过交作者，其余交架构组。顺序写反了这条会红。
+    """
+    rows = (
+        F.RecordRow(line=10, touch="added", symbol="parse_timeout"),
+        F.RecordRow(line=20, touch="untouched", symbol="retry_budget"),
+    )
+    assert F.owner_for(rows, 999, "parse_timeout") == F.OWNER_RECORD
+    assert F.owner_for(rows, 10, "no_such_symbol") == F.OWNER_RULE
+    assert F.owner_for(rows, 10, "parse_timeout") == F.OWNER_AUTHOR
+    assert F.owner_for(rows, 20, "retry_budget") == F.OWNER_ARCH
+
+
+def test_every_owner_is_reachable_across_the_case_space() -> None:
+    """输入：全枚举 × 三个问法。输出：无。
+
+    预期行为：四个去处**每一个都真的取到过**，而且没有哪一档吃掉一大半——有一档取不到，
+    那一族的选项就是死选项；有一档吃掉大半，这一族就没有区分度。
+    """
+    tally = collections.Counter(
+        F.label_for(F.plan_for(case, phrasing)).owner
+        for case in CASES
+        for phrasing in (0, 1, 2)
+    )
+    total = sum(tally.values())
+    assert set(tally) == set(F.OWNERS), tally
+    for owner in F.OWNERS:
+        assert tally[owner] / total >= 0.05, (owner, tally)
+    assert max(tally.values()) / total <= 0.7, tally
+
+
 def test_dimension_tables_are_declared_consistently() -> None:
     """输入：无。输出：无。预期行为：`DIMS` 的键与取值表一一对应，`RULES` 顺序固定。"""
     assert list(F.DIMS) == ["cite", "evidence", "fix", "size", "decoy"]

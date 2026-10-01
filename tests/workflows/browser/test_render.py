@@ -132,7 +132,6 @@ def test_state_carries_the_tables_not_the_draft() -> None:
     预期行为：只有那句话随草稿变，元素表与两张判据表**完全由特征渲染**——
     模型碰不到它们（这正是「标签先行」的落地）。
     """
-    loc = locales.load("zh")
     left = state_of().splitlines()[1:]
     right = state_of({"request": f"麻烦把{LABEL}给我填上。"}).splitlines()[1:]
     assert left == right

@@ -18,42 +18,10 @@ from dataclasses import dataclass
 
 from jc import assemble
 from jc.judge import Verdict
-from jc.workflow import family_of
+from jc.workflow import answer_value, compare_expected
 
 from . import locales, parse, questions
 from .spec import BenchSpec
-
-
-def answer_value(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> object:
-    """输入：一道题、它的答案。输出：可比的值。
-
-    预期行为：choice 给**选项名**（不是编号——编号只由组装器产生）、score 给**档位下标**、
-    noul 给布尔；编号越界或类型不对给 None（那是对不上，不是崩）。
-    """
-    criteria = question.get("criteria")
-    if question["type"] == "choice":
-        if not isinstance(criteria, dict):
-            return None
-        options = list(criteria)
-        index = answer.get("choice")
-        if not isinstance(index, int) or isinstance(index, bool):
-            return None
-        if not 0 <= index < len(options):
-            return None
-        return options[index]
-    if question["type"] == "score":
-        if not isinstance(criteria, list):
-            return None
-        index = answer.get("score")
-        if not isinstance(index, int) or isinstance(index, bool):
-            return None
-        if not 0 <= index < len(criteria):
-            return None
-        return index
-    if question["type"] == "noul":
-        value = answer.get("noul")
-        return value if isinstance(value, bool) else None
-    return None
 
 
 def recompute(record: parse.ParsedRecord, loc: dict[str, JsonValue]) -> dict[str, list[JsonValue]]:
@@ -69,34 +37,12 @@ def recompute(record: parse.ParsedRecord, loc: dict[str, JsonValue]) -> dict[str
 
 
 def compare(sample: dict[str, JsonValue], expected: dict[str, list[JsonValue]]) -> list[str]:
-    """输入：一条样本、期望答案表。输出：差异列表（空 = 全对）。
+    """输入：一条样本、按 state 重算出来的期望答案表。输出：差异列表（空 = 全对）。
 
-    预期行为：按题号走一遍，同族按出现顺序对上第几条；题多了、题少了、答案不对、
-    题族不认识都各记一笔——不静默取第一个。「少题」那一趟遍历**期望表**（不是产物）：
-    遍历产物时整族缺席会一声不响，漏报比误报危险。
+    预期行为：判据在 `jc.workflow.compare_expected`，这里只把本 workflow 的题族表交进去——
+    题族是各家的领域词表，通用层不认。
     """
-    legal = set(questions.FAMILIES)
-    seen: dict[str, int] = {}
-    problems: list[str] = []
-    for qid, question in sample["questions"].items():
-        family = family_of(qid)
-        if family not in legal:
-            problems.append(f"未知题族 {family!r}（题号 {qid}）")
-            continue
-        index = seen.get(family, 0)
-        seen[family] = index + 1
-        want = expected.get(family, [])
-        if index >= len(want):
-            problems.append(f"{qid} 多出来了：文本里只算得出 {len(want)} 道 {family} 题")
-            continue
-        got = answer_value(question, sample["answers"].get(qid, {}))
-        if got != want[index]:
-            problems.append(f"{qid}：答案是 {got!r}，按文本重算应为 {want[index]!r}")
-    for family, want in expected.items():
-        count = seen.get(family, 0)
-        if count < len(want):
-            problems.append(f"{family} 少了 {len(want) - count} 道题")
-    return problems
+    return compare_expected(sample, expected, questions.FAMILIES)
 
 
 def roundtrip_diff(spec: BenchSpec, record: parse.ParsedRecord, loc: dict[str, JsonValue]) -> list[str]:

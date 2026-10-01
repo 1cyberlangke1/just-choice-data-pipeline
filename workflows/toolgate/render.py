@@ -54,7 +54,6 @@ class ToolGateDraft(BaseModel):
     """
 
     intent: str = Field(
-        min_length=1,
         description="agent 的调用意图：一句话，说清楚要调哪个工具、动的是什么内容",
     )
 

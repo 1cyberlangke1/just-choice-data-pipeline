@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
 from jc.judge import Verdict, leftover_in
 from jc.jsontypes import JsonValue
+from jc import llmjudge
 
 from . import features, locales, render
 from .spec import ReviewSpec
@@ -55,8 +56,10 @@ def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
     """组装反解提示词。
 
     输入：渲染好的 state、语言字典。
-    输出：提示词。预期行为：把 `TRACE_FAMILIES` 里的原子题连同选项原样再问一遍——
-    反解用的选项与数据集里的一致，否则「答对了」与「标签对了」不是一回事。
+    输出：提示词。预期行为：把 `TRACE_FAMILIES` 里的原子题连同选项再问一遍，选项名走
+    `jc.llmjudge.trace_options`——**必须是草稿收得下的那组取值**（这两族是 `yes` / `no`，
+    数据集那道 noul 题的 criteria key 却是 `true` / `false`，靠 locale 的
+    `verify.trace_options` 覆盖节对齐）。
     """
     lines = [
         str(loc["verify"]["intro"]),
@@ -68,7 +71,7 @@ def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
     ]
     for index, family in enumerate(TRACE_FAMILIES, start=1):
         lines.append(f"{index}. {loc['fam'][family]['q'][0]}")
-        for name, desc in loc["fam"][family]["criteria"].items():
+        for name, desc in llmjudge.trace_options(family, loc):
             lines.append(str(loc["verify"]["option_line"]).format(name=name, desc=desc))
     return "\n".join(lines)
 

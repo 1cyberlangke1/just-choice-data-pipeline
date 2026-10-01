@@ -55,9 +55,16 @@ def test_answer_value_reads_noul_and_rejects_non_bools() -> None:
     assert judges.answer_value(question, {}) is None
 
 
-def test_answer_value_passes_score_through() -> None:
-    """输入：score 题（本 workflow 不出，但通用形状要认得）。输出：无。"""
-    assert judges.answer_value({"type": "score"}, {"score": 3}) == 3
+def test_answer_value_reads_score_by_level_index() -> None:
+    """输入：score 题（本 workflow 不出，但通用形状要认得）。输出：无。
+
+    预期行为：给**档位下标**；没有档位表、或下标越界时给 None。合并进通用层时统一取了
+    严的那一版（原来这份把没有档位表的 score 原样放行）——形状不对算「对不上」更安全。
+    """
+    levels = {"type": "score", "criteria": ["甲", "乙", "丙"]}
+    assert judges.answer_value(levels, {"score": 2}) == 2
+    assert judges.answer_value(levels, {"score": 3}) is None
+    assert judges.answer_value({"type": "score"}, {"score": 0}) is None
 
 
 # ---------- recompute / compare ----------

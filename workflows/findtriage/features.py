@@ -83,6 +83,16 @@ TRIAGES: Final[tuple[str, ...]] = ("must_fix", "log_only", "drop")
 #: 判定口径的规则名（渲染进 state 的口径段；顺序即语义，`test_features.py` 钉住它）。
 RULES: Final[tuple[str, ...]] = ("baseless", "attribution", "unknown", "fix", "else")
 
+#: 归属四档（`owner` 那一族的选项名，也就是「这条发现该进谁的队列」的四个去处）。
+OWNER_RECORD: Final[str] = "record"
+OWNER_RULE: Final[str] = "rule"
+OWNER_AUTHOR: Final[str] = "author"
+OWNER_ARCH: Final[str] = "arch"
+OWNERS: Final[tuple[str, ...]] = (OWNER_RECORD, OWNER_RULE, OWNER_AUTHOR, OWNER_ARCH)
+
+#: 归属口径的规则名（渲染进 state 的归属段；**顺序即优先级**，从上往下第一条命中的说了算）。
+OWNER_RULES: Final[tuple[str, ...]] = ("missing", "baseless", "touched", "else")
+
 #: 弃权选项名（`cite` 那一族的选项名随表长变化，由 `questions` 现场拼）。
 NO_CITE: Final[str] = "none"
 
@@ -226,7 +236,8 @@ class RecordLabels:
     """一条样本的全部金标签（纯代码推导，模型碰不到）。
 
     字段：`cite` 指向第几行（1 起，`None` = 记录里没有这一行）；`introduced` 引入性；
-    `supported` 证据强度；`actionable` 修法落不落地；`triage` 处置档；`decoy` 有没有诱饵行。
+    `supported` 证据强度；`actionable` 修法落不落地；`triage` 处置档；`decoy` 有没有诱饵行；
+    `owner` 这条发现该进谁的队列（`OWNERS` 里的一个）。
     """
 
     cite: int | None
@@ -235,6 +246,7 @@ class RecordLabels:
     actionable: bool
     triage: str
     decoy: bool
+    owner: str
 
     @property
     def cite_key(self) -> str:
@@ -384,6 +396,26 @@ def supported_for(rows: tuple[RecordRow, ...], cited_line: int, symbol: str) -> 
     return "weak" if any(row.symbol == symbol for row in rows) else "none"
 
 
+def owner_for(rows: tuple[RecordRow, ...], cited_line: int, evidence_symbol: str) -> str:
+    """输入：记录表、发现指向的行号、发现引用的符号。输出：归属四档之一（`OWNERS` 里的一个）。
+
+    预期行为：**从上往下第一条命中的说了算**，与印在 state 里的归属口径逐条对齐：
+
+    1. 行号在表里查不到 → 记录维护者（记录本身缺行，先补记录）；
+    2. 引用的符号在表里查不到 → 规则维护者（发现站不住，先修规则）；
+    3. 指向的那一行本次改动碰过（added / modified）→ 本次改动的作者；
+    4. 其余 → 架构组。
+
+    构造侧与审计侧**共用这一个实现**（一边喂计划、一边喂从文本解析出来的表），两边不可能漂移。
+    """
+    index = next((i for i, row in enumerate(rows) if row.line == cited_line), None)
+    if index is None:
+        return OWNER_RECORD
+    if not any(row.symbol == evidence_symbol for row in rows):
+        return OWNER_RULE
+    return OWNER_AUTHOR if rows[index].touch in TOUCHED_KINDS else OWNER_ARCH
+
+
 def label_for(plan: RecordPlan) -> RecordLabels:
     """输入：记录计划。输出：全部金标签。
 
@@ -401,6 +433,7 @@ def label_for(plan: RecordPlan) -> RecordLabels:
         actionable=actionable,
         triage=triage_for(introduced, supported, actionable),
         decoy=any(row.symbol == near_form(plan.evidence_symbol) for row in rows),
+        owner=owner_for(rows, plan.cited_line, plan.evidence_symbol),
     )
 
 
@@ -443,4 +476,5 @@ CHOICE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "introduced": INTRODUCED,
     "supported": SUPPORTED,
     "triage": TRIAGES,
+    "owner": OWNERS,
 }

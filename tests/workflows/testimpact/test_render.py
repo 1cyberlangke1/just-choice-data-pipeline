@@ -155,6 +155,8 @@ def test_pasted_rules_only_matches_whole_lines() -> None:
         ("index 1a2b3c4..5d6e7f8 100644\nnew file mode 100644\n", []),
         ("rename from src/api/handlers.py\nrename to src/api/handler.py\n", []),
         ("\\ No newline at end of file\n", []),
+        # 光秃秃的 `@@`：算块头（模型常这么写，整块 `+` / `-` 行得跟着进块内）
+        ("@@\n context\n+added\n", []),
         ("纯散文一行\n", ["纯散文一行"]),
     ],
 )
@@ -182,6 +184,13 @@ def test_diff_shape_problems(diff: str, expect: list[str]) -> None:
         ),
         # 没有块头的正文原样返回
         ("diff --git a/x b/x\n纯散文\n", "diff --git a/x b/x\n纯散文"),
+        # 光写 `@@`：起点按 1 补、行数照块内实际行数算（旧侧 1 行、新侧 2 行）
+        ("@@\n context\n+added\n", "@@ -1 +1,2 @@\n context\n+added"),
+        # 两个块：前一块带行号、后一块光写 `@@`，各算各的，别把后一块并进前一块
+        (
+            "@@ -5,2 +5,2 @@\n a\n-b\n+c\n@@\n d\n+e\n",
+            "@@ -5,2 +5,2 @@\n a\n-b\n+c\n@@ -1 +1,2 @@\n d\n+e",
+        ),
     ],
 )
 def test_normalize_hunks_recounts_every_hunk(diff: str, expect: str) -> None:
@@ -196,6 +205,27 @@ def test_normalize_hunks_leaves_a_canonical_diff_alone() -> None:
     """输入：一份行数本来就自洽的改动。输出：无。预期行为：逐字节不变（不许自作聪明改内容）。"""
     canonical = diff_for(ImpactCase(touch="P1+P3", flavor="fix"))
     assert render.normalize_hunks(canonical) == canonical
+
+
+def test_bare_hunk_header_passes_the_gate_and_comes_out_canonical() -> None:
+    """输入：块头写成光秃秃 `@@` 的改动。输出：无。
+
+    预期行为：① `check_draft` 不抛——格式简写不该把整条样本判死；② 落进 state 的块头是规范形态
+    （起点补 1、行数按块内实际行数算）。
+
+    2026-10-01 真机小批量：`testimpact` 的 8 条拒稿全是这一种写法——`@@` 不被认，整块 `+` / `-`
+    行就跟着落进「块外」，一条样本连报三条错，看着像模型写了散文，其实只差两个行号。
+    """
+    case = ImpactCase(touch="P1+P2", flavor="fix")
+    canonical = diff_for(case)
+    header = "@@ -12,4 +12,5 @@ def handle(request):"
+    assert canonical.count(header) == 2
+    bare = canonical.replace(header, "@@")
+    assert render.diff_shape_problems(bare) == []
+    draft = render.ContentDraft(title=TITLE_ZH, diff=bare)
+    render.check_draft(draft, case, locales.load("zh"))
+    state = render.to_state(draft, locales.load("zh"))
+    assert state.count("@@ -1,4 +1,5 @@") == 2
 
 
 def test_parse_state_is_language_independent_and_safe() -> None:

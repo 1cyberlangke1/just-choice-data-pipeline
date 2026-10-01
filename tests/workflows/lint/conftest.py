@@ -18,7 +18,7 @@ from typing import Final
 import pytest
 
 from jc.backend.types import Draft
-from jc.jsontypes import JsonValue
+from tests.workflows._fakes import draft as _draft
 from workflows.lint import features
 
 #: 每条规则一条「必然命中」的样板行。规则表一改这里就得改——`test_conftest` 逐条验过。
@@ -147,18 +147,6 @@ class FakeBackend:
     def generate_many(self, tasks: list[object]) -> list[Draft]:
         """输入：任务列表。输出：草稿列表。预期行为：逐个走 `generate`。"""
         return [self.generate(task) for task in tasks]
-
-
-def _draft(data: dict[str, JsonValue], raw: str) -> Draft:
-    """输入：解析后的数据、原始文本。输出：`Draft`。预期行为：记账字段填假值，不进产物。"""
-    return Draft(
-        data=data,
-        raw_text=raw,
-        backend="fake",
-        provider="fake",
-        model="fake",
-        mode="fake",
-    )
 
 
 @pytest.fixture

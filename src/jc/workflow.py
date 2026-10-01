@@ -17,12 +17,15 @@ import importlib
 import pkgutil
 import random
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from types import ModuleType
+from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 
-from .judge import Judge
+from .contract import TYPE_CHOICE, TYPE_NOUL, TYPE_SCORE, is_index, option_names
+from .judge import Judge, standard_judges
+from .locale_files import LocaleApi
 
 if TYPE_CHECKING:  # 只在类型检查时引入：核心层不装 [llm] extra 也能跑构造式 workflow
     from .backend.types import GenerationBackend
@@ -66,6 +69,111 @@ class SplitSpec:
 
     name: str
     params: dict[str, JsonValue] = field(default_factory=dict)
+
+
+class StandardMethods:
+    """workflow 协议里**逐字同构**的那些方法的默认实现：51 个包各抄一份的那 8 段，只留这一份。
+
+    输入：无。输出：无。
+    预期行为：子类在类体里把「这些实现住在哪个对象里」用类属性指出来（见下），本类就把对应的
+    协议方法实现好。某个包里写法不一样时（例如 `maze` 的 `build_cases` 自己铺格子、
+    `browser` 的 `case_label` 自己拼键值对、`config_for` 各家有各家的切分表），照旧在子类里
+    覆盖同名方法——本类只负责「一样的那部分」，不替谁做决定。
+
+    声明项（用得到才写，值都是**自己包里的对象**）：
+
+    - `pkg_locales`：包里的 `locales` 模块 → `available_locales`；
+    - `pkg_render`：包里的 `render` 模块（要有 `parse_state`）→ `reparse`；
+    - `pkg_audit`：包里的 `audit` 模块（要有 `audit_run`）→ `audit`；
+    - `split_names_tuple`：四个切分名 → `split_names`；
+    - `dimension_titles_map`：`{维度名: 中文标题}` → `dimension_titles`；
+    - `cases_for_fn`：包里的 `cases_for` 函数 → `build_cases`。这一格**必须**写成
+      `cases_for_fn = staticmethod(cases_for)`：函数直接当类属性会被绑成方法，`self` 会顶掉
+      第一个参数（`config`），调用时当场 `TypeError`；`staticmethod` 把它挡在描述符协议外。
+
+    `case_label` / `stats_dimensions` 不要声明项：它们只依赖 case 自己的 `describe()` /
+    `as_dict()`，是协议里唯一两条与「实现住在哪个模块」无关的。
+    `make_judges` 也不在这里——它要用后端，跟 `backend` 一起住在 `BackendHolder` 上
+    （走 LLM 的包都继承它）。本类一共实现 8 个协议方法，加 `BackendHolder` 那个是 9 个。
+    """
+
+    pkg_locales: ClassVar[LocaleApi]
+    pkg_render: ClassVar[ModuleType]
+    pkg_audit: ClassVar[ModuleType]
+    split_names_tuple: ClassVar[tuple[str, ...]]
+    dimension_titles_map: ClassVar[Mapping[str, str]]
+    cases_for_fn: ClassVar[Callable[[object], list[JsonValue]]]
+
+    def split_names(self) -> tuple[str, ...]:
+        """输入：无。输出：该 workflow 支持的切分名（顺序就是 `split_names_tuple` 的顺序）。"""
+        return tuple(self.split_names_tuple)
+
+    def build_cases(self, config: object) -> list[JsonValue]:
+        """输入：采样参数。输出：case 矩阵（顺序稳定）。预期行为：由包里的 `cases_for` 算。"""
+        return self.cases_for_fn(config)
+
+    def case_label(self, case: object) -> str:
+        """输入：一个 case。输出：一行可读描述。预期行为：由 case 自己的 `describe()` 给。"""
+        return case.describe()
+
+    def stats_dimensions(self, case: object) -> Mapping[str, JsonValue]:
+        """输入：一个 case。输出：各维取值（均衡统计用）。预期行为：由 case 自己的 `as_dict()` 给。"""
+        return case.as_dict()
+
+    def dimension_titles(self) -> Mapping[str, str]:
+        """输入：无。输出：`{维度名: 中文标题}`，用于把统计报告渲染得好读。"""
+        return dict(self.dimension_titles_map)
+
+    def reparse(self, state: object, *, case: object = None) -> object | None:
+        """输入：渲染后的 state。输出：纯代码能反解的部分，或 None（该格式不可反解）。
+
+        预期行为：交给包里的 `render.parse_state`；`case` 用不上（有的包要，会自己覆盖）。
+        """
+        del case
+        return self.pkg_render.parse_state(state)
+
+    def audit(
+        self, run_dir: Path, splits: tuple[str, ...], locale: str
+    ) -> tuple[dict[str, JsonValue], list[str]]:
+        """输入：run 目录、切分、语言。输出：(各切分审计计数, 缺失项列表)。"""
+        return self.pkg_audit.audit_run(run_dir, splits, locale)
+
+    def available_locales(self) -> list[str]:
+        """输入：无。输出：该 workflow 支持的语言标签列表（`jc locales` 用它）。"""
+        return self.pkg_locales.available()
+
+
+class BackendHolder(StandardMethods):
+    """需要生成后端的 workflow 的公共底座：记住注入进来的后端 + 判别器实例化。
+
+    输入：无（构造时后端还没到）。输出：无。
+    预期行为：`backend` 初值是 `None`，`bind_backend` 只赋值、不做别的。48 个包里需要后端的那
+    36 个此前各自抄了一份同样的 `__init__` + `bind_backend`，现在只留这一份。
+
+    它还继承 `StandardMethods`（协议方法的默认实现）：走 LLM 的包一律继承本类，纯构造式的包
+    直接继承 `StandardMethods`——它们不需要后端，也就不该多出一个 `backend` 字段。
+
+    它**不是** `Workflow` 协议的一部分：纯构造式的 workflow 不继承它，`needs` 为空时管线也
+    不会调 `bind_backend`。继承它只是省掉两段抄写，协议仍是结构化的（鸭子类型），
+    所以「谁继承了谁」不影响 `isinstance` 判断，也不影响注册表。
+    """
+
+    backend: GenerationBackend | None = None
+
+    #: 包里的 `judges` 模块：判别器类都住在里面（`make_judges` 从这里取）。
+    pkg_judges: ClassVar[ModuleType]
+
+    def bind_backend(self, backend: GenerationBackend) -> None:
+        """输入：生成后端。输出：无。预期行为：存下后端，供 `render` 与判别器使用。"""
+        self.backend = backend
+
+    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
+        """输入：判别器名单、语言。输出：判别器实例。
+
+        预期行为：判别器类都住在包里的 `judges` 模块里（`pkg_judges`），由
+        `jc.judge.standard_judges` 统一实例化——未知名字、`trace` 缺后端都在那里报错。
+        """
+        return standard_judges(names, locale, self.pkg_judges, self.backend)
 
 
 @runtime_checkable
@@ -224,3 +332,165 @@ def family_of(qid: str) -> str:
     输入：题号。输出：题族名。预期行为：题族名本身不含数字。
     """
     return "".join(ch for ch in qid if not ch.isdigit()).rstrip("_")
+
+
+def show_answers(want: tuple[str | bool | int, ...]) -> str:
+    """输入：可接受的答案。输出：给人看的写法（多个候选用 ` / ` 连）。
+
+    预期行为：只做展示、不参与判定——判定比的是元组成员本身（`in`），这里只负责把
+    「按 state 重算应该是哪个」写进理由里。
+    """
+    return " / ".join(str(value) for value in want)
+
+
+def compare_answers(
+    sample: dict[str, JsonValue],
+    acceptable: Callable[[str], tuple[str | bool | int, ...]],
+) -> list[str]:
+    """输入：样本、按题族给可接受答案的函数。输出：问题列表（空 = 全对）。
+
+    预期行为：逐题按**题族**重算再比对——choice 比选项描述原文、noul 比布尔、score 比档位。
+    可接受的答案做成元组，是为了让审计一次给出「各语言的选项描述」（判别器只给一个）；
+    `acceptable` 抛 `ValueError` / `KeyError` 记成「重算不出答案」，不往下算。
+
+    为什么 choice 比的是**描述原文**而不是选项名：组装后的 `criteria` 是「选项名 → 选项描述」，
+    `choice` 是**描述在其中的书写顺序**，而选项名是各语言自己起的——比描述才跨语言说得通。
+
+    为什么 `criteria` 要查一遍类型：构造式 workflow 的样本由各家自己组装，形状不对时这里报
+    「选项形状不对」，比抛 `AttributeError` 好（判别器崩了不能把整批带走）。
+    """
+    problems: list[str] = []
+    for qid, question in sample["questions"].items():
+        family = family_of(qid)
+        try:
+            want = acceptable(family)
+        except (ValueError, KeyError) as exc:
+            problems.append(f"{qid}: 重算不出答案（{exc}）")
+            continue
+        answer = sample["answers"][qid]
+        if question["type"] == "choice":
+            criteria = question["criteria"]
+            if not isinstance(criteria, dict):
+                problems.append(f"{qid}: 选项形状不对")
+                continue
+            options = [str(text) for text in criteria.values()]
+            index = answer["choice"]
+            if not isinstance(index, int) or not 0 <= index < len(options):
+                problems.append(f"{qid}: 答案编号越界（{index}）")
+                continue
+            if options[index] not in want:
+                problems.append(f"{qid}: 答案指向 {options[index]}，按 state 重算是 {show_answers(want)}")
+        elif question["type"] == "noul":
+            if answer["noul"] not in want:
+                problems.append(f"{qid}: 答案是 {answer['noul']}，按 state 重算是 {show_answers(want)}")
+        elif question["type"] == "score":
+            if answer["score"] not in want:
+                problems.append(f"{qid}: 答案是 {answer['score']}，按 state 重算是 {show_answers(want)}")
+        else:
+            problems.append(f"{qid}: 未知题型 {question['type']!r}")
+    return problems
+
+
+def answer_value(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> JsonValue:
+    """输入：一道题、它的答案。输出：可比的值（对不上给 None）。
+
+    预期行为：choice 给**选项名**（不是编号——编号只由组装器产生，见 `jc.assemble`）、
+    score 给**档位下标**、noul 给布尔。编号越界、类型不对（布尔不是编号）、criteria 形状
+    不对、题族不认识，一律给 None——那是对不上，不是崩；答案缺字段也不抛。
+
+    为什么 choice 比的是**选项名**而不是选项描述原文：这一层只判「答案指向第几个选项」，
+    描述抄没抄对由产物级审计（`jc.contract.recorded_text`）管——两把尺子量的不是一件事。
+    """
+    kind = question.get("type")
+    criteria = question.get("criteria")
+    if kind == TYPE_CHOICE:
+        names = option_names(question)
+        index = answer.get("choice")
+        if not is_index(index) or not 0 <= index < len(names):
+            return None
+        return names[index]
+    if kind == TYPE_SCORE:
+        if not isinstance(criteria, list):
+            return None
+        index = answer.get("score")
+        if not is_index(index) or not 0 <= index < len(criteria):
+            return None
+        return index
+    if kind == TYPE_NOUL:
+        value = answer.get("noul")
+        return value if isinstance(value, bool) else None
+    return None
+
+
+def compare_expected(
+    sample: dict[str, JsonValue],
+    expected: dict[str, list[JsonValue]],
+    legal: Collection[str],
+) -> list[str]:
+    """输入：一条样本、按 state 重算出来的期望答案表、合法题族集合。输出：差异列表（空 = 全对）。
+
+    预期行为：按题号走一遍，同族按出现顺序对上第几条；题多了、题少了、答案不对、题族不认识
+    都各记一笔——不静默取第一个。「少题」那一趟遍历**期望表**（不是产物）：遍历产物时整族
+    缺席会一声不响，漏报比误报危险。questions / answers 不是对象时直接返回一条，不抛。
+
+    为什么题族表由调用方传进来：题族是各 workflow 自己的领域词表（`questions.FAMILIES`），
+    通用层不认领域词表。
+    """
+    problems: list[str] = []
+    questions_field = sample.get("questions")
+    answers_field = sample.get("answers")
+    if not isinstance(questions_field, dict) or not isinstance(answers_field, dict):
+        return ["样本的 questions / answers 不是对象"]
+    seen: dict[str, int] = {}
+    for qid, question in questions_field.items():
+        family = family_of(qid)
+        if family not in legal:
+            problems.append(f"未知题族 {family!r}（题号 {qid}）")
+            continue
+        index = seen.get(family, 0)
+        seen[family] = index + 1
+        want = expected.get(family, [])
+        if index >= len(want):
+            problems.append(f"{qid} 多出来了：文本里只算得出 {len(want)} 道 {family} 题")
+            continue
+        answer = answers_field.get(qid, {})
+        got = answer_value(question, answer if isinstance(answer, dict) else {})
+        if got != want[index]:
+            problems.append(f"{qid}：答案是 {got!r}，按文本重算应为 {want[index]!r}")
+    for family, want in expected.items():
+        count = seen.get(family, 0)
+        if count < len(want):
+            problems.append(f"{family} 少了 {len(want) - count} 道题")
+    return problems
+
+
+class PhrasingConfig(Protocol):
+    """带切分名的采样参数（每个 workflow 自己的 Config 都满足）。"""
+
+    split: str
+
+
+def plan_with_phrasing(
+    config: PhrasingConfig,
+    rng: random.Random,
+    case: object,
+    seq: int,
+    pool: Sequence[str],
+    *,
+    key: str = "case",
+) -> SplitSpec:
+    """输入：采样参数、RNG、case、样本序号、问法池、case 在计划里的字段名。输出：生成计划。
+
+    预期行为：问法编号由 RNG 从池里抽（问法**不是** case 维度），判定计划在 `sample` 阶段按
+    「case 指纹 + 问法编号」确定性地算出来。40 个包的 `plan_sample` 只有两处不同：问法池叫
+    `phrasing_pool` 还是 `phrasings`，以及那一格叫 `case` 还是 `tags`（11 个包的 case 就是一组
+    tag）——两处都参数化，机制只留这一份。
+    """
+    return SplitSpec(
+        name=config.split,
+        params={
+            key: case,
+            "phrasing": rng.choice(pool),
+            "seq": seq,
+        },
+    )

@@ -297,6 +297,36 @@ def test_trace_prompt_carries_the_whole_state() -> None:
     assert "{" not in prompt and "}" not in prompt
 
 
+@pytest.mark.parametrize("lang", ("zh", "en"))
+def test_trace_prompt_carries_the_same_criteria_as_the_examinee(lang: str) -> None:
+    """输入：一段 state、两种语言。输出：无。
+
+    预期行为：反解提示词里那六条块类型判据，与考生题面（`block_type` 的 criteria）**逐字同源**
+    ——两边都来自语言包的 `type_desc`。这是范式 §9.8 的反解侧版本：考生看得见的判据，读者也得
+    看得见，否则「答对了」与「标签对了」不是一回事。
+
+    2026-10-01 真机小批量：不带判据时读者按自己的习惯认，20 条里 10 条读出别的结构（把标题紧贴
+    的那段正文并进标题、把没带署名的引用读成正文）。
+    """
+    loc = locales.load(lang)
+    _, sample = sample_of(MIXED)
+    prompt = judges.build_trace_prompt(str(sample["state"]), loc)
+    for kind in features.BLOCK_KINDS:
+        assert str(loc["type_desc"][kind]) in prompt
+        assert str(loc["type"][kind]) in prompt
+    # 考生题面里的同一条判据也在（同一个 `type_desc`，两处不能各写一份）。
+    asked = [
+        item for item in questions.build(cf.filled(MIXED, lang), loc, 0) if item.family == "block_type"
+    ]
+    assert asked
+    criteria = asked[0].question["criteria"]
+    assert isinstance(criteria, dict)
+    for name, desc in criteria.items():
+        # 两处同源：题面的判据是 `{kind}: {判据}`，反解提示词里是 `{kind}（{类型名}）：{判据}`。
+        assert str(loc["type_desc"][name]) in desc
+        assert str(loc["type_desc"][name]) in prompt
+
+
 def test_all_judges_needs_a_backend_only_for_trace() -> None:
     """输入：有没有后端两种情形。输出：无。预期行为：零 token 的两个总是在；`trace` 要后端才给。"""
     assert [judge.name for judge in judges.all_judges("zh", None)] == ["hygiene", "roundtrip"]

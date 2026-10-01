@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import pytest
 
 from jc.backend.types import BackendError, Draft, TransportError
@@ -217,6 +218,8 @@ def test_trace_prompt_carries_the_whole_state() -> None:
     [
         ("P1", "diff --git a/src/api/handlers.py b/src/api/handlers.py", True),
         ("P1", "+++ b/src/api/handlers.py", True),
+        # 引文被装进 JSON 数组字符串（范式 §9.88）：拆成候选之后照样算数。
+        ("P1", json.dumps(["diff --git a/src/api/handlers.py b/src/api/handlers.py"]), True),
         ("P1", "diff --git a/src/db/schema.py b/src/db/schema.py", False),
         ("P1", "", False),
         ("P1", "编的一段话", False),

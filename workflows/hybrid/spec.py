@@ -207,7 +207,7 @@ class HybridConfig:
         以前空表会活到 `rng.choice`，抛 `Cannot choose from an empty sequence`
         （校验规则见 `jc.knobs`）。
         """
-        for field, values in (
+        for name, values in (
             ("meeting_counts", self.meeting_counts),
             ("openings", self.openings),
             ("clashes", self.clashes),
@@ -217,7 +217,7 @@ class HybridConfig:
             ("phrasings", self.phrasings),
             ("themes", self.themes),
         ):
-            require_pool(field, values)
+            require_pool(name, values)
         if self.case_limit < 0:
             raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
 

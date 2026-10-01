@@ -74,7 +74,6 @@ class ReviewDraft(BaseModel):
     """
 
     body: str = Field(
-        min_length=1,
         description="这次改动的那几行：每行以 +（新增）/ -（删除）/ 空格（上下文）开头",
     )
 

@@ -28,7 +28,7 @@ from jc.jsontypes import JsonValue
 from jc.workflow import DraftError
 
 from . import locales
-from .features import RULES, TOUCH_KINDS, RecordPlan, RecordRow
+from .features import OWNER_RULES, RULES, TOUCH_KINDS, RecordPlan, RecordRow
 
 #: 提示词里特征的固定顺序：只列**由文本承载**的那两维。顺序固定才能按提示哈希回放。
 DIM_ORDER: Final[tuple[str, ...]] = ("cite", "fix")
@@ -48,6 +48,7 @@ SECTION_KEYS: Final[tuple[str, ...]] = (
     "fix_label",
     "record_label",
     "rules_label",
+    "owner_label",
 )
 
 #: 改动记录那一行的格数（序号 / 行号 / 本次改动 / 符号）。
@@ -68,11 +69,9 @@ class FindingDraft(BaseModel):
     """
 
     finding: str = Field(
-        min_length=1,
         description="一条审查发现：写清指向哪一行、引用的符号（用反引号括起来）、问题是什么",
     )
     fix: str = Field(
-        min_length=1,
         description="这条发现建议怎么改：点名具体符号就用反引号括起来，落不了地就只写泛泛的话",
     )
 
@@ -235,13 +234,31 @@ def canonical_rules(loc: dict[str, JsonValue]) -> tuple[str, ...]:
     return tuple(rule_lines(loc))
 
 
+def owner_lines(loc: dict[str, JsonValue]) -> list[str]:
+    """输入：语言字典。输出：归属口径的每一行（规则名 | 说明）。
+
+    预期行为：顺序严格按 `features.OWNER_RULES`——归属口径是**按优先级从上往下读**的，
+    顺序变了语义就变了。格式与判定口径那一张表相同（同一个行前缀与分隔符）。
+    """
+    meta = loc["meta"]
+    return [
+        f"{meta['row_prefix']}{f' {CELL_SEP} '.join([name, str(loc['owners'][name]['text'])])}"
+        for name in OWNER_RULES
+    ]
+
+
+def canonical_owners(loc: dict[str, JsonValue]) -> tuple[str, ...]:
+    """输入：语言字典。输出：归属口径的规范形态（逐行文本）。预期行为：给 `FrameJudge` 用。"""
+    return tuple(owner_lines(loc))
+
+
 def to_state(data: dict[str, JsonValue], plan: RecordPlan, loc: dict[str, JsonValue]) -> str:
     """把草稿与结构化事实拼成 state。
 
     输入：草稿字典（`finding` / `fix`）、记录计划、语言字典。
-    输出：四段——审查发现 / 建议修法 / 改动记录 / 判定口径。
+    输出：五段——审查发现 / 建议修法 / 改动记录 / 判定口径 / 归属口径。
     预期行为：只拼接与去首尾空白，不改写模型写的字（反解校验要靠原文）；
-    改动记录与判定口径**由代码写**（它们是计划的产物与固定表，不是模型的发挥）。
+    改动记录、判定口径与归属口径**由代码写**（它们是计划的产物与固定表，不是模型的发挥）。
     """
     meta = loc["meta"]
     header = locales.header
@@ -254,6 +271,8 @@ def to_state(data: dict[str, JsonValue], plan: RecordPlan, loc: dict[str, JsonVa
     lines.extend(table_lines(plan, loc))
     lines.append(f"{header(loc, meta['rules_label'])}")
     lines.extend(rule_lines(loc))
+    lines.append(f"{header(loc, meta['owner_label'])}")
+    lines.extend(owner_lines(loc))
     return "\n".join(lines)
 
 
@@ -262,13 +281,14 @@ class ParsedFinding:
     """从 state 里纯代码反解出来的事实。
 
     字段：`finding` 发现原文；`fix` 修法原文；`rows` 改动记录（顺序即表序）；
-    `rules` 口径那几行的规则名。
+    `rules` 判定口径那几行的规则名；`owners` 归属口径那几行的规则名（按优先级）。
     """
 
     finding: str
     fix: str
     rows: tuple[RecordRow, ...]
     rules: tuple[str, ...]
+    owners: tuple[str, ...]
 
     @property
     def is_empty(self) -> bool:
@@ -373,19 +393,41 @@ def rules_of(state: object, loc: dict[str, JsonValue]) -> tuple[str, ...]:
     return tuple(out)
 
 
+def owner_rules_of(state: object, loc: dict[str, JsonValue]) -> tuple[str, ...]:
+    """输入：state、语言字典。输出：解析出来的归属口径规则名（解不出就是空元组）。
+
+    预期行为：与 `rules_of` 同一套切法，只认首格是 `features.OWNER_RULES` 里名字的行。
+    **顺序照原样保留**——归属口径按优先级读，重排就是换了语义。
+    """
+    if not isinstance(state, str):
+        return ()
+    out: list[str] = []
+    for line in _sections(state, loc).get(str(loc["meta"]["owner_label"]), []):
+        cells = _cells(line, loc)
+        if cells is None or len(cells) != RULE_CELLS:
+            continue
+        if cells[0] in OWNER_RULES:
+            out.append(cells[0])
+    return tuple(out)
+
+
 def parse_state(state: object) -> ParsedFinding:
     """输入：state。输出：纯代码能反解的部分（发现 + 修法 + 改动记录 + 口径）。
 
     预期行为：与语言无关——把各语言的段落名都试一遍，命中即返回。
     """
     if not isinstance(state, str):
-        return ParsedFinding(finding="", fix="", rows=(), rules=())
+        return ParsedFinding(finding="", fix="", rows=(), rules=(), owners=())
     for lang in locales.available():
         loc = locales.load(lang)
         finding = finding_of(state, loc)
         rows = rows_of(state, loc)
         if finding or rows:
             return ParsedFinding(
-                finding=finding, fix=fix_of(state, loc), rows=rows, rules=rules_of(state, loc)
+                finding=finding,
+                fix=fix_of(state, loc),
+                rows=rows,
+                rules=rules_of(state, loc),
+                owners=owner_rules_of(state, loc),
             )
-    return ParsedFinding(finding="", fix="", rows=(), rules=())
+    return ParsedFinding(finding="", fix="", rows=(), rules=(), owners=())

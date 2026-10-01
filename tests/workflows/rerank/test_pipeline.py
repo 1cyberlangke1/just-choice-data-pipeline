@@ -22,7 +22,12 @@ ID_SPLITS = ("train", "val", "test_iid")
 def make_config(
     tmp_path: Path, run_id: str, backend: object, *, split: str = "train", limit: int = CASE_LIMIT
 ) -> pipeline.RunConfig:
-    """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
+    """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。
+
+    预期行为：**关掉语言闸**（`language_gate=False`）——本包的假后端按注入的关键词拼英文查询
+    （`how do i fix … on the server`），zh 侧因此不是汉字。真机 zh 产物不是这样，这是夹具的
+    局限；语言闸本身由 `tests/core` 的定点测试与认 `locale` 的假后端验。
+    """
     return pipeline.RunConfig(
         workflow="rerank",
         split=split,
@@ -33,6 +38,7 @@ def make_config(
         run_id=run_id,
         config_override=rerank_workflow.RerankConfig(split=split, case_limit=limit),
         backend=backend,
+        language_gate=False,
     )
 
 

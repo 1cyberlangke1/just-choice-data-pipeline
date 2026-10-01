@@ -17,7 +17,11 @@ CASE_LIMIT = 8
 
 
 def make_config(tmp_path: Path, run_id: str, backend: object) -> pipeline.RunConfig:
-    """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
+    """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。
+
+    预期行为：**关掉语言闸**——本包的假后端只写英文（夹具局限，理由见
+    `tests/workflows/rerank/test_pipeline.make_config`）。
+    """
     return pipeline.RunConfig(
         workflow="rerank",
         split="train",
@@ -28,6 +32,7 @@ def make_config(tmp_path: Path, run_id: str, backend: object) -> pipeline.RunCon
         run_id=run_id,
         config_override=rerank_workflow.RerankConfig(split="train", case_limit=CASE_LIMIT),
         backend=backend,
+        language_gate=False,
     )
 
 

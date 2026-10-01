@@ -19,17 +19,14 @@
 
 from __future__ import annotations
 
-import hashlib
 import random
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 
-from jc.backend.types import GenerationBackend
-from jc.judge import Judge
+from jc.cover import hash_bucket, slice_by_bucket
 from jc.jsontypes import JsonValue
 from jc.knobs import require_pool
-from jc.workflow import LabeledQuestion, SplitSpec, register
+from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, register
 
 from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
 from .features import CitationCase
@@ -120,25 +117,7 @@ def ood_dims() -> list[dict[str, tuple[JsonValue, ...]]]:
 
 
 def bucket_of(case: CitationCase) -> int:
-    """输入：一个 case。输出：它的哈希桶号（0~99）。
-
-    预期行为：只按 tag 组合算，与切分名无关——同一个组合永远落在同一个桶里，所以「同一组合
-    不跨切分」是算出来的，不是靠人排的。
-    """
-    payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
-    return int(hashlib.sha256(f"{SPLIT_SEED}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100
-
-
-def _slice(cases: list[CitationCase], split: str) -> list[CitationCase]:
-    """按桶号排序后按比例切片。
-
-    输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
-    预期行为：先按 (桶号, 组合) 排序再切片，比例才是**精确**的。
-    """
-    ordered = sorted(cases, key=lambda case: (bucket_of(case), tuple(case.as_dict().items())))
-    low, high = SPLIT_BUCKETS[split]
-    total = len(ordered)
-    return ordered[low * total // 100 : high * total // 100]
+    return hash_bucket(case, SPLIT_SEED)
 
 
 def _cover_pick(cases: list[CitationCase], limit: int) -> list[CitationCase]:
@@ -184,11 +163,13 @@ def cases_for(config: CitationConfig) -> list[CitationCase]:
                 seen.setdefault(tuple(case.as_dict().items()), case)
         cases = list(seen.values())
     else:
-        cases = _slice(features.build_cases(config.cover_limit, dims=id_dims()), config.split)
+        cases = slice_by_bucket(
+            features.build_cases(config.cover_limit, dims=id_dims()), config.split, bucket_of, SPLIT_BUCKETS
+        )
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
-class CitationWorkflow:
+class CitationWorkflow(BackendHolder):
     """引文核查：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
     name = WORKFLOW_NAME
@@ -196,32 +177,19 @@ class CitationWorkflow:
     kinds = frozenset({"choice", "noul"})
     needs = frozenset({"text"})  # 短文正文由后端写：本 workflow 不是纯构造式
     judges: tuple[str, ...] = ("hygiene", "frame", "trace")
-
-    def __init__(self) -> None:
-        """输入：无。输出：实例。预期行为：后端要等 `bind_backend` 才注入。"""
-        self.backend: GenerationBackend | None = None
-
-    def bind_backend(self, backend: GenerationBackend) -> None:
-        """输入：生成后端。输出：无。预期行为：存下后端，`render` 与 `trace` 判别器要用。"""
-        self.backend = backend
-
-    def split_names(self) -> tuple[str, ...]:
-        """输入：无。输出：四个切分名。"""
-        return ("train", "val", "test_iid", "test_ood")
+    split_names_tuple = ("train", "val", "test_iid", "test_ood")
+    cases_for_fn = staticmethod(cases_for)
+    dimension_titles_map = DIMENSION_TITLES
+    pkg_render = render
+    pkg_judges = judges_mod
+    pkg_audit = audit_mod
+    pkg_locales = locales
 
     def config_for(self, split: str) -> CitationConfig:
         """输入：切分名。输出：该切分的采样参数。预期行为：未知切分直接报错。"""
         if split not in self.split_names():
             raise KeyError(f"未知切分 {split!r}（可用：{', '.join(self.split_names())}）")
         return CitationConfig(split=split)
-
-    def build_cases(self, config: CitationConfig) -> list[CitationCase]:
-        """输入：采样参数。输出：tag 组合列表。"""
-        return cases_for(config)
-
-    def case_label(self, case: CitationCase) -> str:
-        """输入：一个 case。输出：一行可读描述。"""
-        return case.describe()
 
     def stats_dimensions(self, case: CitationCase) -> dict[str, JsonValue]:
         """输入：一个 case。输出：统计维度（一维一栏）。"""
@@ -231,10 +199,6 @@ class CitationWorkflow:
             "place": case.place,
             "target": case.target,
         }
-
-    def dimension_titles(self) -> dict[str, str]:
-        """输入：无。输出：{维度名: 中文标题}。"""
-        return dict(DIMENSION_TITLES)
 
     def plan_sample(
         self, rng: random.Random, config: CitationConfig, case: CitationCase, seq: int
@@ -306,27 +270,6 @@ class CitationWorkflow:
         del rng
         return questions.build(spec.plan, locales.load(locale), spec.phrasing)
 
-    def reparse(self, state: object, *, case: object = None) -> render.ParsedCitation:
-        """输入：渲染后的 state。输出：纯代码能反解的部分（标题 / 分节句子 / 引文 / 声称出处）。"""
-        del case
-        return render.parse_state(state)
-
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        out: list[Judge] = []
-        for name in names:
-            if name == "hygiene":
-                out.append(judges_mod.HygieneJudge(locale))
-            elif name == "frame":
-                out.append(judges_mod.FrameJudge(locale))
-            elif name == "trace":
-                if self.backend is None:
-                    raise RuntimeError("trace 判别器需要后端，但还没被 bind_backend 注入")
-                out.append(judges_mod.TraceJudge(self.backend, locale))
-            else:
-                raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
-        return tuple(out)
-
     def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
         """输入：契约样本。输出：必须与声明语言一致的正文（标题 + 各节的句子）。
 
@@ -342,15 +285,6 @@ class CitationWorkflow:
                 texts[f"第 {index} 节第 {position} 句"] = sentence
         return texts
 
-    def audit(
-        self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, JsonValue], list[str]]:
-        """输入：run 目录、切分、语言。输出：(各切分审计计数, 缺失项列表)。"""
-        return audit_mod.audit_run(run_dir, splits, locale)
-
-    def available_locales(self) -> list[str]:
-        """输入：无。输出：该 workflow 支持的语言标签列表。"""
-        return locales.available()
 
 
 @register(WORKFLOW_NAME)

@@ -32,7 +32,13 @@ BAD_KEYS = ("state_bad", "join_bad", "block_type_bad", "callout_bad", "ordered_b
 def make_config(
     tmp_path: Path, run_id: str, backend: object, *, split: str = "train", limit: int = CASE_LIMIT
 ) -> pipeline.RunConfig:
-    """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
+    """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。
+
+    预期行为：**关掉语言闸**（`language_gate=False`）。本包的假后端写的是英文骨架——它们是
+    挑出来「长度同时落在两种语言预算里」的那几句（见 `conftest` 的注释），所以 zh 侧的正文
+    不是汉字。真机 zh 产物不是这样（模型写中文），这是**夹具的局限**、不是渲染的问题；
+    语言闸本身由 `tests/core` 的定点测试与 6 家认 `locale` 的假后端在语言扫描里验。
+    """
     return pipeline.RunConfig(
         workflow="autoformat",
         split=split,
@@ -43,6 +49,7 @@ def make_config(
         run_id=run_id,
         config_override=AutoformatConfig(split=split, case_limit=limit),
         backend=backend,
+        language_gate=False,
     )
 
 

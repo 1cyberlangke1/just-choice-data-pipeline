@@ -124,6 +124,17 @@ state_header = "【Full change】"
 questions_header = "【Questions】"
 option_line = "   - {name}: {desc}"
 
+# 反解提示词里这两族的选项名用**取值本身**（`yes` / `no`），不是数据集那道 noul 题的
+# criteria key（`true` / `false`）：草稿要的是前者，两套词摆在一起模型得自己翻译，实测就是
+# 翻译错（真机拒稿理由全是「注入 yes，反解成 no」）。见 `jc.llmjudge.trace_options`。
+[verify.trace_options.secret]
+yes = "an **added line** carries a `db_password = \"…\"` style quoted value (in code or in prose, both count)"
+no = "no added line carries one (one that appears only on a removed line does not count)"
+
+[verify.trace_options.debug]
+yes = "an **added line** carries a print( / console.log( / logger.debug( style call"
+no = "no added line carries such a call (one that appears only on a removed line does not count)"
+
 [fam.secret]
 q = [
   "Do the change's added lines contain a `name = \"quoted value\"` credential literal?",

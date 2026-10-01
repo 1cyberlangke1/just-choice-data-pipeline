@@ -21,16 +21,14 @@
 
 from __future__ import annotations
 
-import hashlib
 import random
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 
-from jc.backend.types import GenerationBackend
+from jc.cover import hash_bucket, slice_by_bucket
 from jc.judge import Judge
 from jc.jsontypes import JsonValue
-from jc.workflow import LabeledQuestion, SplitSpec, register
+from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
 
 from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
 from .features import DocCase, DocConfig
@@ -78,21 +76,7 @@ class AutoformatConfig(DocConfig):
 
 
 def bucket_of(case: DocCase) -> int:
-    """输入：一个 case。输出：哈希桶号（0~99）。预期行为：同一个组合永远落同一个桶。"""
-    payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
-    return int(hashlib.sha256(f"{SPLIT_SEED}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100
-
-
-def _slice(cases: list[DocCase], split: str) -> list[DocCase]:
-    """按桶号排序后按比例切片。
-
-    输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
-    预期行为：先按 (桶号, 组合) 排序再切片，比例才是**精确**的。
-    """
-    ordered = sorted(cases, key=lambda case: (bucket_of(case), tuple(case.as_dict().items())))
-    low, high = SPLIT_BUCKETS[split]
-    total = len(ordered)
-    return ordered[low * total // 100 : high * total // 100]
+    return hash_bucket(case, SPLIT_SEED)
 
 
 def _dims_of(case: DocCase) -> dict[str, str]:
@@ -143,13 +127,13 @@ def cases_for(config: AutoformatConfig) -> list[DocCase]:
         cases = [case for case in cases if case.unseen_dims()]
     else:
         cases = [case for case in features.build_cases(config) if not case.unseen_dims()]
-        cases = _slice(cases, config.split)
+        cases = slice_by_bucket(cases, config.split, bucket_of, SPLIT_BUCKETS)
     if config.case_limit:
         cases = _cover_pick(cases, config.case_limit)
     return cases
 
 
-class AutoformatWorkflow:
+class AutoformatWorkflow(BackendHolder):
     """结构恢复：纯文本的块结构由代码定，正文由后端写。"""
 
     name = WORKFLOW_NAME
@@ -157,18 +141,11 @@ class AutoformatWorkflow:
     kinds = frozenset({"choice", "noul"})
     needs = frozenset({"text"})  # 每一块的文字由后端写：本 workflow 不是纯构造式
     judges: tuple[str, ...] = ("hygiene", "roundtrip", "trace")
-
-    def __init__(self) -> None:
-        """输入：无。输出：workflow 实例。预期行为：后端在 `bind_backend` 里注入。"""
-        self.backend: GenerationBackend | None = None
-
-    def bind_backend(self, backend: GenerationBackend) -> None:
-        """输入：生成后端。输出：无。预期行为：存下来，`render` 与 `trace` 判别器都要用。"""
-        self.backend = backend
-
-    def split_names(self) -> tuple[str, ...]:
-        """输入：无。输出：四个切分名。"""
-        return ("train", "val", "test_iid", "test_ood")
+    split_names_tuple = ("train", "val", "test_iid", "test_ood")
+    cases_for_fn = staticmethod(cases_for)
+    dimension_titles_map = DIMENSION_TITLES
+    pkg_audit = audit_mod
+    pkg_locales = locales
 
     def config_for(self, split: str) -> AutoformatConfig:
         """输入：切分名。输出：该切分的采样参数。预期行为：未知切分直接报错。"""
@@ -176,34 +153,10 @@ class AutoformatWorkflow:
             raise KeyError(f"未知切分 {split!r}（可用：{', '.join(self.split_names())}）")
         return AutoformatConfig(split=split)
 
-    def build_cases(self, config: AutoformatConfig) -> list[DocCase]:
-        """输入：采样参数。输出：case 列表。"""
-        return cases_for(config)
-
-    def case_label(self, case: DocCase) -> str:
-        """输入：一个 case。输出：一行可读描述（报告与 manifest 用）。"""
-        return case.describe()
-
-    def stats_dimensions(self, case: DocCase) -> dict[str, JsonValue]:
-        """输入：一个 case。输出：{维度名: 取值}。"""
-        return case.as_dict()
-
-    def dimension_titles(self) -> dict[str, str]:
-        """输入：无。输出：{维度名: 中文标题}。"""
-        return dict(DIMENSION_TITLES)
-
     def plan_sample(
         self, rng: random.Random, config: AutoformatConfig, case: DocCase, seq: int
     ) -> SplitSpec:
-        """输入：RNG、采样参数、case、样本序号。输出：这一条的生成计划。
-
-        预期行为：问法编号由 RNG 从池里抽（它不是 case 维度），块计划在 `sample` 阶段按素材指纹
-        确定性地算出来。
-        """
-        return SplitSpec(
-            name=config.split,
-            params={"case": case, "phrasing": rng.choice(config.phrasing_pool), "seq": seq},
-        )
+        return plan_with_phrasing(config, rng, case, seq, config.phrasing_pool)
 
     def sample(self, rng: random.Random, split: SplitSpec) -> DocSpec:
         """输入：独立 RNG（不用）、生成计划。输出：真值规格。"""
@@ -280,15 +233,6 @@ class AutoformatWorkflow:
             if block.kind != features.KIND_CODE and block.text.strip()
         }
 
-    def audit(
-        self, run_dir: Path, splits: tuple[str, ...], locale: str
-    ) -> tuple[dict[str, JsonValue], list[str]]:
-        """输入：run 目录、切分、语言。输出：(各切分审计计数, 缺失项列表)。"""
-        return audit_mod.audit_run(run_dir, splits, locale)
-
-    def available_locales(self) -> list[str]:
-        """输入：无。输出：该 workflow 支持的语言标签列表。"""
-        return locales.available()
 
 
 @register(WORKFLOW_NAME)

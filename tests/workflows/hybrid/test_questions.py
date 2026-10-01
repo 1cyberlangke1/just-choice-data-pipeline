@@ -112,7 +112,6 @@ def test_room_options_are_deduplicated_on_a_shared_room(make_spec: object) -> No
     否则那道题会出现两个一模一样的选项描述。
     """
     spec = make_spec(5, **{"meetings": 3, "clash": "same_room"})
-    loc = locales.load("zh")
     item = _build(spec)["room_of"]
     assert len(item.question["criteria"]) == len(spec.room_slots) == 2
     assert len(set(item.question["criteria"].values())) == 2

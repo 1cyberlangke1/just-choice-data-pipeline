@@ -358,7 +358,7 @@ def braid(
         candidates = [
             d
             for d in DIRECTIONS
-            if (nb := neighbor(cell, d, rows, cols)) is not None and not (new[cell] >> d & 1)
+            if neighbor(cell, d, rows, cols) is not None and not (new[cell] >> d & 1)
         ]
         if candidates:
             _carve(new, cell, rng.choice(candidates), rows, cols)

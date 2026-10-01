@@ -6,6 +6,7 @@ finding_label = "审查发现"
 fix_label = "建议修法"
 record_label = "改动记录"
 rules_label = "判定口径"
+owner_label = "归属口径"
 header = "【{title}】"
 row_prefix = "- "
 paren = "（{text}）"
@@ -30,6 +31,18 @@ text = "修法：建议修法里没有点名任何具体符号 → 落不了地�
 
 [rules.else]
 text = "兜底：以上都不沾 → 处置「必须修」。"
+
+[owners.missing]
+text = "记录缺行：发现指向的行号在记录里查不到 → 先回到记录维护者（把记录补全）。"
+
+[owners.baseless]
+text = "发现站不住：引用的符号在记录里查不到 → 回到规则维护者（先修规则或判据）。"
+
+[owners.touched]
+text = "本次引入：指向的那一行本次改动碰过（新增或改过） → 交给本次改动的作者。"
+
+[owners.else]
+text = "旧账：以上都不沾 → 交给架构组（改动之前就在的问题）。"
 
 [dims]
 cite = "发现指向的那一行"
@@ -76,6 +89,7 @@ intro = "下面是一道「改动引入性判定」题。请只按字面反解�
 state_header = "【题面全文】"
 questions_header = "【问题】"
 option_line = "   - {name}：{desc}"
+answer_rule = "第 1 题只填**选项名**（`s1`…`sN` 或 `none` 里的一个）：不要填行号、不要抄原句、不要解释。"
 symbol_q = "发现里用反引号括起来的那个符号是哪一个？（原样抄出来，不要带反引号）"
 
 [fam.cite]
@@ -129,6 +143,18 @@ q = [
 must_fix = "必须修：本次引入、证据够硬、修法也落得了地"
 log_only = "只记录：先记下，这次不动手"
 drop = "丢弃：不归这次改动"
+
+[fam.owner]
+q = [
+  "按归属口径，这条发现该进谁的队列？",
+  "这条发现最后该派给谁处理？",
+  "按上面的归属表算下来，它归谁？",
+]
+[fam.owner.criteria]
+record = "记录维护者：记录里缺了它指向的那一行，先把记录补全"
+rule = "规则维护者：它引用的符号在记录里查不到，先修规则或判据"
+author = "本次改动的作者：指向的那一行本次被新增或改过"
+arch = "架构组：指向的那一行本次没被碰过，是改动之前就在的旧账"
 
 [fam.decoy]
 q = [

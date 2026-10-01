@@ -13,11 +13,10 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from jc.judge import Verdict
-from jc.workflow import family_of
+from jc.workflow import compare_answers, family_of
 
 from . import locales, parse, questions, render
 from . import spec as spec_mod
@@ -158,7 +157,7 @@ def check_sample(
     预期行为：与 `check_sample_any_locale` 同一把尺，只是选项描述**只认这一种语言**的写法
     ——判别器判的就是「这条产物自己那个语言」。
     """
-    return _compare(sample, facts, lambda family: (expected_of(family, facts, loc, pair),))
+    return compare_answers(sample, lambda family: (expected_of(family, facts, loc, pair),))
 
 
 def check_sample_any_locale(
@@ -170,7 +169,7 @@ def check_sample_any_locale(
     `locales[seq % len]` 轮转渲染，审计拿到的语言未必是产物那一种；只认一种语言的文案会把
     另一种语言的产物整片误判成「答案指向 …，按 state 重算是 …」。
     """
-    return _compare(sample, facts, lambda family: expected_variants(family, facts, pair))
+    return compare_answers(sample, lambda family: expected_variants(family, facts, pair))
 
 
 def _as_int(value: JsonValue) -> int:
@@ -178,55 +177,6 @@ def _as_int(value: JsonValue) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"期望整数，实际 {value!r}")
     return value
-
-
-def _show(want: tuple[str | bool | int, ...]) -> str:
-    """输入：可接受的答案。输出：给人看的写法（多个候选用 ` / ` 连）。"""
-    return " / ".join(str(value) for value in want)
-
-
-def _compare(
-    sample: dict[str, JsonValue],
-    facts: dict[str, JsonValue],
-    acceptable: Callable[[str], tuple[str | bool | int, ...]],
-) -> list[str]:
-    """输入：样本、重算出来的事实、按题族给可接受答案的函数。输出：问题列表（空 = 全对）。
-
-    预期行为：逐题按**题族**重算再比对——choice 比选项描述原文、noul 比布尔、score 比等级。
-    可接受的答案做成元组，是为了让审计一次给出「各语言的选项描述」（判别器只给一个）。
-    """
-    problems: list[str] = []
-    for qid, question in sample["questions"].items():
-        family = family_of(qid)
-        try:
-            want = acceptable(family)
-        except (ValueError, KeyError) as exc:
-            problems.append(f"{qid}: 重算不出答案（{exc}）")
-            continue
-        answer = sample["answers"][qid]
-        if question["type"] == "choice":
-            # 组装后的 `criteria` 是「选项名 → 选项描述」，`choice` 是**描述在其中的书写顺序**；
-            # 判别器要比的是描述原文，所以取 `values()` 而不是 key。
-            criteria = question["criteria"]
-            if not isinstance(criteria, dict):
-                problems.append(f"{qid}: 选项形状不对")
-                continue
-            options = [str(text) for text in criteria.values()]
-            index = answer["choice"]
-            if not isinstance(index, int) or not 0 <= index < len(options):
-                problems.append(f"{qid}: 答案编号越界（{index}）")
-                continue
-            if options[index] not in want:
-                problems.append(f"{qid}: 答案指向 {options[index]}，按 state 重算是 {_show(want)}")
-        elif question["type"] == "noul":
-            if answer["noul"] not in want:
-                problems.append(f"{qid}: 答案是 {answer['noul']}，按 state 重算是 {_show(want)}")
-        elif question["type"] == "score":
-            if answer["score"] not in want:
-                problems.append(f"{qid}: 答案是 {answer['score']}，按 state 重算是 {_show(want)}")
-        else:
-            problems.append(f"{qid}: 未知题型 {question['type']!r}")
-    return problems
 
 
 def roundtrip_diff(

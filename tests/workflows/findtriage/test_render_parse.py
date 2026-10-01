@@ -127,6 +127,8 @@ def test_state_round_trips() -> None:
     assert render.rows_of(state, loc) == PLAN.rows
     assert render.rules_of(state, loc) == features.RULES
     assert render.section_lines(state, loc, "rules_label") == render.rule_lines(loc)
+    assert render.owner_rules_of(state, loc) == features.OWNER_RULES
+    assert render.section_lines(state, loc, "owner_label") == render.owner_lines(loc)
     parsed = render.parse_state(state)
     assert parsed.finding == GOOD["finding"]
     assert parsed.fix == GOOD["fix"]
@@ -176,6 +178,47 @@ def test_rule_lines_follow_the_code_order() -> None:
         assert render.canonical_rules(locales.load(lang)) == tuple(lines)
         for name, line in zip(features.RULES, lines):
             assert name in line
+
+
+def test_owner_lines_follow_the_code_order() -> None:
+    """输入：两语言归属口径。输出：无。预期行为：行数与顺序严格跟着 `features.OWNER_RULES`。"""
+    for lang in locales.available():
+        loc = locales.load(lang)
+        lines = render.owner_lines(loc)
+        assert len(lines) == len(features.OWNER_RULES)
+        assert render.canonical_owners(loc) == tuple(lines)
+        for name, line in zip(features.OWNER_RULES, lines):
+            assert name in line
+
+
+def test_owner_table_is_independent_of_the_triage_table() -> None:
+    """输入：两语言的归属段与判定段。输出：无。
+
+    预期行为：两段抬头**互不为前缀**——`_sections` 是按行首切段的，归属段的抬头要是判定段
+    抬头的前缀，整段 state 会当场错位。
+
+    两张表的**规则名是可以重名的**（`baseless` / `else` 两张表都有，语义也确实相同），
+    所以这里再钉一条：哪怕重名，两个解析器也只读自己那一段——读串了归属就会被判定口径算错。
+    """
+    for lang in locales.available():
+        loc = locales.load(lang)
+        rules_header = str(loc["meta"]["rules_label"])
+        owner_header = str(loc["meta"]["owner_label"])
+        assert rules_header != owner_header
+        assert not owner_header.startswith(rules_header)
+        assert not rules_header.startswith(owner_header)
+        state = render.to_state(GOOD, PLAN, loc)
+        assert render.rules_of(state, loc) == features.RULES
+        assert render.owner_rules_of(state, loc) == features.OWNER_RULES
+        # 把归属段整段删掉：判定口径照旧读得出来，归属读不出来——两边不互相顶替。
+        without_owners = "\n".join(
+            line
+            for line in state.splitlines()
+            if not line.startswith(f"{locales.header(loc, owner_header)}")
+            and line not in render.owner_lines(loc)
+        )
+        assert render.rules_of(without_owners, loc) == features.RULES
+        assert render.owner_rules_of(without_owners, loc) == ()
 
 
 def test_backticked_reads_only_quoted_marks() -> None:

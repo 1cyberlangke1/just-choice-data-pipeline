@@ -26,9 +26,9 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
-from jc.judge import squash as _squash
+from jc.judge import quote_hit as _quote_hit
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
-from jc.judge import Verdict
+from jc.judge import Verdict, verify_prompt
 from jc.jsontypes import JsonValue
 
 from . import features, locales, render
@@ -66,23 +66,8 @@ class TraceDraft(BaseModel):
 
 
 def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
-    """组装反解提示词。
-
-    输入：渲染好的 state、语言字典。输出：提示词。
-    预期行为：把整段 state（含判据表、毛病表、档位表、消息与三条候选）原样交给后端，只问「踩了
-    哪几条、哪条干净」——反解用的口径与渲染期用的机械口径是同一份（判据连同原文都印在 state 里），
-    否则「答对了」与「标签对了」不是一回事。
-    """
-    return "\n".join(
-        [
-            str(loc["verify"]["intro"]),
-            "",
-            str(loc["verify"]["state_header"]),
-            state,
-            "",
-            str(loc["verify"]["q"]),
-        ]
-    )
+    """组装反解提示词（口径见 `jc.judge.verify_prompt`）。"""
+    return verify_prompt(state, loc)
 
 
 def quote_holds(tag: str, quote: str, body: str) -> bool:
@@ -94,10 +79,10 @@ def quote_holds(tag: str, quote: str, body: str) -> bool:
     """
     if tag not in features.TAG_IDS:
         return False
-    squashed = _squash(quote)
-    if not squashed or squashed not in _squash(body):
+    hit = _quote_hit(quote, body)
+    if not hit:
         return False
-    return features.PATTERNS[tag].search(quote) is not None
+    return features.PATTERNS[tag].search(hit) is not None
 
 
 def _dropped_note(dropped: list[str]) -> str:

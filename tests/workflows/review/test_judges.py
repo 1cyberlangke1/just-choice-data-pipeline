@@ -6,6 +6,7 @@ import pytest
 
 from jc.backend.types import AllProvidersDown, TransportError
 from jc.jsontypes import JsonValue
+from jc import llmjudge
 
 from workflows.review import judges, locales, render
 from workflows.review.features import TagSet
@@ -180,10 +181,17 @@ def test_trace_skips_without_a_backend() -> None:
 
 
 def test_trace_prompt_repeats_the_atomic_questions() -> None:
-    """输入：一段 state。输出：提示词。预期行为：两族原子题与它们的选项都在提示词里。"""
+    """输入：一段 state。输出：提示词。预期行为：两族原子题与它们的选项都在提示词里。
+
+    选项名走 `jc.llmjudge.trace_options`——**列出来的是草稿收得下的那组取值**（`yes` / `no`），
+    不是数据集那道 noul 题的 criteria key（`true` / `false`）。两套词摆在一起模型得自己翻译，
+    真机上就翻译错过（拒稿理由全是「注入 yes，反解成 no」）。
+    """
     loc = locales.load("zh")
     prompt = judges.build_trace_prompt(state_of(), loc)
     for family in judges.TRACE_FAMILIES:
         assert str(loc["fam"][family]["q"][0]) in prompt
-        for name, desc in loc["fam"][family]["criteria"].items():
+        for name, desc in llmjudge.trace_options(family, loc):
             assert str(name) in prompt and str(desc) in prompt
+    assert "   - true：" not in prompt
+    assert "   - false：" not in prompt

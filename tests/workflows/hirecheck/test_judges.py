@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 import pytest
@@ -298,6 +299,7 @@ def test_quote_holds_needs_three_things_at_once() -> None:
     """
     body = packet_of(("H1",))
     assert judges.quote_holds("H1", quote_for("H1"), body)
+    assert judges.quote_holds("H1", json.dumps([quote_for("H1")]), body)  # 引文被装进 JSON 数组字符串（范式 §9.88）
     assert not judges.quote_holds("H1", "years: 1", body.replace("years: 1", "years: 4"))
     assert not judges.quote_holds("H1", "candidate: 林素", body)
     assert not judges.quote_holds("H9", quote_for("H1"), body)

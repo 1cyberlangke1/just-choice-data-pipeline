@@ -21,7 +21,6 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
-import hashlib
 import random
 from collections import Counter
 from dataclasses import replace
@@ -29,9 +28,9 @@ from pathlib import Path
 from typing import Final
 
 from jc import jsonio
-from jc.backend.types import GenerationBackend
+from jc.cover import hash_bucket, slice_by_bucket
 from jc.judge import Judge
-from jc.workflow import LabeledQuestion, SplitSpec, family_of, register
+from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, family_of, register
 
 from . import judges as judges_mod
 from . import locales, questions, render
@@ -73,25 +72,7 @@ DIMENSION_TITLES: Final[dict[str, str]] = {
 
 
 def bucket_of(case: HybridCase, seed: int = SPLIT_SEED) -> int:
-    """输入：case、种子。输出：0~99 的桶号。
-
-    预期行为：同一组合必得同一桶，不同组合近似均匀——切分单位是**组合**，不是样本；
-    不用内置 `hash()`（它对字符串每进程随机化），否则切分会随进程漂移。
-    """
-    payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
-    return int(hashlib.sha256(f"{seed}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100
-
-
-def _slice(cases: list[HybridCase], split: str) -> list[HybridCase]:
-    """输入：同分布 case 列表、切分名。输出：该切分的 case（顺序稳定）。
-
-    预期行为：先按 (桶号, 组合) 排序再切片，比例才是**精确**的——只按桶号过滤时，
-    哈希方差会让 val 只剩个位数；同一组合永远落在同一段。
-    """
-    ordered = sorted(cases, key=lambda case: (bucket_of(case), tuple(case.as_dict().items())))
-    low, high = SPLIT_BUCKETS[split]
-    total = len(ordered)
-    return ordered[low * total // 100 : high * total // 100]
+    return hash_bucket(case, seed)
 
 
 def cases_for(config: HybridConfig) -> list[HybridCase]:
@@ -105,12 +86,12 @@ def cases_for(config: HybridConfig) -> list[HybridCase]:
     if config.split == "test_ood":
         out = cases
     else:
-        out = _slice(cases, config.split)
+        out = slice_by_bucket(cases, config.split, bucket_of, SPLIT_BUCKETS)
     return out[: config.case_limit] if config.case_limit else out
 
 
 @register(WORKFLOW_NAME)
-class HybridWorkflow:
+class HybridWorkflow(BackendHolder):
     """会议日程：声明、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
     name = WORKFLOW_NAME
@@ -119,14 +100,10 @@ class HybridWorkflow:
     #: 要后端写标题与议题；后端只出文本，骨架与答案都由构造器算。
     needs: frozenset[str] = frozenset({"text"})
     judges: tuple[str, ...] = ("skeleton", "answers", "text")
-
-    def __init__(self) -> None:
-        """输入：无。输出：实例。预期行为：后端先为空，由 `bind_backend` 注入。"""
-        self.backend: GenerationBackend | None = None
-
-    def split_names(self) -> tuple[str, ...]:
-        """输入：无。输出：四个切分（同分布三档 + 一个值留出的 OOD 档）。"""
-        return ("train", "val", "test_iid", "test_ood")
+    split_names_tuple = ("train", "val", "test_iid", "test_ood")
+    cases_for_fn = staticmethod(cases_for)
+    dimension_titles_map = DIMENSION_TITLES
+    pkg_locales = locales
 
     def config_for(self, split: str) -> HybridConfig:
         """输入：切分名。输出：该切分的采样参数。
@@ -139,22 +116,6 @@ class HybridWorkflow:
         if split == "test_ood":
             return OOD_CONFIG
         return replace(ID_CONFIG, split=split)
-
-    def build_cases(self, config: HybridConfig) -> list[HybridCase]:
-        """输入：采样参数。输出：case 矩阵（顺序稳定）。"""
-        return cases_for(config)
-
-    def case_label(self, case: HybridCase) -> str:
-        """输入：一个 case。输出：一行可读描述（报告与文件名用）。"""
-        return case.describe()
-
-    def stats_dimensions(self, case: HybridCase) -> dict[str, JsonValue]:
-        """输入：一个 case。输出：{维度名: 取值}（6 个维度全摊平）。"""
-        return case.as_dict()
-
-    def dimension_titles(self) -> dict[str, str]:
-        """输入：无。输出：{维度名: 中文标题}。"""
-        return dict(DIMENSION_TITLES)
 
     def plan_sample(
         self, rng: random.Random, config: HybridConfig, case: HybridCase, seq: int
@@ -298,14 +259,6 @@ class HybridWorkflow:
             report[split] = counts
         _ = locale  # 反解语言无关，不需要具体语言文件
         return report, missing
-
-    def available_locales(self) -> list[str]:
-        """输入：无。输出：支持的语言列表。"""
-        return locales.available()
-
-    def bind_backend(self, backend: GenerationBackend) -> None:
-        """输入：生成后端。输出：无。预期行为：存下来，`render` 阶段用它写标题与议题。"""
-        self.backend = backend
 
 
 def _options_fit(family: str, options: int, meetings: int) -> bool:

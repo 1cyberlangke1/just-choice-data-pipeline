@@ -48,7 +48,7 @@ class TraceDraft(BaseModel):
 
     intent: Literal["fill", "open", "switch", "submit"]
     row: int = Field(ge=1, description="用户指的是「界面元素」表里的第几行（从 1 数起）")
-    label: str = Field(min_length=1, description="用户指的那个元素名（原样照抄）")
+    label: str = Field(description="用户指的那个元素名（原样照抄）")
 
 
 def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:

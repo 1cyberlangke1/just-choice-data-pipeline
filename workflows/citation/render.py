@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import recognize_locale
 from jc.workflow import DraftError
 
 from . import features, locales
@@ -59,6 +60,11 @@ class ParsedCitation:
     sections: tuple[tuple[str, ...], ...]
     quote: str | None
     claimed: int | None
+
+    @property
+    def found(self) -> bool:
+        """输入：无。输出：文档抬头认出来了没有。预期行为：就是 `title` 在不在。"""
+        return self.title is not None
 
     @property
     def sentences(self) -> tuple[str, ...]:
@@ -336,12 +342,7 @@ def detect_locale(state: object) -> str | None:
     弱；文档抬头是渲染时按语言写死的、整段开头那一行，拿它当判据才分得开（这条坑在 lint 上
     踩过一次，见范式 §9.22）。
     """
-    if not isinstance(state, str):
-        return None
-    for lang in locales.available():
-        if parse_with(state, locales.load(lang)).title is not None:
-            return lang
-    return None
+    return recognize_locale(state, locales, parse_with)
 
 
 def parse_state(state: object) -> ParsedCitation:

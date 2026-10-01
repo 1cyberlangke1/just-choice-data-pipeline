@@ -106,7 +106,7 @@ class ShellDraft(BaseModel):
     """
 
     goal_line: str = Field(description="用户想干什么：一句话，带具体的路径或对象名")
-    command: str = Field(min_length=1, description="要执行的命令：**单行**，可直接粘进终端")
+    command: str = Field(description="要执行的命令：**单行**，可直接粘进终端")
     note: str = Field(description="这条命令会做什么：一句话，客观描述，不要评价该不该批准")
 
 

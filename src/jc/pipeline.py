@@ -34,12 +34,11 @@ from typing import Final
 
 
 from .backend.types import GenerationBackend
-from . import assemble, consistency, jsonio, judge as judge_mod, validate
-from .workflow import SplitSpec, Workflow, family_of, load
+from . import assemble, consistency, jsonio, judge as judge_mod, language, validate
+from .workflow import DraftError, SplitSpec, Workflow, family_of, load
 
 # 管线级（非契约级）拒绝码；判别器失败会带自己的名字（E_JUDGE_<NAME>）
 E_ASSEMBLE = "E_ASSEMBLE"
-E_EMPTY = "E_EMPTY"
 
 #: 答案均衡判据的最小样本量：低于它的题族不参与判定。那个规模上「3 倍标准误」已经
 #: 大于 0.2，3 个百分点的判据本来就判不出东西——样本量不够只能加样本，不能靠放宽
@@ -66,6 +65,12 @@ class RunConfig:
     render_attempts: int = 2
     config_override: object = None  # 覆盖 workflow 的默认采样参数（小规模试跑 / 测试用）
     backend: GenerationBackend | None = None  # 生成后端（jc.backend.types.GenerationBackend）；needs 为空的 workflow 用不到
+    #: 产物里**模型写的自然语言正文**必须与这一条声明的语言一致（`jc.language`）：不一致就
+    #: 当「没照契约写」重渲染（`DraftError`），重渲染用完仍不一致就不入库。口径由 workflow
+    #: 自己的 `language_texts` 说了算——代码 / 命令行 / ASCII 图它本来就不报。
+    #: 关掉它只有一个正当理由：**夹具（假后端）本身不按语言造文本**——那是测试的局限，
+    #: 不是产物的问题，所以只有那些用假后端的地方会关。
+    language_gate: bool = True
 
     def resolved_run_id(self) -> str:
         """运行目录名；未指定时用时间戳。"""
@@ -321,6 +326,13 @@ def _attempt_case(
         if not labeled:
             raise ValueError("没有出到任何题（题族在当前 spec 下全部不成立）")
         sample = assemble.assemble_sample(sample_id, state, labeled, rng)
+        declared = getattr(workflow, "language_texts", None)
+        if config.language_gate and declared is not None:
+            # 只查这一条**声明的**那种语言：管线按 `locales[seq % len]` 轮转，一条样本只会
+            # 声明一种语言。字段名与理由由 `jc.language` 给全，写进拒绝明细能直接读。
+            problem = language.sample_problem(declared(sample), (locale,))
+            if problem is not None:
+                raise DraftError(f"产物文本与声明的语言对不上：{problem}")
     except Exception as exc:  # noqa: BLE001 —— 生成期异常一律记为拒绝，不中断整批
         if _is_fatal(exc):
             raise

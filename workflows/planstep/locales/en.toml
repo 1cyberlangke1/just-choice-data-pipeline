@@ -1,0 +1,87 @@
+# 有界任务推进（planstep）workflow 的英文文案。
+#
+# 输入：`workflows.planstep.locales.load("en")` 读取本文件。
+# 输出：字典。
+# 预期行为（与 zh.toml 逐项对齐）：三种结构词元与中文**完全一致**；
+# 抬头 / 区块抬头两两不互为前缀且不与中文撞车；`[task]` 与 `render.TASK_KEYS` 一一对应；
+# `[status]` 只有 done / pending；四个题族的问法模板互不相同；
+# `[fam.remaining].levels` 与 `[fam.rounds].levels` 各六档（下标即答案）；
+# `[fam.next].opt.none` 不与任何任务名重名；两个 noul 族的 criteria 只有 true / false。
+
+lang = "en"
+language_name = "English"
+
+[meta]
+request = "Plan step request"
+tasks = "Tasks"
+rules = "Advance rules"
+cell_sep = "|"
+deps_sep = ","
+deps_prefix = "deps="
+deps_none = "no deps"
+rules_prefix = "- "
+
+[task]
+T1 = "requirements gathering"
+T2 = "interface design"
+T3 = "core implementation"
+T4 = "integration testing"
+T5 = "release"
+
+[status]
+done = "done"
+pending = "pending"
+
+[rules]
+lines = [
+  "Rule 1: a task is ready if and only if its status is \"pending\" and every one of its prerequisites is done.",
+  "Rule 2: among ready tasks, take the one with the shallowest dependency depth; ties go to the smallest number. The dependency depth of a task is the length of the longest prerequisite chain leading to it, and a task with no prerequisites has depth 0.",
+  "Rule 3: one round means marking every currently ready task as done together.",
+  "Rule 4: keep advancing this way until no task is ready.",
+]
+
+[fam.remaining]
+q = [
+  "Counting by this table, how many tasks are still left before the plan cannot advance any further?",
+  "How many tasks of this plan are not done yet?",
+  "Starting from the current state, how many tasks are still pending?",
+]
+levels = [
+  "none left",
+  "1 task left",
+  "2 tasks left",
+  "3 tasks left",
+  "4 tasks left",
+  "5 tasks left",
+]
+
+[fam.next]
+q = [
+  "By the advance rules, which task should be worked on next?",
+  "Given the current state of this table, which task comes next?",
+  "According to the advance rules, which task is the next one to start?",
+]
+opt = { none = "no task is ready" }
+
+[fam.rounds]
+q = [
+  "From the current state, how many rounds does it take to advance the plan as far as it goes?",
+  "Advancing by the rules, how many more rounds are needed to finish this table?",
+  "How many rounds remain before this plan can no longer advance?",
+]
+levels = [
+  "0 more rounds (already stuck)",
+  "1 more round",
+  "2 more rounds",
+  "3 more rounds",
+  "4 more rounds",
+  "5 more rounds",
+]
+
+[fam.unlocks]
+q = [
+  "After the next task is done, will any other task become ready right away?",
+  "Does finishing the next task immediately unlock at least one more task?",
+  "Will advancing the next task make a new task ready right away?",
+]
+criteria = { true = "yes, it unlocks", false = "no, it does not" }

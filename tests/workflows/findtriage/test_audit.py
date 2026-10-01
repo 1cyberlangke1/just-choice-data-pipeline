@@ -96,6 +96,23 @@ def test_audit_flags_a_tampered_actionable(tmp_path: Path) -> None:
     assert any("落不落地" in item for item in missing)
 
 
+def test_audit_flags_a_tampered_owner(tmp_path: Path) -> None:
+    """输入：把一条样本的 `owner` 答案改掉。输出：无。
+
+    预期行为：审计报出 `owner_bad`——归属是拿产物里的记录表 + 发现原文重推的，改一个字节就该暴露。
+    """
+    result = pipeline.run(make_config(tmp_path, "a4", FakeBackend()))
+    path = result.run_dir / "train.jsonl"
+    rows = read_rows(path)
+    question = rows[0]["questions"]["owner"]
+    index = rows[0]["answers"]["owner"]["choice"]
+    rows[0]["answers"]["owner"]["choice"] = (index + 1) % len(question["criteria"])
+    write_rows(path, rows)
+    report, missing = audit_mod.audit_run(result.run_dir, ("train",), "zh")
+    assert report["train"]["owner_bad"] == 1
+    assert any("归属" in item for item in missing)
+
+
 def test_audit_flags_a_tampered_finding(tmp_path: Path) -> None:
     """输入：把发现里的行号改掉。输出：无。
 

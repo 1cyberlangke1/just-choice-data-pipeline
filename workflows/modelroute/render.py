@@ -42,7 +42,6 @@ class RouteDraft(BaseModel):
     """
 
     request: str = Field(
-        min_length=1,
         description="用户想做的事：一句话，写清楚这是什么任务、涉及什么材料与大致规模",
     )
 

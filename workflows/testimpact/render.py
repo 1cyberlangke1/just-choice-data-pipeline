@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import recognize_locale
 from jc.workflow import DraftError
 
 from . import features, locales
@@ -349,6 +350,11 @@ def normalize_hunks(diff: str) -> str:
     块外的行（`diff --git` / `index` / `---` / `+++` 等元信息）原样留着。输出按行重排，
     行尾换行不算内容。
 
+    光秃秃的 `@@`（没给行号，模型常这么写）另算一档：**起点按 `1` 补**——真实 diff 里新文件的
+    第一块就是这样，而这份改动本来就是编的，模型自己写的起点也不比它更「真」；题面只问哪些
+    测试受影响，一行行号都不参与。补完形态与 git 写出来的一致，`diff_shape_problems` 那边靠
+    `features.HUNK_RE` 放行。
+
     为什么这步归代码：真实 diff 是 git 生成的，行数**永远自洽**；而模型写块头基本是瞎猜
     （2026-09-30 小批量实测：18 条里 15 条对不上，通常差一两行）。题面不问行数，所以重算不丢
     任何信息，只是把「模型算不准的算术」收回代码手里——与「覆盖表由代码渲染」同一条理由。
@@ -362,16 +368,25 @@ def normalize_hunks(diff: str) -> str:
     while index < len(lines):
         raw = lines[index]
         match = features.HUNK_SPAN_RE.match(raw)
-        if match is None:
+        if match is not None:
+            old_start, new_start, tail = match.group(1), match.group(2), match.group(3)
+        elif features.BARE_HUNK_RE.match(raw):
+            # 光写 `@@`：起点行号模型没给（题面用不到），按第 1 行补，行数照下面重算。
+            old_start = new_start = "1"
+            tail = ""
+        else:
             out.append(raw)
             index += 1
             continue
-        old_start, new_start, tail = match.group(1), match.group(2), match.group(3)
         body: list[str] = []
         index += 1
         while index < len(lines):
             probe = lines[index]
-            if features.HUNK_SPAN_RE.match(probe) or probe.startswith("diff --git "):
+            if (
+                features.HUNK_SPAN_RE.match(probe)
+                or features.BARE_HUNK_RE.match(probe)
+                or probe.startswith("diff --git ")
+            ):
                 break
             body.append(probe)
             index += 1
@@ -474,12 +489,7 @@ def detect_locale(state: object) -> str | None:
     别的语言的 state 也抢过来（这条坑在 lint 上踩过一次，见范式 §9.22）；改动抬头是渲染时按
     语言写死的、整段最后那一块的开头，才分得开。
     """
-    if not isinstance(state, str):
-        return None
-    for lang in locales.available():
-        if parse_with(state, locales.load(lang)).found:
-            return lang
-    return None
+    return recognize_locale(state, locales, parse_with)
 
 
 def parse_state(state: object) -> ParsedContent:

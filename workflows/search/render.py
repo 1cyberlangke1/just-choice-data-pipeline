@@ -73,15 +73,12 @@ class SearchDraft(BaseModel):
     """
 
     query: str = Field(
-        min_length=1,
         description="用户在搜索框里敲的那句查询：一句话，说清要找什么",
     )
     title: str = Field(
-        min_length=1,
         description="这一条搜索结果的标题：一行，像真实网页标题那样",
     )
     snippet: str = Field(
-        min_length=1,
         description="这一条搜索结果的摘要：一到两句，搜索引擎抓下来的那段正文",
     )
 

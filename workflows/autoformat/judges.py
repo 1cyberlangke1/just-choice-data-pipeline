@@ -19,11 +19,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from jc.contract import option_names
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
 from jc.judge import Judge, Verdict
 from jc.jsontypes import JsonValue
-from jc.workflow import family_of
+# `answer_value` 本文件不直接调，但它是这一家的公开名字——测试与审计按 `judges.answer_value` 取，
+# 合并进通用层之后仍然从这里转出去（别的五家内部还要用它）。
+from jc.workflow import answer_value, compare_expected
 from pydantic import BaseModel, Field
 
 from . import features, locales, parse, questions
@@ -56,29 +57,21 @@ def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
     口径是同一份（读法都印在题面里），否则「答对了」与「标签对了」不是一回事。
     「列表有没有序」那一条的判据在题面里点名**顺序词**（顺序词表由语言表给），
     免得读者按语义去猜「这几项看起来像有先后顺序」——那正是这一条最容易吵起来的地方。
+
+    **六种块类型的判据也要照抄给读者**（`type_desc`，与考生题面 `block_type` 的判据同源）：
+    2026-10-01 小批量实测，不带判据时读者按自己的习惯认，20 条里 10 条读出别的结构——
+    最常见的是把「标题紧贴着的那段正文」并进标题、把没带署名的引用读成正文。这是范式 §9.8
+    那条「判据必须写在题面里」的反解侧版本：**考生看得见的判据，读者也得看得见**。
     """
     steps = str(loc["doc"]["list_sep"]).join(parse.seq_words(loc))
-    return "\n".join([str(loc["verify"]["ask"]).format(steps=steps), "", state])
-
-
-def answer_value(question: dict[str, JsonValue], answer: dict[str, JsonValue]) -> JsonValue:
-    """输入：一道题、它的答案。输出：可比的值。
-
-    预期行为：choice 给**选项名**（不是编号——编号只由组装器产生），noul 给布尔；编号越界或类型
-    不对给 None（那是对不上，不是崩）。
-    """
-    if question["type"] == "choice":
-        names = option_names(question)
-        index = answer.get("choice")
-        if not isinstance(index, int) or isinstance(index, bool):
-            return None
-        if not 0 <= index < len(names):
-            return None
-        return names[index]
-    if question["type"] == "noul":
-        value = answer.get("noul")
-        return value if isinstance(value, bool) else None
-    return answer.get("score")
+    legend = [str(loc["verify"]["kinds_header"])]
+    legend.extend(
+        str(loc["verify"]["kinds_line"]).format(
+            kind=kind, name=loc["type"][kind], desc=loc["type_desc"][kind]
+        )
+        for kind in features.BLOCK_KINDS
+    )
+    return "\n".join([str(loc["verify"]["ask"]).format(steps=steps), *legend, "", state])
 
 
 def recompute(doc: parse.ParsedDoc, loc: dict[str, JsonValue]) -> dict[str, list[JsonValue]]:
@@ -100,37 +93,12 @@ def recompute(doc: parse.ParsedDoc, loc: dict[str, JsonValue]) -> dict[str, list
 
 
 def compare(sample: dict[str, JsonValue], expected: dict[str, list[JsonValue]]) -> list[str]:
-    """输入：一条样本、期望答案表。输出：差异列表（空 = 全对）。
+    """输入：一条样本、按 state 重算出来的期望答案表。输出：差异列表（空 = 全对）。
 
-    预期行为：按题号走一遍，同族按出现顺序对上第几条；题多了、题少了、答案不对都各记一笔——
-    不静默取第一个。
+    预期行为：判据在 `jc.workflow.compare_expected`，这里只把本 workflow 的题族表交进去——
+    题族是各家的领域词表，通用层不认。
     """
-    seen: dict[str, int] = {family: 0 for family in questions.FAMILIES}
-    problems: list[str] = []
-    questions_field = sample["questions"]
-    answers_field = sample["answers"]
-    if not isinstance(questions_field, dict) or not isinstance(answers_field, dict):
-        return ["样本的 questions / answers 不是对象"]
-    for qid, question in questions_field.items():
-        family = family_of(qid)
-        if family not in seen:
-            problems.append(f"未知题族 {family!r}（题号 {qid}）")
-            continue
-        index = seen[family]
-        seen[family] += 1
-        want = expected.get(family, [])
-        if index >= len(want):
-            problems.append(f"{qid} 多出来了：文本里只算得出 {len(want)} 道 {family} 题")
-            continue
-        answer = answers_field.get(qid, {})
-        got = answer_value(question, answer if isinstance(answer, dict) else {})
-        if got != want[index]:
-            problems.append(f"{qid}：答案是 {got!r}，按文本重算应为 {want[index]!r}")
-    for family, count in seen.items():
-        want = expected.get(family, [])
-        if count < len(want):
-            problems.append(f"{family} 少了 {len(want) - count} 道题")
-    return problems
+    return compare_expected(sample, expected, questions.FAMILIES)
 
 
 def _marker_leftover(state: str) -> str:

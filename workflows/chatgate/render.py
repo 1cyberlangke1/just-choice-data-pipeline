@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import recognize_locale
 from jc.workflow import DraftError
 
 from . import features, locales
@@ -359,12 +360,7 @@ def detect_locale(state: object) -> str | None:
     别的语言的 state 也抢过来（这条坑在 lint 上踩过一次，见范式 §9.22）；消息抬头是渲染时按
     语言写死的、整段最后那几块的开头，才分得开。
     """
-    if not isinstance(state, str):
-        return None
-    for lang in locales.available():
-        if parse_with(state, locales.load(lang)).found:
-            return lang
-    return None
+    return recognize_locale(state, locales, parse_with)
 
 
 def parse_state(state: object) -> ParsedState:

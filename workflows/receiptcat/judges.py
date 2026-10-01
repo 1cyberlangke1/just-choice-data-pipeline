@@ -28,7 +28,7 @@ from typing import Final
 from pydantic import BaseModel, Field
 
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
-from jc.judge import Verdict
+from jc.judge import Verdict, verify_prompt
 from jc.jsontypes import JsonValue
 from jc.workflow import DraftError
 
@@ -55,23 +55,8 @@ class TraceDraft(BaseModel):
 
 
 def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
-    """组装反解提示词。
-
-    输入：渲染好的 state、语言字典。输出：提示词。
-    预期行为：把整段 state（含归类表、上限表、档位表与收据行）原样交给后端，只问「归哪一类、
-    走哪一档」——反解用的口径与渲染期用的机械口径是同一份（三张表都印在 state 里），否则
-    「答对了」与「标签对了」不是一回事。
-    """
-    return "\n".join(
-        [
-            str(loc["verify"]["intro"]),
-            "",
-            str(loc["verify"]["state_header"]),
-            state,
-            "",
-            str(loc["verify"]["q"]),
-        ]
-    )
+    """组装反解提示词（口径见 `jc.judge.verify_prompt`）。"""
+    return verify_prompt(state, loc)
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,7 @@ from jc import contract, jsonio, pipeline
 from jc.jsontypes import JsonValue
 from tests.workflows.testimpact.conftest import FakeBackend
 from tests.workflows.testimpact.test_pipeline import make_config
-from workflows.testimpact import features, judges, render
+from workflows.testimpact import features, render
 from workflows.testimpact.workflow import ImpactWorkflow
 
 

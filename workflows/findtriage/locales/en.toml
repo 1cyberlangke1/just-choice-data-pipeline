@@ -6,6 +6,7 @@ finding_label = "Review finding"
 fix_label = "Suggested fix"
 record_label = "Change record"
 rules_label = "Triage rules"
+owner_label = "Ownership policy"
 header = "[{title}]"
 row_prefix = "- "
 paren = " ({text})"
@@ -30,6 +31,18 @@ text = "Fix: the suggested fix names no concrete symbol -> it cannot be acted on
 
 [rules.else]
 text = "Fallback: none of the above applies -> triage must_fix."
+
+[owners.missing]
+text = "Missing row: the line the finding points at is not in the record -> back to the record maintainer (fill the record in first)."
+
+[owners.baseless]
+text = "Baseless finding: the quoted symbol is nowhere in the record -> to the rule maintainer (fix the rule or the criteria first)."
+
+[owners.touched]
+text = "Introduced here: the line it points at was added or modified this time -> to the author of this change."
+
+[owners.else]
+text = "Pre-existing: none of the above applies -> to the architecture group (the problem was there before this change)."
 
 [dims]
 cite = "the line the finding points at"
@@ -76,6 +89,7 @@ intro = "Below is a finding-triage item. Reverse-solve three things from the tex
 state_header = "[full item]"
 questions_header = "[questions]"
 option_line = "   - {name}: {desc}"
+answer_rule = "For question 1 answer with the **option name only** (exactly one of `s1` … `sN` or `none`): do not write a line number, do not copy the sentence, do not explain."
 symbol_q = "Which symbol does the finding wrap in backticks? (copy it verbatim, without the backticks)"
 
 [fam.cite]
@@ -129,6 +143,18 @@ q = [
 must_fix = "must_fix: introduced here, evidence strong, fix actionable"
 log_only = "log_only: note it and do not act this time"
 drop = "drop: not this change's business"
+
+[fam.owner]
+q = [
+  "Under the ownership policy, whose queue does this finding go to?",
+  "Who should this finding be routed to?",
+  "Computing from the ownership table above, who owns it?",
+]
+[fam.owner.criteria]
+record = "the record maintainer: the line it points at is missing from the record, fill the record in first"
+rule = "the rule maintainer: the quoted symbol is nowhere in the record, fix the rule or the criteria first"
+author = "the author of this change: the line it points at was added or modified this time"
+arch = "the architecture group: the line it points at was not touched this time, a pre-existing problem"
 
 [fam.decoy]
 q = [

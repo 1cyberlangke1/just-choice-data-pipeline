@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import typing
+
 from jc.jsontypes import JsonValue
+from jc import llmjudge
 
 from workflows.search import judges, locales, render
 from workflows.search.features import TagSet
@@ -23,6 +26,48 @@ GOOD = dict(TEXTS[("informational", "on_topic", "clean")])
 def sample(state: str) -> dict[str, JsonValue]:
     """输入：state。输出：最小可判样本。"""
     return {"state": state}
+
+
+def accepted_values(annotation: object) -> set[str]:
+    """输入：草稿字段的注解。输出：它收得下的那组取值（字符串形式）。
+
+    预期行为：`Literal[...]` 取它的实参；`bool` 按提示词里那两行选项名报 `true` / `false`。
+    认不出的注解直接报错——尺子认不出就该红，不能悄悄放行。
+    """
+    if annotation is bool:
+        return {"true", "false"}
+    args = typing.get_args(annotation)
+    if args:
+        return {str(item) for item in args}
+    raise AssertionError(f"认不出这个注解该收哪些取值：{annotation!r}")
+
+
+def test_trace_option_names_are_the_draft_values() -> None:
+    """反解提示词列出来的选项名，必须正是草稿模型收得下的那组取值。
+
+    输入：每个语言的 `trace_options` 与 `TraceDraft`。输出：无。
+    预期行为：两套词必须**逐字**对上。这条盯的是真机上的那类错：`spam` 那道题在数据集里是
+    noul，选项名是 `true` / `false`，而草稿要的是 `clean` / `spam`——提示词照 criteria 列，
+    模型就得自己翻译，实测 6 条里 5 条翻译错（把 `clean` 读成 `spam`，好数据被拒）。
+    """
+    for locale in locales.available():
+        loc = locales.load(locale)
+        for family in judges.TRACE_FAMILIES:
+            names = {name for name, _ in llmjudge.trace_options(family, loc)}
+            field = judges.TraceDraft.model_fields[family]
+            assert names == accepted_values(field.annotation), (
+                f"{locale} 的 {family} 那一题：提示词列的是 {sorted(names)}，"
+                f"草稿收的是 {sorted(accepted_values(field.annotation))}"
+            )
+
+
+def test_trace_prompt_shows_the_draft_values() -> None:
+    """输入：一份反解提示词。输出：无。预期行为：提示词里出现的是取值本身，不是 criteria key。"""
+    prompt = judges.build_trace_prompt(str(TEXTS[("informational", "on_topic", "clean")]["title"]), locales.load("en"))
+    assert "   - spam: " in prompt
+    assert "   - clean: " in prompt
+    assert "   - true: " not in prompt
+    assert "   - false: " not in prompt
 
 
 def spec() -> SearchSpec:

@@ -58,7 +58,6 @@ class SourceDraft(BaseModel):
     """
 
     query: str = Field(
-        min_length=1,
         description="这次要找什么：一句话，写清楚在找什么、对来源有什么要求",
     )
 

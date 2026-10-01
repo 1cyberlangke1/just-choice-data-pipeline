@@ -27,9 +27,9 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
-from jc.judge import squash as _squash
+from jc.judge import quote_hit as _quote_hit
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
-from jc.judge import Verdict
+from jc.judge import Verdict, verify_prompt
 from jc.jsontypes import JsonValue
 
 from . import features, locales, render
@@ -69,23 +69,8 @@ class TraceDraft(BaseModel):
 
 
 def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
-    """组装反解提示词。
-
-    输入：渲染好的 state、语言字典。输出：提示词。
-    预期行为：把整段 state（含覆盖表、档位表、提交标题与改动）原样交给后端，只问「改到了哪些
-    文件」——反解用的口径与渲染期用的机械口径是同一份（`diff --git` 那一行），否则「答对了」与
-    「标签对了」不是一回事。
-    """
-    return "\n".join(
-        [
-            str(loc["verify"]["intro"]),
-            "",
-            str(loc["verify"]["state_header"]),
-            state,
-            "",
-            str(loc["verify"]["q"]),
-        ]
-    )
+    """组装反解提示词（口径见 `jc.judge.verify_prompt`）。"""
+    return verify_prompt(state, loc)
 
 
 def quote_holds(pid: str, quote: str, diff: str) -> bool:
@@ -95,9 +80,10 @@ def quote_holds(pid: str, quote: str, diff: str) -> bool:
     不算抄错），且引文里**真的带着这个文件在改动里的那一行**（`b/<文件路径>`）——只抄一段别的
     文件里的代码，不算证明了这条路径。
     """
-    if not quote or _squash(quote) not in _squash(diff):
+    hit = _quote_hit(quote, diff)
+    if not hit:
         return False
-    return f"b/{features.PATH_FILES[pid]}" in quote
+    return f"b/{features.PATH_FILES[pid]}" in hit
 
 
 def _dropped_note(dropped: list[str]) -> str:

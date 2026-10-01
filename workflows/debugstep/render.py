@@ -24,13 +24,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Final
 
 from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import ParsedState as ParsedContent, parse_any, parse_sections, recognize_locale
 from jc.workflow import DraftError
 
 from . import features, locales
@@ -56,22 +56,6 @@ class ContentDraft(BaseModel):
     session: str = Field(
         description="五行调试会话（Stopped / Stack / Locals / Breakpoints / Note）；不要围栏、不要解释"
     )
-
-
-@dataclass(frozen=True)
-class ParsedContent:
-    """从 state 反解出来的、纯代码看得见的部分。
-
-    字段：`tags` 判据表里列出的判据编号；`text` 一屏会话（认不出来给 None）。
-    """
-
-    tags: tuple[str, ...]
-    text: str | None
-
-    @property
-    def found(self) -> bool:
-        """输入：无。输出：会话那一块认出来了没有。"""
-        return self.text is not None
 
 
 def tag_copy(loc: dict[str, JsonValue], tag: str) -> dict[str, JsonValue]:
@@ -274,71 +258,18 @@ def to_state(draft: ContentDraft, loc: dict[str, JsonValue]) -> str:
 
 
 def parse_with(state: str, loc: dict[str, JsonValue]) -> ParsedContent:
-    """输入：state、语言字典。输出：按这一份语言反解的结果。
-
-    预期行为：认判据表抬头、档位表抬头、会话抬头；判据表里带行前缀的那些行取编号（按
-    `state.tag_sep` 切），**会话抬头之后的所有行原样拼回正文**——抬头之外的内容一律不当结构，
-    否则会话里出现一行以 `- ` 开头的文本就会把判据表数歪。
-    """
-    marks = loc["state"]
-    tag_mark = str(marks["tag_mark"])
-    rule_mark = str(marks["rule_mark"])
-    content_mark = str(marks["content_mark"])
-    sep = str(marks["tag_sep"])
-    tags: list[str] = []
-    body: list[str] = []
-    section = ""
-    for raw in state.splitlines():
-        text = raw.strip()
-        if section == "content":
-            body.append(raw)
-            continue
-        if text.startswith(content_mark):
-            section = "content"
-            body.append(text[len(content_mark) :].strip())
-            continue
-        if text.startswith(tag_mark):
-            section = "tag"
-            continue
-        if text.startswith(rule_mark):
-            section = "rule"
-            continue
-        if section == "tag" and text.startswith(LINE_PREFIX):
-            tags.append(text[len(LINE_PREFIX) :].partition(sep)[0].strip())
-    content = "\n".join(body).strip() if body else None
-    return ParsedContent(tags=tuple(tags), text=content)
+    """输入：state、语言字典。输出：按这一份语言反解的结果。"""
+    return parse_sections(state, loc, line_prefix=LINE_PREFIX)
 
 
 def detect_locale(state: object) -> str | None:
-    """输入：state。输出：能认出会话抬头的那一种语言（认不出给 None）。
-
-    预期行为：审计拿它按 state **自己**的语言取规范文案——一次 run 里混了 zh / en 时，用调用方
-    给的那一种去比会平白报一堆「文案对不上」。
-
-    为什么认的是**会话抬头**而不是判据编号：编号（D1…D4）是结构键，与语言无关，拿它当判据会把
-    别的语言的 state 也抢过来（范式 §9.22）；会话抬头是渲染时按语言写死的、整段最后那一块的开头，
-    才分得开。
-    """
-    if not isinstance(state, str):
-        return None
-    for lang in locales.available():
-        if parse_with(state, locales.load(lang)).found:
-            return lang
-    return None
+    """输入：state。输出：能认出素材抬头的那一种语言（认不出给 None）。"""
+    return recognize_locale(state, locales, parse_with)
 
 
 def parse_state(state: object) -> ParsedContent:
-    """输入：state。输出：纯代码能反解的部分（判据表 / 一屏会话）。
-
-    预期行为：与语言无关——把各语言的标记都试一遍，认出会话抬头的那一份就用它；一份都认不出来
-    时返回空结果（`text` 为 None）。
-    """
-    if not isinstance(state, str):
-        return ParsedContent(tags=(), text=None)
-    lang = detect_locale(state)
-    if lang is None:
-        return ParsedContent(tags=(), text=None)
-    return parse_with(state, locales.load(lang))
+    """输入：state。输出：纯代码能反解的部分（判据表 / 素材）。"""
+    return parse_any(state, locales, parse_with)
 
 
 def note_text(session: str) -> str:

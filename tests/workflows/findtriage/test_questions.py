@@ -18,7 +18,7 @@ def built() -> dict[str, object]:
 def test_families_are_fixed_and_typed() -> None:
     """输入：一个计划。输出：无。
 
-    预期行为：六个题族恒出；choice / noul 两类的划分与题面 `type` 对得上。
+    预期行为：七个题族恒出；choice / noul 两类的划分与题面 `type` 对得上。
     """
     by_family = built()
     assert [item.family for item in questions.build(PLAN, locales.load("zh"), 0)] == list(
@@ -38,7 +38,20 @@ def test_answers_match_the_labels() -> None:
     assert by_family["supported"].answer == LABELS.supported
     assert by_family["actionable"].answer is LABELS.actionable
     assert by_family["triage"].answer == LABELS.triage
+    assert by_family["owner"].answer == LABELS.owner
     assert by_family["decoy"].answer is LABELS.decoy
+
+
+def test_owner_options_are_the_four_queues() -> None:
+    """输入：一个计划。输出：无。
+
+    预期行为：`owner` 的四个选项名与 `features.OWNERS` 完全一致、描述两两不同——
+    四个去处少一个，那一档的答案就落不到选项上（组装器会当场报错，这里提前钉住）。
+    """
+    criteria = built()["owner"].question["criteria"]
+    assert list(criteria) == list(features.OWNERS)
+    assert len(set(criteria.values())) == len(features.OWNERS)
+    assert all(str(text).strip() for text in criteria.values())
 
 
 def test_cite_options_track_the_table_length() -> None:
@@ -90,5 +103,5 @@ def test_phrasings_rotate() -> None:
 
 
 def test_families_for_is_constant() -> None:
-    """输入：任意一组特征。输出：无。预期行为：本 workflow 没有条件题族，六族恒出。"""
+    """输入：任意一组特征。输出：无。预期行为：本 workflow 没有条件题族，七族恒出。"""
     assert questions.families_for(CASE) == questions.FAMILIES

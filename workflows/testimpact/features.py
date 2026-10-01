@@ -111,7 +111,14 @@ TOUCH_JOINER: Final[str] = "+"
 HEADER_RE: Final[re.Pattern[str]] = re.compile(r"^diff --git a/(\S+) b/(\S+)$")
 
 #: hunk 块头：`@@ -旧起点,旧行数 +新起点,新行数 @@`（行数可省）。同样是格式的一部分。
-HUNK_RE: Final[re.Pattern[str]] = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@")
+#: **光写 `@@` 也认**——模型很爱这么写（2026-10-01 小批量：`testimpact` 的 8 条拒稿全是它，
+#: 而且光秃秃的 `@@` 一不被认，整块 `+` / `-` 行就跟着落进「块外」，一条样本会连报三条错）。
+#: 行号是算术、题面又用不到，`render.normalize_hunks` 会把这种块头补成规范形态，所以这里放行：
+#: 格式简写不该把整条样本判死。
+HUNK_RE: Final[re.Pattern[str]] = re.compile(r"^@@(?: -\d+(?:,\d+)? \+\d+(?:,\d+)? @@.*)?$")
+
+#: 光秃秃的 `@@`（没给行号）。`normalize_hunks` 单独认它，才好把行号补上。
+BARE_HUNK_RE: Final[re.Pattern[str]] = re.compile(r"^@@$")
 
 #: 完整的块头：起点行号 + 尾部上下文（git 会补一句 ` def f():` 这样的定位串）。
 #: **行数那两段故意不捕获**——它们是纯算术，`render.normalize_hunks` 一律按块内实际行数重算，

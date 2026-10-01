@@ -3,7 +3,7 @@
 输入：`RecordPlan`、语言字典、问法编号。输出：`LabeledQuestion` 列表。
 预期行为：
 - 题号就是题族名（`cite` / `introduced` / `supported` / `actionable` / `triage` /
-  `decoy`），同族不重复所以不需要后缀；
+  `owner` / `decoy`），同族不重复所以不需要后缀；
 - choice 的选项名 = locale 里 `criteria` 的 key；`cite` 的选项随表长变化（`s1`…`sN` +
   `none`），由 `cite_options` 现场拼——选项名不受打乱影响，所以答案永远映射得回去；
 - 本 workflow 没有有序阶梯题族，所以所有 choice 题族都允许打乱，
@@ -20,13 +20,14 @@ from jc.workflow import LabeledQuestion
 from . import features, locales
 from .features import RecordCase, RecordPlan
 
-#: 题族的固定顺序（先问指向哪一行，再问三轴，最后问处置与诱饵）。
+#: 题族的固定顺序（先问指向哪一行，再问三轴，然后问处置与归属，最后问诱饵）。
 FAMILIES: Final[tuple[str, ...]] = (
     "cite",
     "introduced",
     "supported",
     "actionable",
     "triage",
+    "owner",
     "decoy",
 )
 
@@ -34,7 +35,7 @@ FAMILIES: Final[tuple[str, ...]] = (
 ORDERED: Final[frozenset[str]] = frozenset()
 
 #: 题型分组。
-CHOICE_FAMILIES: Final[tuple[str, ...]] = ("cite", "introduced", "supported", "triage")
+CHOICE_FAMILIES: Final[tuple[str, ...]] = ("cite", "introduced", "supported", "triage", "owner")
 NOUL_FAMILIES: Final[tuple[str, ...]] = ("actionable", "decoy")
 
 
@@ -54,7 +55,7 @@ def cite_options(size: int, loc: dict[str, JsonValue]) -> dict[str, JsonValue]:
 def families_for(tags: RecordCase) -> tuple[str, ...]:
     """输入：一组注入特征。输出：这条样本实际会出的题族（顺序按 `FAMILIES`）。
 
-    预期行为：本 workflow 的六个题族对任何特征组合都问得出来，所以恒等于 `FAMILIES`。
+    预期行为：本 workflow 的七个题族对任何特征组合都问得出来，所以恒等于 `FAMILIES`。
     留着这个函数是为了与其它 workflow 的形状一致（将来要加条件题族时只改这里）。
     """
     del tags

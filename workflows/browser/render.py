@@ -71,7 +71,6 @@ class BrowserDraft(BaseModel):
     """
 
     request: str = Field(
-        min_length=1,
         description="用户这一轮说的那一句话：一行，像用户真的敲进来的那句",
     )
 

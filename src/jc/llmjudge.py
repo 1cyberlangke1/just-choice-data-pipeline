@@ -67,6 +67,37 @@ def available_locales() -> list[str]:
     return sorted(path.stem for path in LOCALE_DIR.glob("*.toml"))
 
 
+#: 反解提示词里「选项名用取值本身」的覆盖节写在哪：`verify.trace_options.<题族>`。
+TRACE_OPTIONS_SECTION: Final[str] = "trace_options"
+
+
+def trace_options(
+    family: str, loc: dict[str, JsonValue], *, section: str = "fam"
+) -> list[tuple[str, str]]:
+    """输入：题族名、语言字典、题族所在的那一节（默认 `fam`）。输出：反解提示词的选项。
+
+    预期行为：优先用 `verify.trace_options.<题族>`——那一节按**取值本身**列选项名；没有这一节
+    就退回 `<section>.<题族>.criteria`。
+
+    为什么要有这一节：题族在数据集里可能是 noul，`criteria` 的 key 是 `true` / `false`，
+    而反解草稿要的是取值本身（`yes` / `no`、`clean` / `spam`）。两套词摆在一起，模型得自己
+    翻译，实测就是翻译错——`search` 的 en 侧 6 条里 5 条把 `clean` 读成 `spam`，`review` 的
+    `secret` / `debug` 也栽在同一处（真机拒稿理由全是「注入 yes，反解成 no」）。其余题族的
+    key 本来就是取值，退回去与覆盖节等价，所以只有 noul 那几族需要写覆盖节。
+
+    选项名与草稿取值的一致性由 `tests/core/test_trace_options.py` 逐族盯着，不靠人记。
+    """
+    verify = loc.get("verify")
+    override = verify.get(TRACE_OPTIONS_SECTION) if isinstance(verify, dict) else None
+    if isinstance(override, dict):
+        node = override.get(family)
+        if isinstance(node, dict):
+            return [(str(name), str(desc)) for name, desc in node.items()]
+    node = loc[section][family]["criteria"]
+    assert isinstance(node, dict), f"{section}.{family}.criteria 不是表"
+    return [(str(name), str(desc)) for name, desc in node.items()]
+
+
 @lru_cache(maxsize=8)
 def load(locale: str) -> dict[str, JsonValue]:
     """输入：语言代码。输出：提示词字典（带缓存）。

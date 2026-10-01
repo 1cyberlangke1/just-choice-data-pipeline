@@ -27,7 +27,7 @@ from typing import Final
 
 from jc.backend.types import GenerationBackend
 from jc.judge import Judge
-from jc.workflow import LabeledQuestion, SplitSpec, register
+from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, register
 
 from . import judges as judges_mod
 from . import locales, parse, questions, render
@@ -107,7 +107,7 @@ def cases_for(config: CallConfig) -> list[CallCase]:
 
 
 @register(WORKFLOW_NAME)
-class FunctionsWorkflow:
+class FunctionsWorkflow(StandardMethods):
     """函数调用：声明、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
     name = WORKFLOW_NAME
@@ -115,10 +115,10 @@ class FunctionsWorkflow:
     kinds = frozenset({"choice", "noul"})
     needs: frozenset[str] = frozenset()  # 构造式：工具表与答案都由规则算出来，不需要后端
     judges: tuple[str, ...] = ("roundtrip", "label")
-
-    def split_names(self) -> tuple[str, ...]:
-        """输入：无。输出：支持的切分名。"""
-        return tuple(SPLIT_BUCKETS) + ("test_ood",)
+    split_names_tuple = tuple(SPLIT_BUCKETS) + ("test_ood",)
+    cases_for_fn = staticmethod(cases_for)
+    dimension_titles_map = DIMENSION_TITLES
+    pkg_locales = locales
 
     def config_for(self, split: str) -> CallConfig:
         """输入：切分名。输出：该切分的采样参数。
@@ -132,22 +132,6 @@ class FunctionsWorkflow:
         if split in SPLIT_BUCKETS:
             return replace(ID_CONFIG, split=split)
         raise KeyError(f"未知切分：{split!r}（可用：{self.split_names()}）")
-
-    def build_cases(self, config: CallConfig) -> list[CallCase]:
-        """输入：采样参数。输出：case 矩阵（顺序稳定）。"""
-        return cases_for(config)
-
-    def case_label(self, case: CallCase) -> str:
-        """输入：一个 case。输出：一行可读描述（报告与文件名用）。"""
-        return case.describe()
-
-    def stats_dimensions(self, case: CallCase) -> dict[str, JsonValue]:
-        """输入：一个 case。输出：{维度名: 取值}（五个维度全摊平）。"""
-        return case.as_dict()
-
-    def dimension_titles(self) -> dict[str, str]:
-        """输入：无。输出：{维度名: 中文标题}。"""
-        return dict(DIMENSION_TITLES)
 
     def plan_sample(
         self, rng: random.Random, config: CallConfig, case: CallCase, seq: int
@@ -217,10 +201,6 @@ class FunctionsWorkflow:
         from . import audit as audit_mod  # 延迟导入：避免与 audit 互相 import 成环
 
         return audit_mod.audit_run(run_dir, splits, locale)
-
-    def available_locales(self) -> list[str]:
-        """输入：无。输出：支持的语言列表。"""
-        return locales.available()
 
     def bind_backend(self, backend: GenerationBackend) -> None:
         """空操作：函数调用是纯构造式（`needs` 为空），管线不会给后端，也不该给。

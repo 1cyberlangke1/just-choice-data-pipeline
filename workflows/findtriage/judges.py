@@ -70,6 +70,7 @@ def build_trace_prompt(state: str, size: int, loc: dict[str, JsonValue]) -> str:
     lines.extend(
         str(verify["option_line"]).format(name=name, desc=options[name]) for name in options
     )
+    lines.append(str(verify["answer_rule"]))
     lines.append(f"2. {verify['symbol_q']}")
     lines.append(f"3. {loc['fam']['actionable']['q'][0]}")
     return "\n".join(lines)
@@ -94,8 +95,9 @@ def render_cite_options(size: int, loc: dict[str, JsonValue]) -> dict[str, JsonV
 class HygieneJudge:
     """零 token 判别器：state 里不许有格式残留，发现段与修法段还得有内容、是单行。
 
-    查五类：**单独成行的围栏 / HTML 换行标签**、**发现段空的 / 多行的**、
-    **修法段空的 / 多行的**、**改动记录解析不出来**、**判定口径解析不出来**。
+    查六类：**单独成行的围栏 / HTML 换行标签**、**发现段空的 / 多行的**、
+    **修法段空的 / 多行的**、**改动记录解析不出来**、**判定口径解析不出来**、
+    **归属口径解析不出来**。
     口径压到最窄——宁可漏检也不误判，因为误判会直接拒掉好数据。
 
     字段：`locale` 语言（要按语言认那几段的段落名）。
@@ -127,17 +129,19 @@ class HygieneJudge:
             problems.append("改动记录解析不出来")
         if not render.rules_of(state, loc):
             problems.append("判定口径解析不出来")
+        if not render.owner_rules_of(state, loc):
+            problems.append("归属口径解析不出来")
         if problems:
             return Verdict(False, reason="；".join(problems))
-        return Verdict(True, reason="发现段与修法段都在，两张表也都解析得出来")
+        return Verdict(True, reason="发现段与修法段都在，三张表也都解析得出来")
 
 
 @dataclass(frozen=True)
 class FrameJudge:
-    """零 token 判别器：改动记录与判定口径必须与代码算出来的一模一样。
+    """零 token 判别器：改动记录、判定口径与归属口径必须与代码算出来的一模一样。
 
-    字段：`locale` 语言。预期行为：逐行比对改动记录（表长 + 每一格），再逐行比对判定口径；
-    任何一处对不上都判不通过——那是渲染挂错了计划，标签会跟着一起错。
+    字段：`locale` 语言。预期行为：逐行比对改动记录（表长 + 每一格），再逐行比对判定口径
+    与归属口径；任何一处对不上都判不通过——那是渲染挂错了计划，标签会跟着一起错。
     """
 
     locale: str
@@ -160,8 +164,14 @@ class FrameJudge:
         canonical = render.rule_lines(loc)
         if rules != canonical:
             problems.append(f"判定口径与规范表对不上：解析出 {len(rules)} 行，应为 {len(canonical)} 行")
+        owners = render.section_lines(state, loc, "owner_label")
+        canonical_owners = render.owner_lines(loc)
+        if owners != canonical_owners:
+            problems.append(
+                f"归属口径与规范表对不上：解析出 {len(owners)} 行，应为 {len(canonical_owners)} 行"
+            )
         if not problems:
-            return Verdict(True, reason="改动记录与判定口径都与计划一致")
+            return Verdict(True, reason="改动记录、判定口径与归属口径都与计划一致")
         return Verdict(False, reason="；".join(problems), raw={"rows": len(parsed)})
 
 

@@ -71,7 +71,6 @@ class MailDraft(BaseModel):
     subject: str = Field(description="邮件主题")
     body: str = Field(description="邮件正文，3~8 句，可含换行；**不含落款**")
     signature: str = Field(
-        min_length=1,
         description="正文末尾的落款 / 签名区（至少写署名）；官方域名另有专门字段，不要写在这里",
     )
     official_domain: str = Field(
@@ -299,3 +298,15 @@ def check_official_domain(tags: TagSet, data: dict[str, JsonValue]) -> None:
         raise DraftError("草稿声称了机构身份，却没有写「官方域名」字段——判别器看不出真伪")
     if not claims_org and domain:
         raise DraftError("草稿不声称机构身份（陌生个人），「官方域名」字段必须留空")
+
+
+def check_signature(data: dict[str, JsonValue]) -> None:
+    """输入：草稿字典。输出：无；落款是空的就抛 `DraftError`。
+
+    预期行为：**落款必须非空**——落款整块没了，链接与「官方域名」行会跟着一起蒸发
+    （判别器判「注入有链接、文本里却没有」）。这条以前挂在 schema 的 `min_length=1` 上，
+    但字符串长度约束会让英伟达那条路把换行压平（见 `tests/core/test_draft_schema.py`），
+    所以把关位置从 schema 挪到这里：空落款照样当场拒稿、走重渲染，只是不再依赖 pydantic。
+    """
+    if not str(data.get("signature", "")).strip():
+        raise DraftError("草稿的「落款」是空的——链接与「官方域名」行会跟着一起蒸发")
