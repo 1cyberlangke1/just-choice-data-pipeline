@@ -20,17 +20,17 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, cast
 
-from jc.cover import hash_bucket, slice_by_bucket
-from jc.judge import Judge
+from jc.cover import hash_bucket, restricted_dims
 from jc.jsontypes import JsonValue
-from jc.knobs import require_pool
-from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
+
+from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register, sliced_cases
 
 from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
 from .features import TagSet
 from .spec import VerifySpec
+from jc.knobs import CommonKnobs
 
 WORKFLOW_NAME = "verify"
 WORKFLOW_VERSION = "0.1.0"
@@ -71,7 +71,7 @@ DIMENSION_TITLES: Final[dict[str, str]] = {
 
 
 @dataclass(frozen=True)
-class VerifyConfig:
+class VerifyConfig(CommonKnobs):
     """一个切分的采样参数。
 
     字段：
@@ -88,18 +88,10 @@ class VerifyConfig:
     case_limit: int = 0
     phrasing_pool: tuple[int, ...] = (0, 1, 2)
 
-    def __post_init__(self) -> None:
-        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。"""
-        require_pool("phrasing_pool", self.phrasing_pool)
-        if self.case_limit < 0:
-            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
-
 
 def _restricted(**overrides: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
     """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    dims = dict(features.DIMS)
-    dims.update(overrides)
-    return dims
+    return restricted_dims(features.DIMS, overrides)
 
 
 def id_dims() -> dict[str, tuple[str, ...]]:
@@ -130,20 +122,13 @@ def bucket_of(case: TagSet, seed: int = SPLIT_SEED) -> int:
 def cases_for(config: VerifyConfig) -> list[TagSet]:
     """输入：采样参数。输出：该切分的 tag 组合列表（顺序稳定）。
 
-    预期行为：`test_ood` 收值留出的两组组合（并集去重）；其余切分先剔除留出取值，
-    再按哈希桶分。
+    预期行为：`test_ood` 收值留出的组合（并集去重）；其余切分先剔除留出取值，再按哈希桶分。
+    实现见 `jc.workflow.sliced_cases`（11 家逐字同构，只留那一份）。
     """
-    if config.split == "test_ood":
-        seen: dict[tuple[tuple[str, str], ...], TagSet] = {}
-        for dims in ood_dims():
-            for case in features.build_cases(config.cover_limit, dims=dims):
-                seen.setdefault(tuple(case.as_dict().items()), case)
-        cases = list(seen.values())
-    else:
-        cases = slice_by_bucket(
-            features.build_cases(config.cover_limit, dims=id_dims()), config.split, bucket_of, SPLIT_BUCKETS
-        )
-    return cases[: config.case_limit] if config.case_limit else cases
+    return cast(
+        "list[TagSet]",
+        sliced_cases(config, features, ood_dims, id_dims, bucket_of, SPLIT_BUCKETS),
+    )
 
 
 class VerifyWorkflow(BackendHolder):
@@ -158,6 +143,7 @@ class VerifyWorkflow(BackendHolder):
     cases_for_fn = staticmethod(cases_for)
     dimension_titles_map = DIMENSION_TITLES
     pkg_render = render
+    pkg_judges = judges_mod
     pkg_audit = audit_mod
     pkg_locales = locales
 
@@ -214,20 +200,6 @@ class VerifyWorkflow(BackendHolder):
         """输入：规格、RNG、语言。输出：题目 + 金答案（纯代码推导，不碰模型）。"""
         del rng
         return questions.build(spec.tags, locales.load(locale), spec.phrasing)
-
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        out: list[Judge] = []
-        for name in names:
-            if name == "hygiene":
-                out.append(judges_mod.HygieneJudge(locale))
-            elif name == "frame":
-                out.append(judges_mod.FrameJudge(locale))
-            elif name == "trace":
-                out.append(judges_mod.TraceJudge(self.backend, locale))
-            else:
-                raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
-        return tuple(out)
 
     def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
         """输入：契约样本。输出：必须与声明语言一致的正文（「声明」）。

@@ -28,7 +28,7 @@ from typing import Final
 from jc import jsonio
 from jc.backend.types import GenerationBackend
 from jc.cover import hash_bucket, slice_by_bucket
-from jc.judge import Judge
+from jc.judge import Judge, standard_judges
 from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, family_of, plan_with_phrasing, register
 
 from . import locales, parse, questions, render
@@ -150,26 +150,12 @@ class InvoiceWorkflow(StandardMethods):
         return parse.parse_document(state, parse.merged_labels())
 
     def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        from . import judges as judges_mod  # 延迟导入：避免与 judges 互相 import 成环
+        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。
 
-        out: list[Judge] = []
-        for name in names:
-            if name == "roundtrip":
-                out.append(judges_mod.RoundtripJudge(locale=locale))
-            elif name == "label":
-                out.append(judges_mod.LabelJudge(locale=locale))
-            else:
-                raise KeyError(f"未知判别器：{name!r}（可用：roundtrip / label）")
-        return tuple(out)
-
-    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
-        """输入：契约样本。输出：空表（纯构造族，没有「模型写的正文」）。
-
-        预期行为：`needs` 为空，state 全由代码按语言模板拼，天然一致。
+        延迟导入：`judges` 在模块级 import 本模块的解析函数，模块级取类会成环。
         """
-        del sample
-        return {}
+        from . import judges as judges_mod
+        return standard_judges(names, locale, judges_mod, None, self.judge_table)
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str

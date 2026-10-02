@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from jc.cover import hash_bucket, slice_by_bucket
-from jc.judge import Judge
+from jc.judge import BACKEND, LOCALE
 from jc.jsontypes import JsonValue
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
 
@@ -141,9 +141,16 @@ class AutoformatWorkflow(BackendHolder):
     kinds = frozenset({"choice", "noul"})
     needs = frozenset({"text"})  # 每一块的文字由后端写：本 workflow 不是纯构造式
     judges: tuple[str, ...] = ("hygiene", "roundtrip", "trace")
+    #: 判别器名单表：名字 → （`judges` 里的类名，怎么造）。
+    judge_table = {
+        "hygiene": ("HygieneJudge", LOCALE),
+        "roundtrip": ("RoundtripJudge", LOCALE),
+        "trace": ("TraceJudge", BACKEND),
+    }
     split_names_tuple = ("train", "val", "test_iid", "test_ood")
     cases_for_fn = staticmethod(cases_for)
     dimension_titles_map = DIMENSION_TITLES
+    pkg_judges = judges_mod
     pkg_audit = audit_mod
     pkg_locales = locales
 
@@ -203,22 +210,6 @@ class AutoformatWorkflow(BackendHolder):
         """输入：渲染后的 state。输出：纯代码能反解的部分（块结构）。"""
         del case
         return render.parse_state(str(state))
-
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        out: list[Judge] = []
-        for name in names:
-            if name == "hygiene":
-                out.append(judges_mod.HygieneJudge(locale))
-            elif name == "roundtrip":
-                out.append(judges_mod.RoundtripJudge(locale))
-            elif name == "trace":
-                if self.backend is None:
-                    raise RuntimeError("trace 判别器需要后端，但还没被 bind_backend 注入")
-                out.append(judges_mod.TraceJudge(self.backend, locale))
-            else:
-                raise KeyError(f"未知判别器：{name!r}（可用：hygiene / roundtrip / trace）")
-        return tuple(out)
 
     def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
         """输入：契约样本。输出：必须与声明语言一致的正文（块序号 → 块文字）。

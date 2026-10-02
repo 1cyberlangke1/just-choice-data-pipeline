@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from jc.backend.types import AllProvidersDown, BackendError, Draft
-from jc.jsontypes import JsonValue
 
+from tests.workflows._fakes import draft as _draft
 from tests.workflows.causechain.conftest import (
     FRAGMENTS,
     FakeBackend,
@@ -21,18 +21,6 @@ CASE = CauseCase(graph="G1", root="S6", probe="h2")
 
 #: 根因是入口服务的 case：出错集合只有 S1。
 ENTRY_ROOT = CauseCase(graph="G1", root="S1", probe="h0")
-
-
-def _draft(data: dict[str, JsonValue]) -> Draft:
-    """输入：解析后的数据。输出：`Draft`。预期行为：记账字段填假值，不进产物。"""
-    return Draft(
-        data=data,
-        raw_text="fake",
-        backend="fake",
-        provider="fake",
-        model="fake",
-        mode="fake",
-    )
 
 
 class _JunkBackend:

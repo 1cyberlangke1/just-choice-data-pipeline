@@ -54,9 +54,8 @@ class TraceDraft(BaseModel):
     tier: int = Field(description="按档位表该走哪一档，填档位下标（从 0 开始）")
 
 
-def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
-    """组装反解提示词（口径见 `jc.judge.verify_prompt`）。"""
-    return verify_prompt(state, loc)
+#: 转出去：口径只有一份，住在 `jc.judge.verify_prompt`（18 家逐字同构，只留那一份）。
+build_trace_prompt = verify_prompt
 
 
 @dataclass(frozen=True)

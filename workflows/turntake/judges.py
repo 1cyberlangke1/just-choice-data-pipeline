@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import BaseModel, Field
 
@@ -40,6 +40,13 @@ LEFTOVER_LINES: Final[frozenset[str]] = frozenset(
 LEFTOVER_TAGS: Final[tuple[str, ...]] = ("<br>", "<br/>", "<br />", "</br>")
 
 
+#: 反解草稿里「编号」字段的取值域：**从 `features.TAG_IDS` 现取**，不手抄（手抄会漂）。
+#: 为什么用 `Literal` 而不是裸 `str`：2026-10-02 真机复验，读者会把正文里的词（HTML 标签名、
+#: 字段名、中文词）当成编号报回来，按既有口径那一条只算「没判成」= 闸门静默少一道；
+#: `Literal` 进 JSON schema 的 `enum`，支持结构化输出的端点会约束生成。范式 §9.96。
+TagId = Literal[*features.TAG_IDS]
+
+
 class TraceHit(BaseModel):
     """反解草稿里的一条命中：判据编号 + 让它命中的那段原文。
 
@@ -48,7 +55,7 @@ class TraceHit(BaseModel):
     代码再拿正则复核一遍，抄不出来的那条直接不算。
     """
 
-    tag: str = Field(description="命中的判据编号（T1 / T2 / T3 / T4）")
+    tag: TagId = Field(description="命中的判据编号（T1 / T2 / T3 / T4）")
     quote: str = Field(description="从用户输入里**原样抄出来**的那一段——就是它满足了这条判据")
 
 
@@ -62,9 +69,8 @@ class TraceDraft(BaseModel):
     tags: list[TraceHit] = Field(description="命中的判据（每条带编号与引文）；一条都没踩就给空数组")
 
 
-def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
-    """组装反解提示词（口径见 `jc.judge.verify_prompt`）。"""
-    return verify_prompt(state, loc)
+#: 转出去：口径只有一份，住在 `jc.judge.verify_prompt`（18 家逐字同构，只留那一份）。
+build_trace_prompt = verify_prompt
 
 
 def quote_holds(tag: str, quote: str, body: str) -> bool:

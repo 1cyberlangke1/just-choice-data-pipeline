@@ -18,13 +18,14 @@ import pkgutil
 import random
 import sys
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 
+from .cover import slice_by_bucket
 from .contract import TYPE_CHOICE, TYPE_NOUL, TYPE_SCORE, is_index, option_names
-from .judge import Judge, standard_judges
+from .judge import COMMON_JUDGES, ROUNDTRIP_JUDGES, Judge, JudgeTable, standard_judges
 from .locale_files import LocaleApi
 
 if TYPE_CHECKING:  # 只在类型检查时引入：核心层不装 [llm] extra 也能跑构造式 workflow
@@ -71,6 +72,42 @@ class SplitSpec:
     params: dict[str, JsonValue] = field(default_factory=dict)
 
 
+def sliced_cases(
+    config: object,
+    features: ModuleType,
+    ood_dims: Callable[[], Sequence[Mapping[str, tuple[str, ...]]]],
+    id_dims: Callable[[], Mapping[str, tuple[str, ...]]],
+    bucket_of: Callable[[object], int],
+    split_buckets: Mapping[str, tuple[int, int]],
+) -> list[JsonValue]:
+    """输入：采样参数、该包的 `features` 模块（只用来调 `build_cases`）、两张维度表
+    （`ood_dims` 留出维度表 / `id_dims` 同分布维度表）、桶函数、桶表。
+    输出：该切分的 case 列表（顺序稳定）。
+
+    预期行为：`test_ood` 收「留出维度各自枚举出的组合」的并集，按 case 内容（`as_dict()` 的
+    键值对）去重——同一组取值落在两张留出表里只算一条；其余切分先取同分布组合，再按哈希桶
+    切片；`config.case_limit` 非 0 时从头截断。
+
+    为什么收在这里：`cases_for` 是**模块级**函数（`StandardMethods` 收不进去），而这一族 11 家
+    workflow 的 `cases_for` 归一化后逐字相同，写法不一样的一家都不碰。四张表与桶函数都住在
+    各包的 `workflow.py` 里（不在 `features.py`），所以从调用点显式传进来，不靠反射。
+    """
+    if config.split == "test_ood":
+        seen: dict[tuple[tuple[str, JsonValue], ...], JsonValue] = {}
+        for dims in ood_dims():
+            for case in features.build_cases(config.cover_limit, dims=dims):
+                seen.setdefault(tuple(case.as_dict().items()), case)
+        cases: list[JsonValue] = list(seen.values())
+    else:
+        cases = slice_by_bucket(
+            features.build_cases(config.cover_limit, dims=id_dims()),
+            config.split,
+            bucket_of,
+            split_buckets,
+        )
+    return cases[: config.case_limit] if config.case_limit else cases
+
+
 class StandardMethods:
     """workflow 协议里**逐字同构**的那些方法的默认实现：51 个包各抄一份的那 8 段，只留这一份。
 
@@ -93,16 +130,21 @@ class StandardMethods:
 
     `case_label` / `stats_dimensions` 不要声明项：它们只依赖 case 自己的 `describe()` /
     `as_dict()`，是协议里唯一两条与「实现住在哪个模块」无关的。
-    `make_judges` 也不在这里——它要用后端，跟 `backend` 一起住在 `BackendHolder` 上
-    （走 LLM 的包都继承它）。本类一共实现 8 个协议方法，加 `BackendHolder` 那个是 9 个。
+    `make_judges` 在这里：纯构造式那一档（`roundtrip` / `label`）不吃后端，所以它的默认
+    实现属于本类；`BackendHolder` 覆盖它，多传一个后端进去。`language_texts` 也在这里：报空表
+    是**默认**口径（下面有它的理由），要报正文的那几家在自己的类里覆盖。本类一共实现 10 个
+    协议方法。
     """
 
     pkg_locales: ClassVar[LocaleApi]
     pkg_render: ClassVar[ModuleType]
     pkg_audit: ClassVar[ModuleType]
+    pkg_judges: ClassVar[ModuleType]
     split_names_tuple: ClassVar[tuple[str, ...]]
     dimension_titles_map: ClassVar[Mapping[str, str]]
     cases_for_fn: ClassVar[Callable[[object], list[JsonValue]]]
+    #: 判别器名单表：名字 → （`pkg_judges` 里的类名，怎么造）。默认是纯构造式那一档。
+    judge_table: ClassVar[JudgeTable] = ROUNDTRIP_JUDGES
 
     def split_names(self) -> tuple[str, ...]:
         """输入：无。输出：该 workflow 支持的切分名（顺序就是 `split_names_tuple` 的顺序）。"""
@@ -142,6 +184,34 @@ class StandardMethods:
         """输入：无。输出：该 workflow 支持的语言标签列表（`jc locales` 用它）。"""
         return self.pkg_locales.available()
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> Mapping[str, str]:
+        """输入：契约样本。输出：空表——本族没有「模型写的自然语言正文」。
+
+        预期行为：报空表的情形有两种，都写在下面，17 家各自的类里原先各抄一份同样的 `return {}`，
+        现在只留这一份：
+
+        - **纯构造式**（`needs` 为空）：state 全由代码按语言模板拼，天然与声明语言一致，
+          没有「模型写歪」这回事；
+        - **模型写的东西与语言无关**：`review` 写的是 diff、`lint` 写的是片段原文（真机 zh 侧
+          汉字占比低到 0.099 全是正常产物）、`shell` 写的是命令行、`maze` 写的是 ASCII 迷宫图
+          ——这些喂给语言判据只会把好数据当坏数据。
+
+        走 LLM 写**自然语言正文**的那几家必须在自己的类里覆盖本方法。漏了不会静默：
+        `tests/workflows/_contract.py` 的 `assert_language_texts_are_declared` 拿**真产物**
+        断言「该报正文的必须报出来」，空表当场红。
+        """
+        del sample
+        return {}
+
+    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
+        """输入：判别器名单、语言。输出：判别器实例。
+
+        预期行为：名字表在 `judge_table`、类在 `pkg_judges` 模块里，由 `jc.judge.standard_judges`
+        统一实例化——未知名字、表里指向不存在的类、吃法写错都在那里报错。纯构造式没有后端，
+        所以这一档里不许有 `BACKEND` 吃法（有就会当场报错，`BackendHolder` 才传后端）。
+        """
+        return standard_judges(names, locale, self.pkg_judges, None, self.judge_table)
+
 
 class BackendHolder(StandardMethods):
     """需要生成后端的 workflow 的公共底座：记住注入进来的后端 + 判别器实例化。
@@ -163,6 +233,9 @@ class BackendHolder(StandardMethods):
     #: 包里的 `judges` 模块：判别器类都住在里面（`make_judges` 从这里取）。
     pkg_judges: ClassVar[ModuleType]
 
+    #: 走 LLM 的包默认用全体共有那一档（`hygiene` / `frame` / `trace`）。
+    judge_table: ClassVar[JudgeTable] = COMMON_JUDGES
+
     def bind_backend(self, backend: GenerationBackend) -> None:
         """输入：生成后端。输出：无。预期行为：存下后端，供 `render` 与判别器使用。"""
         self.backend = backend
@@ -170,10 +243,10 @@ class BackendHolder(StandardMethods):
     def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
         """输入：判别器名单、语言。输出：判别器实例。
 
-        预期行为：判别器类都住在包里的 `judges` 模块里（`pkg_judges`），由
-        `jc.judge.standard_judges` 统一实例化——未知名字、`trace` 缺后端都在那里报错。
+        预期行为：同 `StandardMethods.make_judges`，但把后端也交下去——`BACKEND` 那一档
+        没被注入后端时直接报错（静默降级会让「文本由模型写」这个前提失效）。
         """
-        return standard_judges(names, locale, self.pkg_judges, self.backend)
+        return standard_judges(names, locale, self.pkg_judges, self.backend, self.judge_table)
 
 
 @runtime_checkable
@@ -264,6 +337,30 @@ class Workflow(Protocol):
 _REGISTRY: dict[str, Callable[[], Workflow]] = {}
 
 
+def config_for_split(
+    split: str,
+    ood_config: object,
+    id_config: object,
+    split_buckets: Mapping[str, tuple[int, int]],
+    names: Sequence[str],
+) -> object:
+    """输入：切分名、OOD 配置、同分布配置、桶表、可用的切分名（报错时用）。
+    输出：该切分的采样参数。
+
+    预期行为：`test_ood` 用 OOD 配置；桶表里的切分用同分布配置，**并把 `split` 换成调用方
+    要的那一档**——同分布配置是个单例，直接返回它会让 train / val / test_iid 三次都按同一
+    档切片（切出来三份一模一样的数据）；其余切分报人话的 `KeyError`。
+
+    为什么收在这里：这一族 12 家的 `config_for` 归一化后逐字相同，四张表住在各包自己的
+    `workflow.py` 里，所以从调用点显式传进来，不靠反射。
+    """
+    if split == "test_ood":
+        return ood_config
+    if split in split_buckets:
+        return replace(id_config, split=split)
+    raise KeyError(f"未知切分：{split!r}（可用：{names}）")
+
+
 def register(name: str) -> Callable[[Callable[[], Workflow]], Callable[[], Workflow]]:
     """注册一个 workflow 工厂。
 
@@ -319,6 +416,9 @@ def load(name: str) -> Workflow:
         try:
             importlib.import_module(f"workflows.{name}")
         except ModuleNotFoundError as exc:
+            # 报错前先把名单补全：走到这里说明这个名字没被导入过，注册表很可能还是空的
+            # （谁都没 import 过任何 workflow），直接读它会报成「（空）」——那等于没报。
+            discover()
             known = ", ".join(registered()) or "（空）"
             raise KeyError(f"未找到 workflow {name!r}（已注册：{known}）") from exc
     if name not in _REGISTRY:

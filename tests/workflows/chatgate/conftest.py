@@ -13,6 +13,7 @@ import pytest
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
+from tests.workflows import _fakes
 from tests.workflows._fakes import draft as _draft
 from workflows.chatgate import features, locales, render
 from workflows.chatgate.features import ChatCase
@@ -112,7 +113,7 @@ def faithful(
     return spec, sample_of(text, candidates, lang)
 
 
-class FakeBackend:
+class FakeBackend(_fakes.ScriptedBackend):
     """脚本化假后端：草稿由 `task.spec` 推出，不联网。
 
     字段（都是「故意说反话」的开关，默认全关）：
@@ -190,10 +191,6 @@ class FakeBackend:
         flaws = tuple(tuple(str(item) for item in group) for group in spec["flaws"])
         text = self.message_for(hits)
         return _draft({"text": text, "candidates": self.flaws_for(flaws, clean)}, text)
-
-    def generate_many(self, tasks: list[object]) -> list[Draft]:
-        """输入：任务列表。输出：草稿列表。预期行为：逐个走 `generate`。"""
-        return [self.generate(task) for task in tasks]
 
 
 @pytest.fixture

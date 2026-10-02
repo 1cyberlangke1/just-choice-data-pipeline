@@ -19,6 +19,7 @@ import pytest
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
+from tests.workflows import _fakes
 from tests.workflows._fakes import draft as _draft
 from workflows.autoformat import features, locales, render
 from workflows.autoformat.features import DocCase, DocPlan
@@ -121,7 +122,7 @@ def state_of(task: object) -> str:
     raise AssertionError("反解提示词里没有 state")
 
 
-class FakeBackend:
+class FakeBackend(_fakes.ScriptedBackend):
     """脚本化假后端：草稿由任务现造，不联网。
 
     字段 `locale`：假后端**替模型写字**，而标记类文案（步骤词、提示框关键词、署名前缀）
@@ -222,10 +223,6 @@ class FakeBackend:
             },
             "kinds=" + ",".join(kinds),
         )
-
-    def generate_many(self, tasks: list[object]) -> list[Draft]:
-        """输入：任务列表。输出：草稿列表。预期行为：逐个走 `generate`。"""
-        return [self.generate(task) for task in tasks]
 
 
 def spec_for(case: DocCase, phrasing: int = 0, split: str = "train", seq: int = 1) -> DocSpec:

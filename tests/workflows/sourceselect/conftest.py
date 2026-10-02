@@ -17,6 +17,7 @@ import pytest
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
+from tests.workflows import _fakes
 from tests.workflows._fakes import draft
 from workflows.sourceselect import features
 
@@ -38,7 +39,7 @@ def query_for(tags: dict[str, JsonValue]) -> str:
     return QUERIES[str(tags["need"])]
 
 
-class FakeBackend:
+class FakeBackend(_fakes.ScriptedBackend):
     """脚本化假后端：草稿由 `task.spec["tags"]` 推出，不联网。
 
     字段（都是「故意做坏事」的开关，默认全关）：
@@ -94,10 +95,6 @@ class FakeBackend:
                 return self._draft(dict(self.trace_data))
             return self._draft(self._trace(tags))
         return self._draft(self._render(tags))
-
-    def generate_many(self, tasks: list[object]) -> list[Draft]:
-        """输入：任务列表。输出：与入参顺序一致的草稿列表。"""
-        return [self.generate(task) for task in tasks]
 
     def _render(self, tags: dict[str, JsonValue]) -> dict[str, JsonValue]:
         """输入：注入特征。输出：`SourceDraft` 形态的字典。"""

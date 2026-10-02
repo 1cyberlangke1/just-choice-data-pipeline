@@ -27,12 +27,11 @@ from jc.jsontypes import JsonValue
 
 import hashlib
 import random
-from dataclasses import replace
-from typing import Final
+
+from typing import Final, cast
 
 from jc.backend.types import GenerationBackend
-from jc.judge import Judge
-from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, plan_with_phrasing, register
+from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, plan_with_phrasing, register, config_for_split
 
 from . import audit as audit_mod
 from . import judges as judges_mod
@@ -120,20 +119,21 @@ class BenchWorkflow(StandardMethods):
     split_names_tuple = ("train", "val", "test_iid", "test_ood")
     cases_for_fn = staticmethod(cases_for)
     dimension_titles_map = DIMENSION_TITLES
+    pkg_judges = judges_mod
     pkg_audit = audit_mod
     pkg_locales = locales
 
     def config_for(self, split: str) -> BenchConfig:
         """输入：切分名。输出：该切分的采样参数。
 
-        预期行为：`test_ood` 用全开的留出配置；其余三个切分共用训练侧取值表，只换 `split`
-        （切分靠 `_slice` 按素材哈希分，不靠取值表区分）。
+        预期行为：`test_ood` 用 OOD 配置；其余切分用同分布配置并把 `split` 换成调用方要的
+        那一档（不换会切出三份一模一样的数据）；未知切分报人话。
+        实现见 `jc.workflow.config_for_split`（12 家逐字同构，只留那一份）。
         """
-        if split == "test_ood":
-            return OOD_CONFIG
-        if split in SPLIT_BUCKETS:
-            return replace(ID_CONFIG, split=split)
-        raise KeyError(f"未知切分：{split!r}（可用：{self.split_names()}）")
+        return cast(
+            "BenchConfig",
+            config_for_split(split, OOD_CONFIG, ID_CONFIG, SPLIT_BUCKETS, self.split_names()),
+        )
 
     def plan_sample(
         self, rng: random.Random, config: BenchConfig, case: BenchCase, seq: int
@@ -173,28 +173,6 @@ class BenchWorkflow(StandardMethods):
         """
         del case
         return parse.parse_record(state, parse.merged())
-
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        out: list[Judge] = []
-        for name in names:
-            if name == "roundtrip":
-                out.append(judges_mod.RoundtripJudge(locale=locale))
-            elif name == "label":
-                out.append(judges_mod.LabelJudge(locale=locale))
-            else:
-                raise KeyError(f"未知判别器：{name!r}（可用：roundtrip / label）")
-        return tuple(out)
-
-    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
-        """输入：契约样本。输出：空表（纯构造族，没有「模型写的正文」）。
-
-        预期行为：`needs` 为空——这一族的 state 全由代码按语言模板拼，天然与声明语言一致，
-        没有「模型写歪」这回事。留着这条是为了让「每个 workflow 都声明自己的正文」这件事
-        由协议统一要求（`tests/workflows/test_protocol.py` 会查）。
-        """
-        del sample
-        return {}
 
     def bind_backend(self, backend: GenerationBackend) -> None:
         """空操作：评测与基准是纯构造式（`needs` 为空），管线不会给后端，也不该给。

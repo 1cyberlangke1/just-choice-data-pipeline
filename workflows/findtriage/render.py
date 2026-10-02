@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import split_sections
 from jc.workflow import DraftError
 
 from . import locales
@@ -296,29 +297,13 @@ class ParsedFinding:
         return not self.finding.strip()
 
 
+#: 转出去：切段机制只有一份，住在 `jc.state_parse.split_sections`（11 家逐字同构，只留那一份）。
 def _sections(state: str, loc: dict[str, JsonValue]) -> dict[str, list[str]]:
     """输入：state、语言字典。输出：{段落标题: 该段的正文行}。
 
     预期行为：只认「行首等于该语言的段落头」这一种切法——与 `render.to_state` 对称。
     """
-    titles = [str(loc["meta"][key]) for key in SECTION_KEYS]
-    out: dict[str, list[str]] = {}
-    current: str | None = None
-    for raw in state.splitlines():
-        line = raw.strip()
-        matched = next(
-            (title for title in titles if line.startswith(locales.header(loc, title))), None
-        )
-        if matched is not None:
-            current = matched
-            out.setdefault(current, [])
-            rest = line[len(locales.header(loc, matched)) :].strip()
-            if rest:
-                out[current].append(rest)
-            continue
-        if current is not None and line:
-            out[current].append(line)
-    return out
+    return split_sections(state, loc, SECTION_KEYS)
 
 
 def _cells(line: str, loc: dict[str, JsonValue]) -> list[str] | None:

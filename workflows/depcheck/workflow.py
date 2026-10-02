@@ -35,7 +35,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket
+from jc.cover import hash_bucket, slice_by_bucket, restricted_dims
 from jc.jsontypes import JsonValue
 from jc.knobs import require_pool
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, register
@@ -131,10 +131,8 @@ class DepCheckConfig:
 
 
 def _restricted(**overrides: tuple[JsonValue, ...]) -> dict[str, tuple[JsonValue, ...]]:
-    """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：未提到的维度保持原样。"""
-    dims = dict(features.DIMS)
-    dims.update(overrides)
-    return dims
+    """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
+    return restricted_dims(features.DIMS, overrides)
 
 
 def id_dims() -> dict[str, tuple[JsonValue, ...]]:

@@ -20,6 +20,17 @@ LOC = locales.load("zh")
 PLAIN = features.DocCase("build", 64, "plain", "na", "na")
 CODE = features.DocCase("build", 64, "code", "na", "vcs")
 MIXED = features.DocCase("build", 64, "mixed", "tip", "vcs")
+
+
+def test_trace_reader_schema_pins_block_kinds() -> None:
+    """输入：无。输出：无。
+
+    预期行为：反解草稿的 `kinds` 只能取 `BLOCK_KINDS` 那六个名字——裸 `list[str]` 时 20B 读者
+    交回过一串空串（`['', '', '']`），那一条就等于没判；写进 JSON schema 的 `enum` 才能让支持
+    结构化输出的端点去约束生成。
+    """
+    items = judges.TraceDraft.model_json_schema()["properties"]["kinds"]["items"]
+    assert items["enum"] == list(features.BLOCK_KINDS)
 QUOTE = features.DocCase("build", 64, "quote", "na", "na")
 
 

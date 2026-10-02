@@ -195,6 +195,16 @@ def check_command(data: dict[str, JsonValue]) -> None:
         raise DraftError("草稿的「拟执行命令」是多行——待审命令必须是单行")
     if command.startswith("#!"):
         raise DraftError("草稿的「拟执行命令」以 shebang 开头——那是脚本，不是一条命令")
+    # 实跑里模型把 PowerShell 的格式化表达式当成命令交回来过（`{0:N2} MB -f (…)`）：
+    # 那以 `{` 开头，是表达式 / 脚本块，任何合法命令都不会这么起头。只认首字符，
+    # 不做别的语法判断——没有解析器时，宽口径的猜测会把好命令拒掉。
+    if command.startswith(("{", "}")):
+        raise DraftError("草稿的「拟执行命令」以 `{` 或 `}` 开头——那是表达式或脚本块，不是一条命令")
+    # 实跑里模型把「一句话描述」写进命令字段过（`查看 $HOME/… 目录下的文件，获取列表信息。`）：
+    # 合法命令都以 ASCII 字符起头（命令名 / 路径 / 引号 / 重定向符），首字符是汉字就说明它写的
+    # 不是命令。同样只认首字符——没有解析器时，宽口径的猜测会把好命令拒掉。
+    if not command[0].isascii():
+        raise DraftError("草稿的「拟执行命令」以非 ASCII 字符开头——那是描述，不是一条命令")
 
 
 def label_leak(text: str, loc: dict[str, JsonValue]) -> str:

@@ -40,7 +40,7 @@ from itertools import combinations
 from typing import Final
 
 from jc.contract import parse_hits
-from jc.cover import cover_dims
+from jc.cover import Fingerprinted, all_hit_sets, cover_dims
 from jc.jsontypes import JsonValue
 
 #: 三个风险因子的编号（**结构键**，不是文案：因子名与判据原文全在 `locales/`）。
@@ -133,17 +133,8 @@ DIRECTION_POOL: Final[int] = 8
 DIRECTION_IDS: Final[tuple[int, ...]] = tuple(range(DIRECTION_POOL))
 
 
-def _all_hit_sets() -> tuple[str, ...]:
-    """输入：无。输出：三个因子的全部 8 种命中组合（空串是「一个因子都没取到高危档」）。"""
-    out: list[str] = []
-    for size in range(len(TAG_IDS) + 1):
-        for combo in combinations(TAG_IDS, size):
-            out.append("+".join(combo))
-    return tuple(out)
-
-
 #: 全部命中组合（`cover_dims` 的取值表）。
-HIT_SETS: Final[tuple[str, ...]] = _all_hit_sets()
+HIT_SETS: Final[tuple[str, ...]] = all_hit_sets(TAG_IDS)
 
 #: 维度表。全空间 8 × 3 = 24 组。
 DIMS: Final[dict[str, tuple[JsonValue, ...]]] = {"highs": HIT_SETS, "source": SOURCES}
@@ -215,7 +206,7 @@ def combo_text_key(highs: tuple[str, ...]) -> str:
 
 
 @dataclass(frozen=True)
-class AlertRiskCase:
+class AlertRiskCase(Fingerprinted):
     """一个注入特征组合：哪几个因子取到高危档 + 这条警报从哪种通道来。
 
     字段：`highs` 命中组合的规范串；`source` 报警通道（`SOURCES` 里的一个）。
@@ -227,10 +218,6 @@ class AlertRiskCase:
     def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：可 JSON 序列化的字典。预期行为：键序固定（哈希分桶要用）。"""
         return {"highs": self.highs, "source": self.source}
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     def describe(self) -> str:
         """输入：无。输出：一行可读描述（报告与文件名用）。"""

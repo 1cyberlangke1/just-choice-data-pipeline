@@ -234,9 +234,9 @@ def test_locales_are_reported() -> None:
 def test_language_texts_reports_only_the_note_line() -> None:
     """输入：一屏只有 `Note:` 是中文的会话（键名与标识符全是 ASCII）。输出：无。
 
-    预期行为：`language_texts` 只报**说明那一行**，不报整屏会话——整屏会话的汉字占比会被键名与
-    标识符稀释到 `jc.language.ZH_FLOOR` 以下，拿它去比会把合格的中文产物报成「语言对不上」
-    （范式 §9.50）。
+    预期行为：`language_texts` 只报**说明那一行**，不报整屏会话——键名、栈帧与标识符不是自然
+    语言正文，交给语言判据本身就是错的（`jc.language` 模块文档那条「只喂自然语言正文」的
+    规矩，范式 §9.50）。
     """
     session = session_of(("D1", "D3"))
     row = {"state": render.to_state(render.ContentDraft(session=session), locales.load("zh"))}
@@ -244,8 +244,9 @@ def test_language_texts_reports_only_the_note_line() -> None:
     assert list(texts) == ["会话说明"]
     assert texts["会话说明"] == "手动暂停，先看看当前这一帧里的取值喵"
     assert language.sample_problem(texts, ("zh",)) is None
-    # 整屏拿去比就会被误报——这正是不能报整屏的理由。
-    assert language.sample_problem({"一屏会话": session}, ("zh",)) is not None
+    # 判据 2026-10-02 起 zh 侧按**词**比（见 jc.language 的阈值表），所以「整屏拿去比会被拦」
+    # 已经不是不能报整屏的理由了。它真正拦下的是**一条中文都没有**的正文：
+    assert language.sample_problem({"一屏会话": "Stopped: TypeError\nLocals: count=3"}, ("zh",)) is not None
 
 
 def test_language_texts_is_empty_when_there_is_no_note() -> None:

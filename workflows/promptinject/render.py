@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.locale_files import copy_entry
 from jc.state_parse import ParsedState as ParsedContent, parse_any, parse_sections, recognize_locale
 from jc.workflow import DraftError
 
@@ -65,14 +66,7 @@ def tag_copy(loc: dict[str, JsonValue], tag: str) -> dict[str, JsonValue]:
 
     预期行为：缺字段就当场报错——判据表与提示词都靠它，缺一个字段模型就会拿到半句话。
     """
-    table = loc.get("tag")
-    entry = table.get(tag) if isinstance(table, dict) else None
-    if not isinstance(entry, dict):
-        raise ValueError(f"语言文件里缺判据 {tag} 的文案")
-    for key in ("name", "rule", "example", "avoid"):
-        if key not in entry:
-            raise ValueError(f"判据 {tag} 的文案缺字段 {key}")
-    return entry
+    return copy_entry(loc, "tag", tag, ("name", "rule", "example", "avoid"), "判据")
 
 
 def tag_line(loc: dict[str, JsonValue], tag: str) -> str:

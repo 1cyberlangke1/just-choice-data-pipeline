@@ -55,6 +55,21 @@ def test_signature_is_a_required_non_empty_field() -> None:
     assert render.MailDraft(**_draft()).signature
 
 
+def test_subject_is_a_required_non_empty_field() -> None:
+    """主题写成空串要拦下来。
+
+    输入：空主题 / 只有空白的主题两份草稿。输出：无。
+    预期行为：真机里模型偶尔把 `subject` 留成空串（36 条那两批 68 条里 11 条、10 条那批
+    10 条里 1 条），渲染出来就是一行「Subject:」后面什么都没有——由 `render.check_subject`
+    挡（`DraftError` → 重渲染），不走 schema 的 `min_length`（理由同落款那一条）。
+    """
+    with pytest.raises(DraftError):
+        render.check_subject(_draft(subject=""))
+    with pytest.raises(DraftError):
+        render.check_subject(_draft(subject="   "))
+    render.check_subject(_draft())
+
+
 def test_to_state_appends_the_signature_after_the_body() -> None:
     """state = 发件人 + 主题 + 空行 + 正文 + 空行 + 落款 + 链接行，且只去首尾空白。"""
     state = render.to_state(

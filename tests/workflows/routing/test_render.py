@@ -80,6 +80,26 @@ def test_label_leak_only_fires_at_the_start() -> None:
     assert render.label_leak(GOOD["body"], loc) == ""
 
 
+def test_issue_label_leak_catches_a_self_labelled_body() -> None:
+    """输入：正文开头自己写上「这条工单是什么问题」那一维的档名。输出：无。
+
+    预期行为：也算残留——`fam.issue` 问的就是「这条工单是什么问题」，正文写「咨询：…」等于把
+    答案印在题面里（真机 zh 侧 76 条里 23 条这么写，见范式 §9.101）。只认开头 + 冒号，
+    正文里正常提到这些词不算。
+    """
+    loc = locales.load("zh")
+    for label in ("故障", "数据丢失", "缺陷", "咨询", "需求"):
+        assert render.label_leak(f"{label}：{GOOD['body']}", loc) == label
+    assert render.label_leak("这条咨询工单我先看看", loc) == ""
+
+
+def test_check_draft_rejects_a_self_labelled_body() -> None:
+    """输入：正文开头写了档名的草稿。输出：无。预期行为：抛 ValueError，重渲染。"""
+    loc = locales.load("zh")
+    with pytest.raises(ValueError):
+        render.check_draft({"body": f"需求：{GOOD['body']}"}, loc)
+
+
 def test_state_round_trips() -> None:
     """输入：一份合规草稿。输出：无。预期行为：拼出来的 state 能逐段反解回原文。"""
     loc = locales.load("zh")

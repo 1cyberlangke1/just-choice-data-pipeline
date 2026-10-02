@@ -27,7 +27,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.judge import Judge
+from jc.cover import restricted_dims
 from jc.jsontypes import JsonValue
 from jc.knobs import require_pool
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
@@ -94,9 +94,7 @@ class SourceSelectConfig:
 
 def _restricted(**overrides: tuple[JsonValue, ...]) -> dict[str, tuple[JsonValue, ...]]:
     """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    dims = dict(features.DIMS)
-    dims.update(overrides)
-    return dims
+    return restricted_dims(features.DIMS, overrides)
 
 
 def id_dims() -> dict[str, tuple[JsonValue, ...]]:
@@ -164,6 +162,7 @@ class SourceSelectWorkflow(BackendHolder):
     cases_for_fn = staticmethod(cases_for)
     dimension_titles_map = DIMENSION_TITLES
     pkg_render = render
+    pkg_judges = judges_mod
     pkg_audit = audit_mod
     pkg_locales = locales
 
@@ -210,20 +209,6 @@ class SourceSelectWorkflow(BackendHolder):
         """输入：规格、RNG、语言。输出：题目 + 金答案（纯代码推导，不碰模型）。"""
         del rng
         return questions.build(spec.plan, locales.load(locale), spec.phrasing)
-
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        out: list[Judge] = []
-        for name in names:
-            if name == "hygiene":
-                out.append(judges_mod.HygieneJudge(locale))
-            elif name == "frame":
-                out.append(judges_mod.FrameJudge(locale))
-            elif name == "trace":
-                out.append(judges_mod.TraceJudge(self.backend, locale))
-            else:
-                raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
-        return tuple(out)
 
     def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
         """输入：契约样本。输出：必须与声明语言一致的正文（那句查询）。

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import split_sections
 from jc.workflow import DraftError
 
 from . import locales
@@ -54,15 +55,7 @@ def build_prompt(tags: TagSet, loc: dict[str, JsonValue], phrasing: int) -> str:
     预期行为：特征按 `DIM_ORDER` 固定顺序逐行列出；规则整段附在后面，每条前面加短横线
     并把 `{language}` 填成语言名——留着占位符会把 `{language}` 原样发给模型。
     """
-    values = tags.as_dict()
-    lines = [str(loc["prompt"]["intro"]), ""]
-    lines.extend(locales.feature_line(loc, dim, values[dim]) for dim in DIM_ORDER)
-    lines.append("")
-    rules = loc["prompt"]["rules"]
-    offset = phrasing % len(rules)
-    rotated = list(rules[offset:]) + list(rules[:offset])
-    lines.extend(f"- {rule.format(language=loc['language_name'])}" for rule in rotated)
-    return "\n".join(lines)
+    return locales.tagged_prompt(loc, tags.as_dict(), DIM_ORDER, phrasing)
 
 
 def build_task(tags: TagSet, loc: dict[str, JsonValue], task_id: str) -> GenerationTask:
@@ -175,27 +168,10 @@ class ParsedFrame:
         return not self.request.strip()
 
 
+#: 转出去：切段机制只有一份，住在 `jc.state_parse.split_sections`（11 家逐字同构，只留那一份）。
 def _sections(state: str, loc: dict[str, JsonValue]) -> dict[str, list[str]]:
     """输入：state、语言字典。输出：`{段落名: 该段的行列表}`（行已去首尾空白）。"""
-    meta = loc["meta"]
-    titles = tuple(str(meta[key]) for key in ("request_label", "catalog_label", "needs_label"))
-    out: dict[str, list[str]] = {}
-    current: str | None = None
-    for raw in state.splitlines():
-        line = raw.strip()
-        matched = next(
-            (title for title in titles if line.startswith(locales.header(loc, title))), None
-        )
-        if matched is not None:
-            current = matched
-            out.setdefault(current, [])
-            rest = line[len(locales.header(loc, matched)) :].strip()
-            if rest:
-                out[current].append(rest)
-            continue
-        if current is not None and line:
-            out[current].append(line)
-    return out
+    return split_sections(state, loc, ("request_label", "catalog_label", "needs_label"))
 
 
 def request_of(state: object, loc: dict[str, JsonValue]) -> str:

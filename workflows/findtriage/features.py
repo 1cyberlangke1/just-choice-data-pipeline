@@ -36,7 +36,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import Fingerprinted, cover_dims
 from jc.jsontypes import JsonValue
 
 # ---------- 取值表 ----------
@@ -181,7 +181,7 @@ class RecordRow:
 
 
 @dataclass(frozen=True)
-class RecordCase:
+class RecordCase(Fingerprinted):
     """一条样本的注入特征：指向何处、证据在哪、修法点不点名、表长、有没有诱饵行。"""
 
     cite: str
@@ -199,10 +199,6 @@ class RecordCase:
             "size": self.size,
             "decoy": self.decoy,
         }
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     def describe(self) -> str:
         """输入：无。输出：一行可读描述（报告与文件名用）。"""

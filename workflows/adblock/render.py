@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.locale_files import copy_entry, entry_line
 from jc.state_parse import ParsedState as ParsedContent, parse_any, parse_sections, recognize_locale
 from jc.workflow import DraftError
 
@@ -52,9 +53,9 @@ def visible_text(snippet: str) -> str:
     这么算的），标签名与属性名更不算。
 
     为什么需要它：`Workflow.language_texts` 要把「模型写的自然语言正文」交给 `jc.language` 那把
-    尺子，而这一族的正文就是**元素里的可见文字**。整段片段拿过去比会被标签名 / 属性名（全是
-    ASCII）稀释——真机 `ab-10b-zh` 10 条里有 5 条的整段汉字占比掉到 `jc.language.ZH_FLOOR`
-    以下，那把尺子会把合格的中文产物报成「语言对不上」（范式 §9.49）。
+    尺子，而这一族的正文就是**元素里的可见文字**。整段片段拿过去比会把标签名 / 属性名（全是
+    ASCII）也算进语言判定——那些不是自然语言正文，不该交给那把尺子（真机 `ab-10b-zh` 10 条里
+    有 5 条的整段按**字母**比掉到 0.15 以下，范式 §9.49）。
     """
     return " ".join(part.strip() for part in _TAG_RE.split(snippet) if part.strip())
 
@@ -80,14 +81,7 @@ def tag_copy(loc: dict[str, JsonValue], tag: str) -> dict[str, JsonValue]:
 
     预期行为：缺字段就当场报错——判据表与提示词都靠它，缺一个字段模型就会拿到半句话。
     """
-    table = loc.get("tag")
-    entry = table.get(tag) if isinstance(table, dict) else None
-    if not isinstance(entry, dict):
-        raise ValueError(f"语言文件里缺判据 {tag} 的文案")
-    for key in ("name", "rule", "avoid"):
-        if key not in entry:
-            raise ValueError(f"判据 {tag} 的文案缺字段 {key}")
-    return entry
+    return copy_entry(loc, "tag", tag, ("name", "rule", "avoid"), "判据")
 
 
 def tag_line(loc: dict[str, JsonValue], tag: str) -> str:
@@ -100,10 +94,7 @@ def tag_line(loc: dict[str, JsonValue], tag: str) -> str:
     **为什么判据原文也要印进 state**：判据名是压缩过的标签，不是判据本身。反解模型要照着同一份
     机械口径判，材料里就必须有那份口径（范式 §9.44）。
     """
-    sep = str(loc["state"]["tag_sep"])
-    rule_sep = str(loc["state"]["rule_sep"])
-    entry = tag_copy(loc, tag)
-    return f"{tag}{sep}{entry['name']}{rule_sep}{entry['rule']}"
+    return entry_line(loc, tag, tag_copy(loc, tag))
 
 
 def surface_copy(loc: dict[str, JsonValue], surface: str) -> str:

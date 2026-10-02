@@ -24,6 +24,7 @@ from tests.workflows.alertrisk.conftest import (
 )
 from workflows.alertrisk import features, judges, locales, render
 from workflows.alertrisk.features import AlertRiskCase
+from tests.workflows import _fakes
 
 CASE: Final[AlertRiskCase] = AlertRiskCase("R1+R3", features.SOURCE_EDR)
 
@@ -194,7 +195,7 @@ def test_trace_reraises_a_fatal_failure() -> None:
 
 
 @dataclass(frozen=True)
-class StubBackend:
+class StubBackend(_fakes.ScriptedBackend):
     """只会吐固定草稿的后端：用来验反解草稿形态不对时的那几条「没判成」路径。"""
 
     data: dict[str, JsonValue]
@@ -206,10 +207,6 @@ class StubBackend:
         return Draft(
             data=self.data, raw_text="", backend="stub", provider="stub", model="stub", mode="stub"
         )
-
-    def generate_many(self, tasks: list[object]) -> list[Draft]:
-        """输入：任务列表。输出：逐个走 `generate`。"""
-        return [self.generate(task) for task in tasks]
 
 
 @pytest.mark.parametrize(

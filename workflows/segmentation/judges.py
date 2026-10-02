@@ -22,7 +22,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import BaseModel, Field
 
@@ -41,6 +41,13 @@ LEFTOVER_LINES: Final[frozenset[str]] = frozenset(
 LEFTOVER_TAGS: Final[tuple[str, ...]] = ("<br>", "<br/>", "<br />", "</br>")
 
 
+#: 反解草稿里「编号」字段的取值域：**从 `features.CLASS_IDS` 现取**，不手抄（手抄会漂）。
+#: 为什么用 `Literal` 而不是裸 `str`：2026-10-02 真机复验，读者会把正文里的词（HTML 标签名、
+#: 字段名、中文词）当成编号报回来，按既有口径那一条只算「没判成」= 闸门静默少一道；
+#: `Literal` 进 JSON schema 的 `enum`，支持结构化输出的端点会约束生成。范式 §9.96。
+Class_idId = Literal[*features.CLASS_IDS]
+
+
 class ClassHit(BaseModel):
     """反解草稿里的一条命中：种类编号 + 让它命中的那段原文。
 
@@ -49,7 +56,7 @@ class ClassHit(BaseModel):
     代码再拿正则复核一遍，抄不出来的那一条直接不算。
     """
 
-    class_id: str = Field(description="命中的种类编号（form / letter / receipt / contract）")
+    class_id: Class_idId = Field(description="命中的种类编号（form / letter / receipt / contract）")
     quote: str = Field(description="从某一页里**原样抄出来**的那一段——就是它满足了这一类的判据")
 
 

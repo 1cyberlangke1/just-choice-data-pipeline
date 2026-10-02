@@ -255,9 +255,13 @@ def test_make_judges_rejects_unknown_name() -> None:
         gate_workflow.ToolGateWorkflow().make_judges(("nope",), "zh")
 
 
-def test_make_judges_builds_the_declared_set() -> None:
-    """输入：声明的判别器名单。输出：无。预期行为：名字与 `judges` 声明逐项对上。"""
+def test_make_judges_builds_the_declared_set(fake_backend: type[FakeBackend]) -> None:
+    """输入：声明的判别器名单。输出：无。预期行为：名字与 `judges` 声明逐项对上。
+
+    `trace` 那一档要后端（没有后端时 `make_judges` 当场报错），所以先绑一个假后端。
+    """
     workflow = gate_workflow.ToolGateWorkflow()
+    workflow.bind_backend(fake_backend())
     built = workflow.make_judges(workflow.judges, "zh")
     assert [judge.name for judge in built] == list(workflow.judges)
 

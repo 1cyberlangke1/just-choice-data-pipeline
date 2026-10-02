@@ -6,8 +6,8 @@ import json
 import pytest
 
 from jc.backend.types import AllProvidersDown, Draft, TransportError
-from jc.jsontypes import JsonValue
 
+from tests.workflows._fakes import draft as _draft
 from tests.workflows.adblock.conftest import (
     BASE,
     FakeBackend,
@@ -297,15 +297,3 @@ class _OverclaimBackend:
         del task
         tags = [*self.report, {"tag": "A1", "quote": self.quote}]
         return _draft({"tags": tags})
-
-
-def _draft(data: dict[str, JsonValue]) -> Draft:
-    """输入：解析后的数据。输出：`Draft`。预期行为：记账字段填假值，不进产物。"""
-    return Draft(
-        data=data,
-        raw_text="fake",
-        backend="fake",
-        provider="fake",
-        model="fake",
-        mode="fake",
-    )

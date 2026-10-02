@@ -50,6 +50,48 @@ def test_scripted_chars_counts_both_scripts(text: str, expect: int) -> None:
     assert language.scripted_chars(text) == expect
 
 
+@pytest.mark.parametrize(
+    ("text", "expect"),
+    [
+        ("plain english text", 3),
+        ("mySecretToken 写进 settings.json", 3),
+        ("中文正文", 0),
+        ("a-b_c", 3),
+    ],
+)
+def test_latin_words_counts_runs_not_letters(text: str, expect: int) -> None:
+    """输入：几段文本。输出：无。预期行为：连续的字母算**一个**词，标识符不该被拆成一串词。"""
+    assert language.latin_words(text) == expect
+
+
+@pytest.mark.parametrize(
+    ("text", "expect"),
+    [
+        ("中文正文", 1.0),
+        ("把 mySecretToken 写进 settings.json", 0.5),
+        ("Sponsored by ABC", 0.0),
+        ("", 0.0),
+    ],
+)
+def test_han_share_compares_han_against_latin_words(text: str, expect: float) -> None:
+    """输入：几段文本。输出：无。
+
+    预期行为：zh 侧的分母是**词**不是字母——「一句中文夹几个标识符」是合格数据，
+    按字母比会被算成「写成英文」（真机 `causechain` 的日志行就是这么被误杀的）。
+    """
+    assert language.han_share(text) == pytest.approx(expect)
+
+
+def test_zh_side_spares_identifiers_but_not_english_prose() -> None:
+    """输入：一句中文夹标识符 / 一整段英文。输出：无。
+
+    预期行为：前者放行（它本来就是中文写的），后者照样拦下——改单位不能把真阳性一起放走。
+    """
+    assert language.language_mismatch("S4 /api/v3/status 403-error tr_jkl012 崩溃", "zh") is None
+    assert language.language_mismatch("把 mySecretToken 写进 settings.json", "zh") is None
+    assert language.language_mismatch("Sponsored by ABC", "zh") is not None
+
+
 def test_latin_letters_do_not_include_other_scripts() -> None:
     """输入：无。输出：无。
 
@@ -108,15 +150,19 @@ def test_code_heavy_text_is_flagged_so_callers_must_not_feed_it() -> None:
 def test_thresholds_match_the_measured_products() -> None:
     """输入：无。输出：无。
 
-    预期行为：阈值与 `docs/可靠合成数据范式.md` 里记的实测数字一致（2026-09-30，只统计真机
-    产物）：en 侧正常最大 0.084（`browser`，元素名是中文固定词表）、坏样本 0.577 / 0.770；
-    zh 侧正常最小 0.241（`review`）、坏样本 0.081~0.117（`rerank`）。改阈值必须同时改证据。
+    预期行为：阈值与 `docs/可靠合成数据范式.md` 里记的实测数字一致（只统计真机产物）。
+    en 侧按**字母**：正常最大 0.084（`browser`，元素名是中文固定词表）、坏样本 0.577 / 0.770。
+    zh 侧按**词**（2026-10-02 改，理由见 `jc.language` 模块文档）：正常最小 0.333
+    （`causechain` 的日志行）、真阳性 0.000（`adblock` 的 `Sponsored by ABC`）。
+    下限夹在中间那条边界（`lint` 那种「中文抬头 + 一大段源码」，词比 0.158）与正常最小值
+    之间——改阈值必须同时改证据。
     """
-    assert language.ZH_FLOOR == 0.15
+    assert language.ZH_FLOOR == 0.20
     assert language.EN_HAN_CEILING == 0.30
     assert language.MIN_SCRIPTED == 12
     assert language.LOCALE_SCRIPT == {"zh": "han", "en": "latin"}
-    assert language.ZH_FLOOR < 0.241, "zh 侧下限不许高过正常产物的最小值（review 0.241）"
+    assert language.ZH_FLOOR < 0.333, "zh 侧下限不许高过正常产物的最小值（causechain 0.333）"
+    assert language.ZH_FLOOR > 0.158, "zh 侧下限不许低过那条边界（lint 的代码重字段 0.158）"
     assert language.EN_HAN_CEILING > 0.084, "en 侧上限不许低过正常产物的最大值（browser 0.084）"
 
 

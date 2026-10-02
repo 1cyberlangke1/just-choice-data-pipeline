@@ -84,3 +84,20 @@ def test_banned_phrases_do_not_fire_on_the_fixture_bodies() -> None:
         for tags in cases:
             body = body_for(tags.as_dict())
             assert render.banned_echo(body, loc) == [], body
+
+
+def test_issue_labels_are_declared_and_do_not_fire_on_the_fixture_bodies() -> None:
+    """输入：两语言的档名名单与夹具正文。输出：无。
+
+    预期行为：`meta.issue_labels` 非空、每条都不是空白；夹具那几段正文一条都不许撞——
+    撞了就说明名单收得太宽，真跑时会把本来能用的数据在渲染期白拒掉。
+    """
+    cases = features.build_cases(2048)
+    for lang in locales.available():
+        loc = locales.load(lang)
+        labels = loc["meta"]["issue_labels"]
+        assert isinstance(labels, list) and labels
+        assert all(str(item).strip() for item in labels)
+        for tags in cases:
+            body = body_for(tags.as_dict())
+            assert render.label_leak(body, loc) == "", (lang, body)

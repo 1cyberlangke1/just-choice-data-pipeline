@@ -14,6 +14,9 @@
   也不算没覆盖**——否则枚举器会一直追一个不可能达成的目标。
 
 `missing_pairs` 是给测试与自检用的反向检查：算出还没被覆盖的取值对。
+
+`Fingerprinted` 是给 case 类的 mixin：按 `as_dict()` 的键序拼出指纹。27 家的 case 类各抄一份
+纯属重复，抄歪了还会让「同一个 case 在不同进程里指纹不同」——分桶与种子派生都靠这一串。
 """
 
 from __future__ import annotations
@@ -38,8 +41,40 @@ class HasDict(Protocol):
         """输入：无。输出：`{维度名: 取值}`。"""
 
 
+class Fingerprinted:
+    """给 case 类提供 `fingerprint`：按 `as_dict()` 的键序拼成一串（27 家同构，只留这一份）。
+
+    输入：无（读子类自己的 `as_dict()`）。
+    输出：形如 `hits=A1+A2|surface=feed` 的一串。
+    预期行为：键序由子类的 `as_dict()` 定（各家都保证固定），所以同一个 case 在任何进程、
+    任何切分里都得到同一串——分桶与种子派生都靠这个。
+    """
+
+    def as_dict(self) -> Mapping[str, JsonValue]:
+        """输入：无。输出：`{维度名: 取值}`。预期行为：子类实现，键序固定。"""
+        raise NotImplementedError
+
+    def fingerprint(self) -> str:
+        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
+        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
+
+
 #: case 的占位类型：`slice_by_bucket` 只要求「有桶号、能报取值」，不关心是哪种 case。
 CaseT = TypeVar("CaseT", bound=HasDict)
+
+
+def restricted_dims(
+    dims: Mapping[str, tuple[JsonValue, ...]],
+    overrides: Mapping[str, tuple[JsonValue, ...]],
+) -> dict[str, tuple[JsonValue, ...]]:
+    """输入：基础维度表 + 要覆盖的维度。输出：覆盖后的维度表。
+
+    预期行为：不改动入参——`features.DIMS` 是模块级常量，就地改会污染同一进程里的其他调用方。
+    38 家 workflow 的 `_restricted` 原来是逐字同构的（只差文档串措辞），收在这里只留这一份。
+    """
+    merged: dict[str, tuple[JsonValue, ...]] = dict(dims)
+    merged.update(overrides)
+    return merged
 
 #: 取值对约束：收 `(维度A, 取值A, 维度B, 取值B)`（A 在 `dims` 里更靠前），返回能否共存。
 PairRule = Callable[[str, object, str, object], bool]
@@ -206,6 +241,20 @@ def _pairwise(
                 pending.discard((left, row[left], right, row[right]))
         rows.append({names[index]: values[index][row[index]] for index in range(len(names))})
     return rows
+
+
+def all_hit_sets(tag_ids: Sequence[str]) -> tuple[str, ...]:
+    """输入：编号表。输出：它的全部命中组合（13 家同构，只留这一份）。
+
+    预期行为：空串在前，然后单条、两条……顺序稳定（`itertools.combinations` 按入参顺序出），
+    所以 case 矩阵能逐字节重建。每条编号在 2^n 组里各出现 2^(n-1) 次——这就是「单条判据」
+    那一族的答案占比按构造就是 50% 的原因。
+    """
+    out: list[str] = []
+    for size in range(len(tag_ids) + 1):
+        for combo in combinations(tag_ids, size):
+            out.append("+".join(combo))
+    return tuple(out)
 
 
 def near_miss_combos(

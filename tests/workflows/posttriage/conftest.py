@@ -12,6 +12,7 @@ import pytest
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
+from tests.workflows import _fakes
 from tests.workflows._fakes import draft as _draft
 from workflows.posttriage import features, locales, render
 from workflows.posttriage.features import PostTriageCase
@@ -90,7 +91,7 @@ def faithful(case: PostTriageCase, lang: str = "zh") -> tuple[PostTriageSpec, di
     return spec, sample_of(text, lang)
 
 
-class FakeBackend:
+class FakeBackend(_fakes.ScriptedBackend):
     """脚本化假后端：草稿由 `task.spec` 推出，不联网。
 
     字段（都是「故意说反话」的开关，默认全关）：
@@ -166,10 +167,6 @@ class FakeBackend:
         )
         text = self.text_for(case)
         return _draft({"text": text}, text)
-
-    def generate_many(self, tasks: list[object]) -> list[Draft]:
-        """输入：任务列表。输出：草稿列表。预期行为：逐个走 `generate`。"""
-        return [self.generate(task) for task in tasks]
 
 
 @pytest.fixture

@@ -55,6 +55,9 @@ def test_command_of_returns_empty_when_missing() -> None:
         ({"command": "   "}, "空"),
         ({"command": "rm -rf /a\nrm -rf /b"}, "多行"),
         ({"command": "```\nrm -rf /a\n```"}, "围栏"),
+        ({"command": "{0:N2} MB -f ((Get-ChildItem).Sum / 1MB)"}, "脚本块"),
+        ({"command": "} else {"}, "脚本块"),
+        ({"command": "查看 $HOME/src 目录下的文件，获取列表信息。"}, "非 ASCII"),
     ],
 )
 def test_check_command_rejects_broken_shapes(data: dict[str, str], match: str) -> None:

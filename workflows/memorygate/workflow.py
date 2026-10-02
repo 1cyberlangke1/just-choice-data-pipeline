@@ -28,14 +28,15 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket
+from jc.cover import hash_bucket, slice_by_bucket, restricted_dims
 from jc.jsontypes import JsonValue
-from jc.knobs import require_pool
+
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
 
 from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
 from .features import MemoryGateCase
 from .spec import MemoryGateSpec
+from jc.knobs import CommonKnobs
 
 WORKFLOW_NAME = "memorygate"
 WORKFLOW_VERSION = "0.1.0"
@@ -65,7 +66,7 @@ DIMENSION_TITLES: Final[dict[str, str]] = {
 
 
 @dataclass(frozen=True)
-class MemoryGateConfig:
+class MemoryGateConfig(CommonKnobs):
     """一个切分的采样参数。
 
     字段：
@@ -81,18 +82,10 @@ class MemoryGateConfig:
     case_limit: int = 0
     phrasing_pool: tuple[int, ...] = (0, 1)
 
-    def __post_init__(self) -> None:
-        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。"""
-        require_pool("phrasing_pool", self.phrasing_pool)
-        if self.case_limit < 0:
-            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
-
 
 def _restricted(**overrides: tuple[JsonValue, ...]) -> dict[str, tuple[JsonValue, ...]]:
     """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    dims: dict[str, tuple[JsonValue, ...]] = dict(features.DIMS)
-    dims.update(overrides)
-    return dims
+    return restricted_dims(features.DIMS, overrides)
 
 
 def id_dims() -> dict[str, tuple[JsonValue, ...]]:

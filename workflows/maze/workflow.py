@@ -20,7 +20,7 @@ from pathlib import Path
 
 
 from jc.backend.types import GenerationBackend
-from jc.judge import Judge
+from jc.judge import BARE, Judge, LOCALE, standard_judges
 from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, register
 
 # 说明：audit / judges 都在模块级 import 本模块的解析函数，所以这里**不能在模块级 import 它们**
@@ -329,6 +329,11 @@ class MazeWorkflow(StandardMethods):
     kinds = frozenset({"choice", "noul", "score"})
     needs: frozenset[str] = frozenset()  # 纯构造式：不需要任何后端
     judges: tuple[str, ...] = ("roundtrip", "label")
+    #: 判别器名单表：名字 → （`judges` 里的类名，怎么造）。
+    judge_table = {
+        "roundtrip": ("RoundtripJudge", BARE),
+        "label": ("LabelJudge", LOCALE),
+    }
     split_names_tuple = ("train", "val", "test_iid", "test_ood")
     dimension_titles_map = DIMENSION_TITLES
     pkg_locales = locales
@@ -471,30 +476,12 @@ class MazeWorkflow(StandardMethods):
     # ---------- 质量 ----------
 
     def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """按名字构造判别器。
+        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。
 
-        输入：判别器名单、语言。输出：判别器元组。预期行为：未知名字直接报错。
+        延迟导入：`judges` 在模块级 import 本模块的解析函数，模块级取类会成环。
         """
-        from . import judges as judges_mod  # 延迟导入：避免与 judges 互相 import 成环
-
-        out: list[Judge] = []
-        for name in names:
-            if name == "roundtrip":
-                out.append(judges_mod.RoundtripJudge())
-            elif name == "label":
-                out.append(judges_mod.LabelJudge(locale=locale))
-            else:
-                raise KeyError(f"未知判别器：{name!r}（可用：roundtrip / label）")
-        return tuple(out)
-
-    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
-        """输入：契约样本。输出：空表（这一族没有「模型写的自然语言正文」）。
-
-        预期行为：state 是 ASCII 迷宫图（`#`、`|`、`+` 与格子字母）加走位记录，**没有自然语言
-        正文**；题面与选项由代码按语言表写。拿迷宫图去算汉字占比只会把好数据当坏数据。
-        """
-        del sample
-        return {}
+        from . import judges as judges_mod
+        return standard_judges(names, locale, judges_mod, None, self.judge_table)
 
     def audit(
         self, run_dir: Path, splits: tuple[str, ...], locale: str

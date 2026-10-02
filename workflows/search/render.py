@@ -23,8 +23,10 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
+from jc import locale_files
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import split_sections
 from jc.workflow import DraftError
 
 from . import locales
@@ -91,15 +93,7 @@ def build_prompt(tags: TagSet, loc: dict[str, JsonValue], phrasing: int) -> str:
     预期行为：特征按 `DIM_ORDER` 固定顺序逐行列出；规则整段附在后面，每条前面加短横线
     并把 `{language}` 填成语言名——留着占位符会把 `{language}` 原样发给模型。
     """
-    values = tags.as_dict()
-    lines = [str(loc["prompt"]["intro"]), ""]
-    lines.extend(locales.feature_line(loc, dim, values[dim]) for dim in DIM_ORDER)
-    lines.append("")
-    rules = loc["prompt"]["rules"]
-    offset = phrasing % len(rules)
-    rotated = list(rules[offset:]) + list(rules[:offset])
-    lines.extend(f"- {rule.format(language=loc['language_name'])}" for rule in rotated)
-    return "\n".join(lines)
+    return locales.tagged_prompt(loc, tags.as_dict(), DIM_ORDER, phrasing)
 
 
 def build_task(tags: TagSet, loc: dict[str, JsonValue], task_id: str) -> GenerationTask:
@@ -119,34 +113,18 @@ def build_task(tags: TagSet, loc: dict[str, JsonValue], task_id: str) -> Generat
     )
 
 
+#: 转出去：查段落名的机制只有一份，住在 `jc.locale_files.label_leak`；本家只声明键表。
 def label_leak(text: str, loc: dict[str, JsonValue]) -> str:
     """输入：一段文本、语言字典。输出：文本开头误写的段落名（没有就空串）。
 
     预期行为：只认「段落名 + 冒号」开头这一种写法——正文里正常提到这些词不算。
     """
-    stripped = text.strip()
-    meta = loc["meta"]
-    separators = {str(meta["colon"]).strip(), "：", ":"}
-    for key in SECTION_KEYS:
-        name = str(meta[key])
-        if any(stripped.startswith(f"{name}{separator}") for separator in separators):
-            return name
-    return ""
+    return locale_files.label_leak(text, loc, SECTION_KEYS)
 
 
-def banned_echo(text: str, loc: dict[str, JsonValue]) -> list[str]:
-    """输入：一段文本、语言字典。输出：文本里出现的来源词 / 时效词（没有就空列表）。
 
-    预期行为：只认 locale 里点名的那几条**高精度**话术——宁可漏检也不误判，
-    误判会在渲染期白拒一条本来能用的数据。大小写不敏感（英文里 `Official` 与
-    `official` 一样泄底）。
-    """
-    lowered = text.lower()
-    return [
-        str(phrase)
-        for phrase in loc["banned_intent_phrases"]
-        if str(phrase).lower() in lowered
-    ]
+#: 转出去：实现只有一份，住在 `jc.locale_files`（7 家逐字同构，只留那一份）。
+banned_echo = locale_files.banned_echo
 
 
 def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
@@ -257,27 +235,10 @@ class ParsedFrame:
         return not (self.query.strip() or self.title.strip() or self.snippet.strip())
 
 
+#: 转出去：切段机制只有一份，住在 `jc.state_parse.split_sections`（11 家逐字同构，只留那一份）。
 def _sections(state: str, loc: dict[str, JsonValue]) -> dict[str, list[str]]:
     """输入：state、语言字典。输出：`{段落名: 该段的行列表}`（行已去首尾空白）。"""
-    meta = loc["meta"]
-    titles = tuple(str(meta[key]) for key in SECTION_KEYS) + (str(meta["rules_label"]),)
-    out: dict[str, list[str]] = {}
-    current: str | None = None
-    for raw in state.splitlines():
-        line = raw.strip()
-        matched = next(
-            (title for title in titles if line.startswith(locales.header(loc, title))), None
-        )
-        if matched is not None:
-            current = matched
-            out.setdefault(current, [])
-            rest = line[len(locales.header(loc, matched)) :].strip()
-            if rest:
-                out[current].append(rest)
-            continue
-        if current is not None and line:
-            out[current].append(line)
-    return out
+    return split_sections(state, loc, (*SECTION_KEYS, "rules_label"))
 
 
 def _cells(line: str, loc: dict[str, JsonValue]) -> list[str] | None:

@@ -14,6 +14,7 @@ import pytest
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
+from tests.workflows import _fakes
 from tests.workflows._fakes import draft as _draft
 from workflows.causechain import features, locales, render
 from workflows.causechain.features import SERVICES, CauseCase, CausePlan
@@ -60,7 +61,7 @@ def faithful(
     return spec, {"state": state_of(spec.plan, logs, lang)}
 
 
-class FakeBackend:
+class FakeBackend(_fakes.ScriptedBackend):
     """脚本化假后端：草稿由 `task.spec` 推出，不联网。
 
     字段（都是「故意说反话」的开关，默认全关）：
@@ -136,10 +137,6 @@ class FakeBackend:
         events = {str(key): str(value) for key, value in spec["events"].items()}
         logs = self.logs_for(events)
         return _draft({"logs": dict(logs)}, "logs=" + ",".join(sorted(logs)))
-
-    def generate_many(self, tasks: list[object]) -> list[Draft]:
-        """输入：任务列表。输出：草稿列表。预期行为：逐个走 `generate`。"""
-        return [self.generate(task) for task in tasks]
 
 
 @pytest.fixture

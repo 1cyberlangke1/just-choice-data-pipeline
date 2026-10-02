@@ -27,6 +27,20 @@ paren = " ({text})"
 colon = ": "
 where_columns = "turn position | pin | remaining budget"
 rules_columns = "rule | condition | verdict"
+# Names of the "what this block is" options must not open the body: `fam.kind` asks exactly which
+# option this block is, so writing "Assistant:" in the body prints the answer on the question sheet.
+# Only a leading name + colon is checked; merely mentioning these words later in the body is fine.
+kind_labels = [
+  "system prompt",
+  "user turn",
+  "user",
+  "assistant turn",
+  "assistant",
+  "tool output",
+  "tool result",
+  "side note",
+  "note",
+]
 
 [rules.pinned_keep]
 condition = "this block is pinned"
@@ -72,7 +86,7 @@ rules = [
   "Never state where this block sits in the conversation, whether it is pinned, or how much budget is left — those three belong to the \"block position\" row, and repeating them makes the two rows fight",
   "Concretely: do not write \"this turn / a few turns ago / long ago / pinned / remaining budget\", and do not use the words pinned or unpinned",
   "Write the way a real conversation reads: \"bump the timeout in config.yaml to 30 seconds\" is fine, a field name like \"type: user\" is not",
-  "What this block is must be **unmistakable**: system prompt / a user turn / an assistant turn / a tool output / a side note — exactly one",
+  "What this block is must be **unmistakable**, but **do not write that label into the body** -- no \"Assistant:\" or \"Tool output:\" prefix, no field names",
   "Whether it carries a durable fact must be **unmistakable**: a decision, config value or conclusion worth remembering long-term, or just small talk / a transition / a one-off process record (a log, an error, a retry, a scan result)",
   "Do not name real companies, products, or code repositories; use invented names",
   "Write everything in {language}; keep file names and identifiers in ASCII",

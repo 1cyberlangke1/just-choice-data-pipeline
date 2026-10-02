@@ -21,15 +21,15 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket
-from jc.judge import Judge
+from jc.cover import hash_bucket, slice_by_bucket, restricted_dims
 from jc.jsontypes import JsonValue
-from jc.knobs import require_pool
+
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
 
 from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
 from .features import LintCase
 from .spec import LintSpec
+from jc.knobs import CommonKnobs
 
 WORKFLOW_NAME = "lint"
 WORKFLOW_VERSION = "0.1.0"
@@ -62,7 +62,7 @@ DIMENSION_TITLES: Final[dict[str, str]] = {
 
 
 @dataclass(frozen=True)
-class LintConfig:
+class LintConfig(CommonKnobs):
     """一个切分的采样参数。
 
     字段：
@@ -78,18 +78,10 @@ class LintConfig:
     case_limit: int = 0
     phrasing_pool: tuple[int, ...] = (0, 1)
 
-    def __post_init__(self) -> None:
-        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。"""
-        require_pool("phrasing_pool", self.phrasing_pool)
-        if self.case_limit < 0:
-            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
-
 
 def _restricted(**overrides: tuple[str, ...]) -> dict[str, tuple[JsonValue, ...]]:
     """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    dims: dict[str, tuple[JsonValue, ...]] = dict(features.DIMS)
-    dims.update(overrides)
-    return dims
+    return restricted_dims(features.DIMS, overrides)
 
 
 def id_dims() -> dict[str, tuple[JsonValue, ...]]:
@@ -168,6 +160,7 @@ class LintWorkflow(BackendHolder):
     cases_for_fn = staticmethod(cases_for)
     dimension_titles_map = DIMENSION_TITLES
     pkg_render = render
+    pkg_judges = judges_mod
     pkg_audit = audit_mod
     pkg_locales = locales
 
@@ -229,31 +222,6 @@ class LintWorkflow(BackendHolder):
         """输入：规格、RNG、语言。输出：题目 + 金答案（纯代码推导，不碰模型）。"""
         del rng
         return questions.build(spec.plan, locales.load(locale), spec.phrasing)
-
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        out: list[Judge] = []
-        for name in names:
-            if name == "hygiene":
-                out.append(judges_mod.HygieneJudge(locale))
-            elif name == "frame":
-                out.append(judges_mod.FrameJudge(locale))
-            elif name == "trace":
-                out.append(judges_mod.TraceJudge(self.backend, locale))
-            else:
-                raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
-        return tuple(out)
-
-    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
-        """输入：契约样本。输出：空表（这一族没有「模型写的自然语言正文」）。
-
-        预期行为：state 是「一行中文抬头 + 一段源码」，**模型写的是那段代码**——代码与语言无关
-        （真机 zh 侧汉字占比低到 0.099 全是正常产物）。抬头由代码按语言表写，天然一致。
-        所以这里报空表：把代码喂给语言判据只会把好数据当坏数据。
-        """
-        del sample
-        return {}
-
 
 
 @register(WORKFLOW_NAME)

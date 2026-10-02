@@ -27,14 +27,15 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket
+from jc.cover import hash_bucket, slice_by_bucket, restricted_dims
 from jc.jsontypes import JsonValue
-from jc.knobs import require_pool
+
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
 
 from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
 from .features import AdBlockCase
 from .spec import AdBlockSpec
+from jc.knobs import CommonKnobs
 
 WORKFLOW_NAME = "adblock"
 WORKFLOW_VERSION = "0.1.0"
@@ -65,7 +66,7 @@ DIMENSION_TITLES: Final[dict[str, str]] = {
 
 
 @dataclass(frozen=True)
-class AdBlockConfig:
+class AdBlockConfig(CommonKnobs):
     """一个切分的采样参数。
 
     字段：
@@ -81,18 +82,10 @@ class AdBlockConfig:
     case_limit: int = 0
     phrasing_pool: tuple[int, ...] = (0, 1)
 
-    def __post_init__(self) -> None:
-        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。"""
-        require_pool("phrasing_pool", self.phrasing_pool)
-        if self.case_limit < 0:
-            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
-
 
 def _restricted(**overrides: tuple[JsonValue, ...]) -> dict[str, tuple[JsonValue, ...]]:
     """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    dims: dict[str, tuple[JsonValue, ...]] = dict(features.DIMS)
-    dims.update(overrides)
-    return dims
+    return restricted_dims(features.DIMS, overrides)
 
 
 def id_dims() -> dict[str, tuple[JsonValue, ...]]:
@@ -241,9 +234,10 @@ class AdBlockWorkflow(BackendHolder):
         """输入：契约样本。输出：必须与声明语言一致的正文（「元素可见文字」）。
 
         预期行为：只报模型写的**可见文字**（标签之间的那一块），不报整段 HTML——标签名与属性名
-        全是 ASCII，报整段会把汉字占比稀释到 `jc.language.ZH_FLOOR` 以下，把合格的中文产物误报成
-        「语言对不上」（真机 `ab-10b-zh` 10 条里 5 条踩中，范式 §9.49）。片段里一个字都没有时
-        报空表——那把尺子对空表不发表意见，正是「没有自然语言正文」该有的形状。
+        全是 ASCII，不是自然语言正文，不该交给语言判据（真机 `ab-10b-zh` 10 条里有 5 条的整段
+        按**字母**比掉到 0.15 以下；判据 2026-10-02 起 zh 侧按**词**比，见范式 §9.49 / §9.98）。
+        片段里一个字都没有时报空表——那把尺子对空表不发表意见，正是「没有自然语言正文」该有的
+        形状。
         """
         parsed = render.parse_state(sample.get("state"))
         visible = render.visible_text(parsed.text or "")

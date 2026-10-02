@@ -8,6 +8,8 @@
 
 输入/输出：纯函数，不碰任何数据；命中问题抛 `ValueError`（人话、点名字段），正常返回 None。
 预期行为：调用方在 config 的 `__post_init__` 里逐字段调用，**错误在开工前暴露**。
+`CommonKnobs` 是给 28 家 config 的那个公共 `__post_init__`（各家字段声明在自己类里，
+这里只留校验那一份），子类写 `@dataclass(frozen=True) class XConfig(CommonKnobs)` 即可。
 """
 
 from __future__ import annotations
@@ -36,3 +38,33 @@ def require_bounds(field: str, bounds: Sequence[int]) -> None:
         raise ValueError(f"{field} 的两个元素都必须是整数，现在是 {bounds!r}")
     if lo > hi:
         raise ValueError(f"{field} 的下界不能大于上界：{lo} > {hi}")
+
+
+def require_common_knobs(phrasing_pool: Sequence[JsonValue], case_limit: int) -> None:
+    """输入：措辞池、case 上限。输出：无。预期行为：每个 workflow 的 config 都有的那两个
+    旋钮在这里统一校验——措辞池不能空；`case_limit` 不能为负。
+
+    `case_limit` 为负是陷阱：`cases[: -n]` 会被解释成「去掉尾部 n 条」，而不是「取 n 条」，
+    所以直接拒掉，不留给调用方猜。28 家的 `__post_init__` 逐字相同，规则只留这一份。
+    """
+    require_pool("phrasing_pool", phrasing_pool)
+    if case_limit < 0:
+        raise ValueError(f"case_limit 不能为负：{case_limit}（0 = 取全部）")
+
+
+class CommonKnobs:
+    """给 workflow 的 config 提供公共旋钮的构造期校验（28 家原来各抄一份，现在只留这一份）。
+
+    输入：无（读子类自己的 `phrasing_pool` / `case_limit` 字段）。
+    输出：无。
+    预期行为：**本类刻意不是 dataclass**——它的标注不会被子类当字段收走，字段仍由子类
+    自己声明；`@dataclass` 生成的 `__init__` 只看 `hasattr(cls, "__post_init__")`，
+    所以继承来的这个方法照常会被调用。
+    """
+
+    phrasing_pool: Sequence[JsonValue]
+    case_limit: int
+
+    def __post_init__(self) -> None:
+        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。"""
+        require_common_knobs(self.phrasing_pool, self.case_limit)

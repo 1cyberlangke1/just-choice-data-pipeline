@@ -24,8 +24,10 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
+from jc import locale_files
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import split_sections
 from jc.workflow import DraftError
 
 from . import features, locales
@@ -86,15 +88,7 @@ def build_prompt(tags: TagSet, loc: dict[str, JsonValue], phrasing: int) -> str:
     预期行为：特征按 `DIM_ORDER` 固定顺序逐行列出；规则整段附在后面，每条前面加短横线
     并把 `{language}` 填成语言名——留着占位符会把 `{language}` 原样发给模型。
     """
-    values = tags.as_dict()
-    lines = [str(loc["prompt"]["intro"]), ""]
-    lines.extend(locales.feature_line(loc, dim, values[dim]) for dim in DIM_ORDER)
-    lines.append("")
-    rules = loc["prompt"]["rules"]
-    offset = phrasing % len(rules)
-    rotated = list(rules[offset:]) + list(rules[:offset])
-    lines.extend(f"- {rule.format(language=loc['language_name'])}" for rule in rotated)
-    return "\n".join(lines)
+    return locales.tagged_prompt(loc, tags.as_dict(), DIM_ORDER, phrasing)
 
 
 def build_task(tags: TagSet, loc: dict[str, JsonValue], task_id: str) -> GenerationTask:
@@ -133,20 +127,9 @@ def label_leak(text: str, loc: dict[str, JsonValue]) -> str:
     return ""
 
 
-def banned_echo(text: str, loc: dict[str, JsonValue]) -> list[str]:
-    """输入：一段文本、语言字典。输出：文本里出现的表名（没有就空列表）。
 
-    预期行为：只认 locale 里点名的那几条**高精度**话术——宁可漏检也不误判，
-    误判会在渲染期白拒一条本来能用的数据。这份清单**刻意短**：正文是一段代码，
-    `test` / `size` / `config` 这类标识符在代码里到处都是，收进来会大面积误伤。
-    大小写不敏感（英文里 `Review rules` 与 `review rules` 一样泄底）。
-    """
-    lowered = text.lower()
-    return [
-        str(phrase)
-        for phrase in loc["banned_intent_phrases"]
-        if str(phrase).lower() in lowered
-    ]
+#: 转出去：实现只有一份，住在 `jc.locale_files`（7 家逐字同构，只留那一份）。
+banned_echo = locale_files.banned_echo
 
 
 def split_body_lines(raw: str) -> list[str]:
@@ -369,6 +352,7 @@ class ParsedReview:
         return not self.body.strip()
 
 
+#: 转出去：切段机制只有一份，住在 `jc.state_parse.split_sections`（11 家逐字同构，只留那一份）。
 def _sections(state: str, loc: dict[str, JsonValue]) -> dict[str, list[str]]:
     """输入：state、语言字典。输出：`{段落名: 该段的行列表}`。
 
@@ -376,26 +360,7 @@ def _sections(state: str, loc: dict[str, JsonValue]) -> dict[str, list[str]]:
     单独收进该段、不当数据行；其余行只去尾部空白——正文是代码，行首那个 `+` / `-` / 空格
     就是它的前缀，去掉就解不出来了。
     """
-    meta = loc["meta"]
-    titles = tuple(str(meta[key]) for key in SECTION_KEYS)
-    out: dict[str, list[str]] = {}
-    current: str | None = None
-    for raw in state.splitlines():
-        line = raw.rstrip()
-        stripped = line.strip()
-        matched = next(
-            (title for title in titles if stripped.startswith(locales.header(loc, title))), None
-        )
-        if matched is not None:
-            current = matched
-            out.setdefault(current, [])
-            rest = stripped[len(locales.header(loc, matched)) :].strip()
-            if rest:
-                out[current].append(rest)
-            continue
-        if current is not None and stripped:
-            out[current].append(line)
-    return out
+    return split_sections(state, loc, SECTION_KEYS, keep_indent=True)
 
 
 def _cells(line: str, loc: dict[str, JsonValue]) -> tuple[str, ...] | None:

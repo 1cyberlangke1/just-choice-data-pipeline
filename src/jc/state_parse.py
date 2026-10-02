@@ -12,12 +12,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
 from .jsontypes import JsonValue
-from .locale_files import LocaleApi
+from .locale_files import LocaleApi, header
 
 
 class Parsed(Protocol):
@@ -78,6 +78,41 @@ def parse_sections(state: str, loc: dict[str, JsonValue], *, line_prefix: str) -
             tags.append(text[len(line_prefix) :].partition(sep)[0].strip())
     content = "\n".join(body).strip() if body else None
     return ParsedState(tags=tuple(tags), text=content)
+
+
+def split_sections(
+    state: str,
+    loc: dict[str, JsonValue],
+    keys: Sequence[str],
+    *,
+    keep_indent: bool = False,
+) -> dict[str, list[str]]:
+    """把渲染好的 state 按段落头切成 `{段落名: 该段的行列表}`（11 家同构，只留这一份）。
+
+    输入：state、语言字典、要认的段落名键（`meta` 里那些 `*_label`）、是否保留行首空白。
+    输出：段落名 → 该段的行列表；段落头那一行剩下的内容算该段的第一行。
+    预期行为：段落头是**前缀匹配**（后面可能跟着括号里的列名 / 说明），只认「行首」这一种写法
+    ——正文里正常提到这些词不算。`keep_indent=True` 时数据行只去尾部空白：正文是代码或分条
+    材料时，行首那个 `+` / `-` / 空格就是它的凭据，去掉就解不出来了。
+    """
+    heads = [(str(loc["meta"][key]), header(loc, str(loc["meta"][key]))) for key in keys]
+    out: dict[str, list[str]] = {}
+    current: str | None = None
+    for raw in state.splitlines():
+        line = raw.rstrip() if keep_indent else raw.strip()
+        stripped = line.strip()
+        hit = next(((label, head) for label, head in heads if stripped.startswith(head)), None)
+        if hit is not None:
+            label, head = hit
+            current = label
+            out.setdefault(current, [])
+            rest = stripped[len(head) :].strip()
+            if rest:
+                out[current].append(rest)
+            continue
+        if current is not None and stripped:
+            out[current].append(line)
+    return out
 
 
 def recognize_locale(

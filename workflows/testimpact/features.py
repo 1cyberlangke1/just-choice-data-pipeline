@@ -44,7 +44,7 @@ from dataclasses import dataclass
 from itertools import combinations
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import Fingerprinted, cover_dims
 from jc.jsontypes import JsonValue
 
 #: 三套代码套件（**结构键**：套件的显示名与说明全在 `locales/` 的 `[suite.*]`）。
@@ -200,7 +200,7 @@ def touched_in(diff: str) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True)
-class ImpactCase:
+class ImpactCase(Fingerprinted):
     """一条样本的注入特征：这次改动触及了哪几条路径、以及它是什么性质的改动。
 
     字段：`touch` 触及组合（`P1+P3` 这种，空串 = 一条都没触及）；`flavor` 改动性质。
@@ -212,10 +212,6 @@ class ImpactCase:
     def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：可 JSON 序列化的字典。预期行为：键序固定（哈希分桶要用）。"""
         return {"touch": self.touch, "flavor": self.flavor}
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     def describe(self) -> str:
         """输入：无。输出：一行可读描述（报告与文件名用）。"""

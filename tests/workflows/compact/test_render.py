@@ -86,6 +86,26 @@ def test_label_leak_only_fires_at_the_start() -> None:
     assert render.label_leak(GOOD["content"], loc) == ""
 
 
+def test_kind_label_leak_catches_a_self_labelled_body() -> None:
+    """输入：正文开头自己写上「这一块是什么」那一维的档名。输出：无。
+
+    预期行为：也算残留——`fam.kind` 问的就是「这一块是哪一档」，正文写「助手：…」等于把答案
+    印在题面里（真机 zh 侧 28 条里 8 条这么写，见范式 §9.101）。只认开头 + 冒号，
+    正文里正常提到这些词不算。
+    """
+    loc = locales.load("zh")
+    for label in ("助手", "助手的回复", "工具输出", "系统提示词", "随手备注"):
+        assert render.label_leak(f"{label}：{GOOD['content']}", loc) == label
+    assert render.label_leak("把那段助手回复整理一下", loc) == ""
+
+
+def test_check_draft_rejects_a_self_labelled_body() -> None:
+    """输入：正文开头写了档名的草稿。输出：无。预期行为：抛 ValueError，重渲染。"""
+    loc = locales.load("zh")
+    with pytest.raises(ValueError):
+        render.check_draft({"content": f"助手：{GOOD['content']}"}, loc)
+
+
 def test_state_round_trips() -> None:
     """输入：一份合规草稿。输出：无。预期行为：拼出来的 state 能逐段反解回原文。"""
     loc = locales.load("zh")

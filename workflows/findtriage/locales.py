@@ -20,20 +20,10 @@ LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")
 available, load, pick = locale_files.make(LOCALE_DIR)
 
 
-def header(loc: dict[str, JsonValue], title: str) -> str:
-    """输入：语言字典、段落标题。输出：形如「【审查发现】」的段落头。"""
-    return str(loc["meta"]["header"]).format(title=title)
+
+#: 转出去：实现只有一份，住在 `jc.locale_files`（11 家逐字同构，只留那一份）。
+header = locale_files.header
 
 
-def feature_line(loc: dict[str, JsonValue], dim: str, value: str) -> str:
-    """把一条注入特征渲染成提示词里的一行。
-
-    输入：语言字典、维度名、取值。
-    输出：形如「- 发现指向的那一行：本次改动碰过它（新增或改过）」的一行。
-    预期行为：短语缺失直接抛 KeyError——静默给空字符串会让模型自由发挥，
-    那就等于标签不再由特征决定。
-    """
-    spec = loc["feature"][dim][value]
-    return str(loc["prompt"]["bullet"]).format(
-        dim=loc["dims"][dim], brief=spec["brief"], hint=spec["hint"]
-    )
+#: 转出去：实现只有一份，住在 `jc.locale_files`（11 家逐字同构，只留那一份）。
+feature_line = locale_files.feature_line

@@ -29,7 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import Fingerprinted, cover_dims
 from jc.jsontypes import JsonValue
 
 #: 读数表固定三行（三个标的）。
@@ -139,7 +139,7 @@ def divergent_of(values: tuple[int, ...]) -> bool:
 
 
 @dataclass(frozen=True)
-class QuoteCase:
+class QuoteCase(Fingerprinted):
     """一条样本的注入特征：用哪条读数模式 + 哪条单位模式 + 哪组标的名。"""
 
     values: int
@@ -164,10 +164,6 @@ class QuoteCase:
     def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：可 JSON 序列化的字典。预期行为：键序固定（哈希分桶要用）。"""
         return {"values": self.values, "units": self.units, "names": self.names}
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     def describe(self) -> str:
         """输入：无。输出：一行可读描述（报告与文件名用）。"""

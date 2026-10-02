@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import Fingerprinted, cover_dims
 from jc.jsontypes import JsonValue
 
 #: 四个报销类别的**结构键**（类别名、关键词、诱饵词全在 `locales/`，这里只有编号）。
@@ -185,7 +185,7 @@ def decoy_hit(text: str, decoys: dict[str, tuple[str, ...]]) -> bool:
 
 
 @dataclass(frozen=True)
-class ReceiptCase:
+class ReceiptCase(Fingerprinted):
     """一条样本的注入特征：该报哪一类 + 金额落哪一档 + 要不要埋诱饵。"""
 
     category: str
@@ -200,10 +200,6 @@ class ReceiptCase:
     def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：可 JSON 序列化的字典。预期行为：键序固定（哈希分桶要用）。"""
         return {"category": self.category, "band": self.band, "decoy": self.decoy}
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     @property
     def distractors(self) -> tuple[str, ...]:

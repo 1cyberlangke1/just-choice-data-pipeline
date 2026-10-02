@@ -24,6 +24,7 @@ from tests.workflows.depcheck.conftest import (
 )
 from workflows.depcheck import features, judges, locales, render
 from workflows.depcheck.features import DepCheckCase
+from tests.workflows import _fakes
 
 CASE: Final[DepCheckCase] = DepCheckCase("D1+D3", features.ECO_NPM)
 
@@ -185,7 +186,7 @@ def test_trace_blocks_a_misread_level() -> None:
 
 
 @dataclass(frozen=True)
-class StubBackend:
+class StubBackend(_fakes.ScriptedBackend):
     """只会吐固定草稿的后端：用来验反解草稿形态不对时的那几条「没判成」路径。"""
 
     data: dict[str, JsonValue]
@@ -197,10 +198,6 @@ class StubBackend:
         return Draft(
             data=self.data, raw_text="", backend="stub", provider="stub", model="stub", mode="stub"
         )
-
-    def generate_many(self, tasks: list[object]) -> list[Draft]:
-        """输入：任务列表。输出：逐个走 `generate`。"""
-        return [self.generate(task) for task in tasks]
 
 
 @pytest.mark.parametrize(

@@ -37,7 +37,7 @@ import re
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims, near_miss_combos
+from jc.cover import Fingerprinted, cover_dims, near_miss_combos
 from jc.jsontypes import JsonValue
 
 #: 六个服务位（**结构键**，不是文案：角色描述与选项文案全在 `locales/`）。
@@ -233,7 +233,7 @@ def event_of(text: str) -> str | None:
 
 
 @dataclass(frozen=True)
-class CauseCase:
+class CauseCase(Fingerprinted):
     """一个注入特征组合：哪张依赖图 + 故障注入在哪个服务 + 这次问谁。
 
     字段：`graph` 图名；`root` 根因服务；`probe` 探针（`PROBES` 里的一个）。
@@ -246,10 +246,6 @@ class CauseCase:
     def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：可 JSON 序列化的字典。预期行为：键序固定（哈希分桶要用）。"""
         return {"graph": self.graph, "root": self.root, "probe": self.probe}
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     def describe(self) -> str:
         """输入：无。输出：一行可读描述（报告与文件名用）。"""

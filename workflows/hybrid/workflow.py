@@ -29,7 +29,7 @@ from typing import Final
 
 from jc import jsonio
 from jc.cover import hash_bucket, slice_by_bucket
-from jc.judge import Judge
+from jc.judge import LOCALE
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, family_of, register
 
 from . import judges as judges_mod
@@ -100,9 +100,16 @@ class HybridWorkflow(BackendHolder):
     #: 要后端写标题与议题；后端只出文本，骨架与答案都由构造器算。
     needs: frozenset[str] = frozenset({"text"})
     judges: tuple[str, ...] = ("skeleton", "answers", "text")
+    #: 判别器名单表：名字 → （`judges` 里的类名，怎么造）。
+    judge_table = {
+        "skeleton": ("SkeletonJudge", LOCALE),
+        "answers": ("AnswerJudge", LOCALE),
+        "text": ("TextJudge", LOCALE),
+    }
     split_names_tuple = ("train", "val", "test_iid", "test_ood")
     cases_for_fn = staticmethod(cases_for)
     dimension_titles_map = DIMENSION_TITLES
+    pkg_judges = judges_mod
     pkg_locales = locales
 
     def config_for(self, split: str) -> HybridConfig:
@@ -174,20 +181,6 @@ class HybridWorkflow(BackendHolder):
         版式靠结构认，文本字段靠合并标签表（各语言的标签互不重叠，由 test_locales.py 锁住）。
         """
         return render.parse_state(state)
-
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        out: list[Judge] = []
-        for name in names:
-            if name == "skeleton":
-                out.append(judges_mod.SkeletonJudge(locale=locale))
-            elif name == "answers":
-                out.append(judges_mod.AnswerJudge(locale=locale))
-            elif name == "text":
-                out.append(judges_mod.TextJudge(locale=locale))
-            else:
-                raise KeyError(f"未知判别器：{name!r}（可用：skeleton / answers / text）")
-        return tuple(out)
 
     def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
         """输入：契约样本。输出：必须与声明语言一致的正文（每场会的标题与议题）。

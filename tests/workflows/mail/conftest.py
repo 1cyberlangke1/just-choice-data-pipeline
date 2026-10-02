@@ -17,11 +17,12 @@ from jc.jsontypes import JsonValue
 import pytest
 
 from jc.backend.types import Draft
+from tests.workflows import _fakes
 from tests.workflows._fakes import draft
 from workflows.mail import features
 
 
-class FakeBackend:
+class FakeBackend(_fakes.ScriptedBackend):
     """脚本化假后端：草稿由 `task.spec["tags"]` 推出，不联网。
 
     字段：`force_url` 渲染时无视注入特征硬塞一个链接（用来验 `link` 判别器）；
@@ -65,10 +66,6 @@ class FakeBackend:
                 raise self.trace_raises
             return self._draft(task, self._trace(tags))
         return self._draft(task, self._render(tags))
-
-    def generate_many(self, tasks: list[JsonValue]) -> list[Draft]:
-        """输入：任务列表。输出：与入参顺序一致的草稿列表。"""
-        return [self.generate(task) for task in tasks]
 
     def _render(self, tags: dict[str, str]) -> dict[str, JsonValue]:
         """输入：注入特征。输出：`MailDraft` 形态的字典。

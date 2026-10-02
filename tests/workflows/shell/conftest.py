@@ -17,6 +17,7 @@ import pytest
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
+from tests.workflows import _fakes
 from tests.workflows._fakes import draft
 
 #: 每个 (方言, 动作) 一条与特征一致、且能被零 token 判别器读出来的命令。
@@ -65,7 +66,7 @@ ELEVATION_PREFIX: Final[dict[str, str]] = {
 }
 
 
-class FakeBackend:
+class FakeBackend(_fakes.ScriptedBackend):
     """脚本化假后端：草稿由 `task.spec["tags"]` 推出，不联网。
 
     字段（都是「故意说反话」的开关，默认全关）：
@@ -119,10 +120,6 @@ class FakeBackend:
                 raise self.trace_raises
             return self._draft(self._trace(tags))
         return self._draft(self._render(tags))
-
-    def generate_many(self, tasks: list[object]) -> list[Draft]:
-        """输入：任务列表。输出：与入参顺序一致的草稿列表。"""
-        return [self.generate(task) for task in tasks]
 
     def _render(self, tags: dict[str, str]) -> dict[str, JsonValue]:
         """输入：注入特征。输出：`ShellDraft` 形态的字典。

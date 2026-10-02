@@ -264,9 +264,9 @@ def test_locales_are_reported() -> None:
 def test_language_texts_reports_only_the_visible_copy() -> None:
     """输入：一个整段汉字占比很低的 zh 片段（标签名与属性名全是 ASCII）。输出：无。
 
-    预期行为：`language_texts` 只报**元素里的可见文字**，不报整段 HTML——整段 HTML 的汉字占比会被
-    标签名 / 属性名稀释到 `jc.language.ZH_FLOOR` 以下（真机 `ab-10b-zh` 10 条里 5 条踩中），
-    拿它去比会把合格的中文产物报成「语言对不上」（范式 §9.49）。
+    预期行为：`language_texts` 只报**元素里的可见文字**，不报整段 HTML——标签名与属性名不是
+    自然语言正文，交给语言判据本身就是错的（`jc.language` 模块文档那条「只喂自然语言正文」
+    的规矩，范式 §9.49）。
     """
     snippet = (
         '<div class="feed-card sponsored-adslot" style="display:none;width:1px;">'
@@ -277,8 +277,9 @@ def test_language_texts_reports_only_the_visible_copy() -> None:
     assert list(texts) == ["元素可见文字"]
     assert texts["元素可见文字"] == "热门推荐内容"
     assert language.sample_problem(texts, ("zh",)) is None
-    # 整段拿去比就会被误报——这正是不能报整段的理由。
-    assert language.sample_problem({"HTML 片段": snippet}, ("zh",)) is not None
+    # 判据 2026-10-02 起 zh 侧按**词**比（见 jc.language 的阈值表），所以「整段拿去比会被拦」
+    # 已经不是不能报整段的理由了。它真正拦下的是**一条中文都没有**的正文——真机里就是这一条：
+    assert language.sample_problem({"元素可见文字": "Sponsored by ABC"}, ("zh",)) is not None
 
 
 def test_language_texts_is_empty_when_the_element_has_no_visible_copy() -> None:

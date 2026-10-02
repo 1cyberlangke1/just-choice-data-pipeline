@@ -58,7 +58,7 @@ import re
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import Fingerprinted, cover_dims
 from jc.jsontypes import JsonValue
 
 #: 四条「要小心的形状」判据的编号（**结构键**，不是文案：判据名与判据原文全在 `locales/`）。
@@ -249,7 +249,7 @@ def handling_level(count: int) -> str:
 
 
 @dataclass(frozen=True)
-class ChatCase:
+class ChatCase(Fingerprinted):
     """一条样本的注入特征。
 
     字段：`degree` 这条消息该踩几条判据；`scene` 聊天场景；`slot` 该发的那条候选的下标。
@@ -262,10 +262,6 @@ class ChatCase:
     def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：可 JSON 序列化的字典。预期行为：键序固定（哈希分桶要用）。"""
         return {"degree": self.degree, "scene": self.scene, "slot": self.slot}
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     def describe(self) -> str:
         """输入：无。输出：一行可读描述（报告与文件名用）。"""

@@ -26,7 +26,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import BaseModel, Field
 
@@ -44,6 +44,13 @@ LEFTOVER_LINES: Final[frozenset[str]] = frozenset(
 )
 
 
+#: 反解草稿里「编号」字段的取值域：**从 `features.TAG_IDS` 现取**，不手抄（手抄会漂）。
+#: 为什么用 `Literal` 而不是裸 `str`：2026-10-02 真机复验，读者会把正文里的词（HTML 标签名、
+#: 字段名、中文词）当成编号报回来，按既有口径那一条只算「没判成」= 闸门静默少一道；
+#: `Literal` 进 JSON schema 的 `enum`，支持结构化输出的端点会约束生成。范式 §9.96。
+TagId = Literal[*features.TAG_IDS]
+
+
 class TraceFact(BaseModel):
     """反解草稿里的一条命中：因子编号 + 让它取到高危档的那段原文。
 
@@ -52,7 +59,7 @@ class TraceFact(BaseModel):
     一遍，抄不出来的那条直接不算。
     """
 
-    tag: str = Field(description="取到高危档的因子编号（R1 / R2 / R3）")
+    tag: TagId = Field(description="取到高危档的因子编号（R1 / R2 / R3）")
     quote: str = Field(description="从警报记录里**原样抄出来**的那一段——就是它满足了这条判据")
 
 
@@ -67,9 +74,8 @@ class TraceDraft(BaseModel):
     level: int = Field(description="按定级矩阵查出来的风险等级（1~5 的整数）")
 
 
-def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
-    """组装反解提示词（口径见 `jc.judge.verify_prompt`）。"""
-    return verify_prompt(state, loc)
+#: 转出去：口径只有一份，住在 `jc.judge.verify_prompt`（18 家逐字同构，只留那一份）。
+build_trace_prompt = verify_prompt
 
 
 def quote_holds(tag: str, quote: str, body: str) -> bool:

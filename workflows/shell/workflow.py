@@ -18,17 +18,18 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, cast
 
-from jc.cover import hash_bucket, slice_by_bucket
-from jc.judge import Judge
+from jc.cover import hash_bucket, restricted_dims
+from jc.judge import BACKEND, BARE, LOCALE
 from jc.jsontypes import JsonValue
-from jc.knobs import require_pool
-from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
+
+from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register, sliced_cases
 
 from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
 from .features import TagSet
 from .spec import ShellSpec
+from jc.knobs import CommonKnobs
 
 WORKFLOW_NAME = "shell"
 WORKFLOW_VERSION = "0.1.0"
@@ -54,7 +55,7 @@ DIMENSION_TITLES: Final[dict[str, str]] = {
 
 
 @dataclass(frozen=True)
-class ShellConfig:
+class ShellConfig(CommonKnobs):
     """一个切分的采样参数。
 
     字段：
@@ -70,18 +71,10 @@ class ShellConfig:
     case_limit: int = 0
     phrasing_pool: tuple[int, ...] = (0, 1, 2)
 
-    def __post_init__(self) -> None:
-        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。"""
-        require_pool("phrasing_pool", self.phrasing_pool)
-        if self.case_limit < 0:
-            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
-
 
 def _restricted(**overrides: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
     """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    dims = dict(features.DIMS)
-    dims.update(overrides)
-    return dims
+    return restricted_dims(features.DIMS, overrides)
 
 
 def id_dims() -> dict[str, tuple[str, ...]]:
@@ -116,19 +109,13 @@ def bucket_of(case: TagSet, seed: int = SPLIT_SEED) -> int:
 def cases_for(config: ShellConfig) -> list[TagSet]:
     """输入：采样参数。输出：该切分的 tag 组合列表（顺序稳定）。
 
-    预期行为：`test_ood` 收值留出的两组组合；其余切分先剔除留出取值，再按哈希桶分。
+    预期行为：`test_ood` 收值留出的组合（并集去重）；其余切分先剔除留出取值，再按哈希桶分。
+    实现见 `jc.workflow.sliced_cases`（11 家逐字同构，只留那一份）。
     """
-    if config.split == "test_ood":
-        seen: dict[tuple[tuple[str, str], ...], TagSet] = {}
-        for dims in ood_dims():
-            for case in features.build_cases(config.cover_limit, dims=dims):
-                seen.setdefault(tuple(case.as_dict().items()), case)
-        cases = list(seen.values())
-    else:
-        cases = slice_by_bucket(
-            features.build_cases(config.cover_limit, dims=id_dims()), config.split, bucket_of, SPLIT_BUCKETS
-        )
-    return cases[: config.case_limit] if config.case_limit else cases
+    return cast(
+        "list[TagSet]",
+        sliced_cases(config, features, ood_dims, id_dims, bucket_of, SPLIT_BUCKETS),
+    )
 
 
 class ShellWorkflow(BackendHolder):
@@ -139,9 +126,18 @@ class ShellWorkflow(BackendHolder):
     kinds = frozenset({"choice", "noul", "score"})
     needs = frozenset({"text"})  # 命令由后端写：本 workflow 不是纯构造式
     judges: tuple[str, ...] = ("dialect", "destructive", "elevated", "hygiene", "trace")
+    #: 判别器名单表：名字 → （`judges` 里的类名，怎么造）。
+    judge_table = {
+        "dialect": ("DialectJudge", BARE),
+        "destructive": ("DestructiveJudge", BARE),
+        "elevated": ("ElevatedJudge", BARE),
+        "hygiene": ("HygieneJudge", LOCALE),
+        "trace": ("TraceJudge", BACKEND),
+    }
     split_names_tuple = ("train", "val", "test_iid", "test_ood")
     cases_for_fn = staticmethod(cases_for)
     dimension_titles_map = DIMENSION_TITLES
+    pkg_judges = judges_mod
     pkg_audit = audit_mod
     pkg_locales = locales
 
@@ -198,37 +194,6 @@ class ShellWorkflow(BackendHolder):
     def reparse(self, state: object, *, case: object = None) -> render.ParsedCommand:
         """输入：渲染后的 state。输出：纯代码能反解的部分（命令那一行）。"""
         return render.parse_state(state)
-
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        out: list[Judge] = []
-        for name in names:
-            if name == "dialect":
-                out.append(judges_mod.DialectJudge())
-            elif name == "destructive":
-                out.append(judges_mod.DestructiveJudge())
-            elif name == "elevated":
-                out.append(judges_mod.ElevatedJudge())
-            elif name == "hygiene":
-                out.append(judges_mod.HygieneJudge(locale))
-            elif name == "trace":
-                out.append(judges_mod.TraceJudge(self.backend, locale))
-            else:
-                raise KeyError(
-                    f"未知判别器：{name!r}"
-                    f"（可用：dialect / destructive / elevated / hygiene / trace）"
-                )
-        return tuple(out)
-
-    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
-        """输入：契约样本。输出：空表（这一族没有「模型写的自然语言正文」）。
-
-        预期行为：**模型写的是命令行**（PowerShell / bash 的调用本身），命令与语言无关；说明行
-        与风险提示由代码按语言表写。把命令喂给语言判据只会把好数据当坏数据。
-        """
-        del sample
-        return {}
-
 
 
 register(WORKFLOW_NAME)(ShellWorkflow)

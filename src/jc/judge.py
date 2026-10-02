@@ -12,8 +12,9 @@ from __future__ import annotations
 from . import jsonio
 from jc.jsontypes import JsonValue
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from types import ModuleType
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 if TYPE_CHECKING:  # 只在类型检查时引入：通用层不装 [llm] extra 也要能跑
@@ -178,38 +179,61 @@ def run_judges(
     return out
 
 
-class JudgeModule(Protocol):
-    """一个 workflow 的 `judges` 模块：三件套判别器由各包自己定义。"""
+#: 判别器「怎么造」的三种吃法：不吃参数 / 只吃语言 / 还要后端。表里写这三个字。
+BARE: Final[str] = "bare"
+LOCALE: Final[str] = "locale"
+BACKEND: Final[str] = "backend"
 
-    HygieneJudge: Callable[[str], Judge]
-    FrameJudge: Callable[[str], Judge]
-    TraceJudge: Callable[["GenerationBackend", str], Judge]
+#: 判别器名单表：`{名字: (judges 模块里的类名, 吃法)}`。吃法见 `BARE` / `LOCALE` / `BACKEND`。
+JudgeTable = Mapping[str, tuple[str, str]]
+
+#: 全体共有的那一档（32 家）：判据齐全度 / 文本外壳 / 反解。
+COMMON_JUDGES: Final[dict[str, tuple[str, str]]] = {
+    "hygiene": ("HygieneJudge", LOCALE),
+    "frame": ("FrameJudge", LOCALE),
+    "trace": ("TraceJudge", BACKEND),
+}
+
+#: 纯构造式那 14 家共用的那一档：往返 / 标签。
+ROUNDTRIP_JUDGES: Final[dict[str, tuple[str, str]]] = {
+    "roundtrip": ("RoundtripJudge", LOCALE),
+    "label": ("LabelJudge", LOCALE),
+}
 
 
 def standard_judges(
     names: tuple[str, ...],
     locale: str,
-    module: JudgeModule,
+    module: ModuleType,
     backend: "GenerationBackend | None",
+    table: JudgeTable,
 ) -> tuple[Judge, ...]:
-    """输入：判别器名单、语言、workflow 的 judges 模块、后端。输出：判别器实例。
+    """输入：判别器名单、语言、workflow 的 judges 模块、后端、名字表。输出：判别器实例。
 
-    预期行为：`hygiene` / `frame` 只吃语言，`trace` 还要后端（没被注入直接报错——
-    静默降级会让「文本由模型写」这个前提失效），未知名字直接报错并列出可用名字。
-    19 个包的 `make_judges` 逐字相同，机制只留这一份，各包只管把模块与后端交进来。
+    预期行为：名字表由调用方给（各包的 `judge_table`），表里写**类名**而不是类对象——这样
+    表能写在类上、类能延迟导入 `judges` 模块（`maze` / `invoice` 与 `judges` 互相 import，
+    模块级取类会成环）。表里没有的名字、表里指向不存在的类、吃法写错、`BACKEND` 那一档
+    没后端，全都当场报错——静默降级会让「文本由模型写」这个前提失效。
     """
     out: list[Judge] = []
     for name in names:
-        if name == "hygiene":
-            out.append(module.HygieneJudge(locale))
-        elif name == "frame":
-            out.append(module.FrameJudge(locale))
-        elif name == "trace":
+        entry = table.get(name)
+        if entry is None:
+            raise KeyError(f"未知判别器：{name!r}（可用：{' / '.join(table)}）")
+        attr, how = entry
+        cls = getattr(module, attr, None)
+        if cls is None:
+            raise RuntimeError(f"{module.__name__} 里没有判别器类 {attr}")
+        if how == BARE:
+            out.append(cls())
+        elif how == LOCALE:
+            out.append(cls(locale=locale))
+        elif how == BACKEND:
             if backend is None:
-                raise RuntimeError("trace 判别器需要后端，但还没被 bind_backend 注入")
-            out.append(module.TraceJudge(backend, locale))
+                raise RuntimeError(f"{name} 判别器需要后端，但还没被 bind_backend 注入")
+            out.append(cls(backend=backend, locale=locale))
         else:
-            raise KeyError(f"未知判别器：{name!r}（可用：hygiene / frame / trace）")
+            raise RuntimeError(f"判别器 {name!r} 的吃法写错了：{how!r}")
     return tuple(out)
 
 

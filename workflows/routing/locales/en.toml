@@ -37,6 +37,10 @@ attrs_columns = "area | tier | compliance"
 queue_columns = "rule | condition | queue"
 priority_columns = "urgency | free | pro | enterprise"
 flags_columns = "name | note"
+# Names of the "what the ticket is about" options must not open the body: `fam.issue` asks exactly
+# which option the ticket is, so writing "bug:" in the body prints the answer on the question sheet.
+# Only a leading name + colon is checked; merely mentioning these words later in the body is fine.
+issue_labels = ["outage", "data loss", "bug", "how-to", "feature request"]
 
 # The critical-area list is filled in by code through {areas}: copying it into the locale would
 # let it drift, and it is exactly the list the `needs_human` rule needs.
@@ -56,7 +60,7 @@ rules = [
   "Do **not** write the tier, compliance flag, or product area in the body, and do not write the names \"ticket attributes / dispatch table / priority table / extra rules\" — those belong to the ticket system's fields and tables, and writing them in the body makes the two fight",
   "Concretely: do not use the words \"free plan / pro plan / enterprise plan / data deletion request / security report / critical area\", and do not write the words gdpr or enterprise",
   "It must read like a message the user really submitted: \"our data pipeline has been unable to upload anything since this morning\" is fine; \"issue type: outage\" is not",
-  "\"what the ticket is about\" must be obvious at a glance: outage / data loss / bug / how-to / feature request, exactly one of the five",
+  "\"what the ticket is about\" must be obvious at a glance, but **do not write that label into the body** -- no \"bug:\" or \"how-to:\" prefix, no field names",
   "\"how urgent it is\" must be obvious at a glance: can wait / blocked / deadline, exactly one of the three",
   "Do not name any real company, product, or codebase; use invented names only",
   "Write everything in {language}; keep the product-area codes in ASCII",

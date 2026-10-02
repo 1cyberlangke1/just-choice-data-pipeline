@@ -38,7 +38,7 @@ import re
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import Fingerprinted, cover_dims
 from jc.jsontypes import JsonValue
 
 #: 引文的三种造法。
@@ -104,7 +104,7 @@ MIN_SENTENCE_CHARS: Final[int] = 16
 
 
 @dataclass(frozen=True)
-class CitationCase:
+class CitationCase(Fingerprinted):
     """一条样本的注入特征：造法、出处对不对、那句话落在哪一节的第几句。"""
 
     form: str
@@ -120,10 +120,6 @@ class CitationCase:
             "place": self.place,
             "target": self.target,
         }
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     def describe(self) -> str:
         """输入：无。输出：一行可读描述（报告与文件名用）。"""

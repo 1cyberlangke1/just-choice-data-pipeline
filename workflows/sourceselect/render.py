@@ -21,8 +21,10 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
+from jc import locale_files
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
+from jc.state_parse import split_sections
 from jc.workflow import DraftError
 
 from . import locales
@@ -98,33 +100,18 @@ def build_task(tags: SourceCase, loc: dict[str, JsonValue], task_id: str) -> Gen
     )
 
 
+#: 转出去：查段落名的机制只有一份，住在 `jc.locale_files.label_leak`；本家只声明键表。
 def label_leak(text: str, loc: dict[str, JsonValue]) -> str:
     """输入：一段文本、语言字典。输出：文本开头误写的段落名（没有就空串）。
 
     预期行为：只认「段落名 + 冒号」开头这一种写法——正文里正常提到这些词不算。
     """
-    stripped = text.strip()
-    meta = loc["meta"]
-    separators = {str(meta["colon"]).strip(), "：", ":"}
-    for key in SECTION_KEYS:
-        name = str(meta[key])
-        if any(stripped.startswith(f"{name}{separator}") for separator in separators):
-            return name
-    return ""
+    return locale_files.label_leak(text, loc, SECTION_KEYS)
 
 
-def banned_echo(text: str, loc: dict[str, JsonValue]) -> list[str]:
-    """输入：一段文本、语言字典。输出：文本里出现的「在谈那张表」的话术（没有就空列表）。
 
-    预期行为：只认 locale 里点名的那几条**高精度**话术——宁可漏检也不误判，
-    误判会在渲染期白拒一条本来能用的数据。大小写不敏感。
-    """
-    lowered = text.lower()
-    return [
-        str(phrase)
-        for phrase in loc["banned_intent_phrases"]
-        if str(phrase).lower() in lowered
-    ]
+#: 转出去：实现只有一份，住在 `jc.locale_files`（7 家逐字同构，只留那一份）。
+banned_echo = locale_files.banned_echo
 
 
 def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
@@ -226,29 +213,13 @@ class ParsedFrame:
         return not self.query.strip()
 
 
+#: 转出去：切段机制只有一份，住在 `jc.state_parse.split_sections`（11 家逐字同构，只留那一份）。
 def _sections(state: str, loc: dict[str, JsonValue]) -> dict[str, list[str]]:
     """输入：state、语言字典。输出：{段落标题: 该段的正文行}。
 
     预期行为：只认「行首等于该语言的段落头」这一种切法——与 `render.to_state` 对称。
     """
-    titles = [str(loc["meta"][key]) for key in SECTION_KEYS]
-    out: dict[str, list[str]] = {}
-    current: str | None = None
-    for raw in state.splitlines():
-        line = raw.strip()
-        matched = next(
-            (title for title in titles if line.startswith(locales.header(loc, title))), None
-        )
-        if matched is not None:
-            current = matched
-            out.setdefault(current, [])
-            rest = line[len(locales.header(loc, matched)) :].strip()
-            if rest:
-                out[current].append(rest)
-            continue
-        if current is not None and line:
-            out[current].append(line)
-    return out
+    return split_sections(state, loc, SECTION_KEYS)
 
 
 def _cells(line: str, loc: dict[str, JsonValue]) -> list[str] | None:

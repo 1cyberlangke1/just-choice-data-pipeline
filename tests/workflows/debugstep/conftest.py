@@ -16,6 +16,7 @@ import pytest
 
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
+from tests.workflows import _fakes
 from tests.workflows._fakes import draft as _draft
 from workflows.debugstep import features, locales, render
 from workflows.debugstep.features import DebugStepCase
@@ -127,7 +128,7 @@ def faithful(case: DebugStepCase, lang: str = "zh") -> tuple[DebugStepSpec, dict
     return spec, sample_of(session, lang)
 
 
-class FakeBackend:
+class FakeBackend(_fakes.ScriptedBackend):
     """脚本化假后端：草稿由 `task.spec` 推出，不联网。
 
     字段（都是「故意说反话」的开关，默认全关）：
@@ -192,10 +193,6 @@ class FakeBackend:
             return _draft({"tags": report}, "tags=" + "+".join(item["tag"] for item in report))
         session = self.session_for(case)
         return _draft({"session": session}, session)
-
-    def generate_many(self, tasks: list[object]) -> list[Draft]:
-        """输入：任务列表。输出：草稿列表。预期行为：逐个走 `generate`。"""
-        return [self.generate(task) for task in tasks]
 
 
 @pytest.fixture

@@ -310,3 +310,15 @@ def check_signature(data: dict[str, JsonValue]) -> None:
     """
     if not str(data.get("signature", "")).strip():
         raise DraftError("草稿的「落款」是空的——链接与「官方域名」行会跟着一起蒸发")
+
+
+def check_subject(data: dict[str, JsonValue]) -> None:
+    """输入：草稿字典。输出：无；主题是空的就抛 `DraftError`。
+
+    预期行为：**主题必须非空**——真机里模型偶尔把 `subject` 留成空串，渲染出来就是一行
+    「Subject:」后面什么都没有（36 条那两批 68 条里 11 条，10 条那批 10 条里 1 条）。
+    空主题的信不像真的，判别器也读不出这一封想干什么。与 `check_signature` 同理，把关位置
+    放在渲染期而不是 schema 的 `min_length`（字符串长度约束会让英伟达那条路把换行压平）。
+    """
+    if not str(data.get("subject", "")).strip():
+        raise DraftError("草稿的「主题」是空的——渲染出来就是一行「Subject:」后面什么都没有")

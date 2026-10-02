@@ -21,17 +21,18 @@ import random
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from jc import jsonio
-from jc.cover import hash_bucket, slice_by_bucket
-from jc.judge import Judge
-from jc.knobs import require_pool
-from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
+from jc.cover import hash_bucket, restricted_dims
+from jc.judge import BACKEND, BARE, LOCALE
+
+from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register, sliced_cases
 
 from . import features, judges as judges_mod, locales, questions, render
 from .features import TagSet
 from .spec import MailSpec
+from jc.knobs import CommonKnobs
 
 WORKFLOW_NAME = "mail"
 WORKFLOW_VERSION = "0.1.0"
@@ -59,7 +60,7 @@ DIMENSION_TITLES: Final[dict[str, str]] = {
 
 
 @dataclass(frozen=True)
-class MailConfig:
+class MailConfig(CommonKnobs):
     """一个切分的采样参数。
 
     字段：
@@ -74,22 +75,10 @@ class MailConfig:
     case_limit: int = 0
     phrasing_pool: tuple[int, ...] = (0, 1, 2)
 
-    def __post_init__(self) -> None:
-        """输入：无。输出：无。预期行为：坏旋钮在构造期就报人话，不拖到采样阶段。
-
-        `case_limit` 为负以前会被 `cases[:case_limit]` 悄悄解释成「去掉尾部几条」——
-        这是个陷阱，直接拒掉（校验规则见 `jc.knobs`）。
-        """
-        require_pool("phrasing_pool", self.phrasing_pool)
-        if self.case_limit < 0:
-            raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
-
 
 def _restricted(**overrides: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
     """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    dims = dict(features.DIMS)
-    dims.update(overrides)
-    return dims
+    return restricted_dims(features.DIMS, overrides)
 
 
 def _without_ood(values: tuple[str, ...], dropped: frozenset[str], *, by_target: bool) -> tuple[str, ...]:
@@ -131,19 +120,13 @@ def bucket_of(case: TagSet, seed: int = SPLIT_SEED) -> int:
 def cases_for(config: MailConfig) -> list[TagSet]:
     """输入：采样参数。输出：该切分的 tag 组合列表（顺序稳定）。
 
-    预期行为：`test_ood` 收值留出的两组组合；其余切分先剔除留出取值，再按哈希桶分。
+    预期行为：`test_ood` 收值留出的组合（并集去重）；其余切分先剔除留出取值，再按哈希桶分。
+    实现见 `jc.workflow.sliced_cases`（11 家逐字同构，只留那一份）。
     """
-    if config.split == "test_ood":
-        seen: dict[tuple[tuple[str, str], ...], TagSet] = {}
-        for dims in ood_dims():
-            for case in features.build_cases(config.cover_limit, dims=dims):
-                seen.setdefault(tuple(case.as_dict().items()), case)
-        cases = list(seen.values())
-    else:
-        cases = slice_by_bucket(
-            features.build_cases(config.cover_limit, dims=id_dims()), config.split, bucket_of, SPLIT_BUCKETS
-        )
-    return cases[: config.case_limit] if config.case_limit else cases
+    return cast(
+        "list[TagSet]",
+        sliced_cases(config, features, ood_dims, id_dims, bucket_of, SPLIT_BUCKETS),
+    )
 
 
 class MailWorkflow(BackendHolder):
@@ -154,9 +137,18 @@ class MailWorkflow(BackendHolder):
     kinds = frozenset({"choice", "noul", "score"})
     needs = frozenset({"text"})  # 文本外壳由后端写：本 workflow 不是纯构造式
     judges: tuple[str, ...] = ("link", "link_text", "sender_identity", "hygiene", "trace")
+    #: 判别器名单表：名字 → （`judges` 里的类名，怎么造）。
+    judge_table = {
+        "link": ("LinkJudge", BARE),
+        "link_text": ("LinkTextJudge", BARE),
+        "sender_identity": ("SenderIdentityJudge", LOCALE),
+        "hygiene": ("HygieneJudge", LOCALE),
+        "trace": ("TraceJudge", BACKEND),
+    }
     split_names_tuple = ("train", "val", "test_iid", "test_ood")
     cases_for_fn = staticmethod(cases_for)
     dimension_titles_map = DIMENSION_TITLES
+    pkg_judges = judges_mod
     pkg_locales = locales
 
     def config_for(self, split: str) -> MailConfig:
@@ -210,6 +202,7 @@ class MailWorkflow(BackendHolder):
         )
         render.check_official_domain(spec.tags, draft.data)
         render.check_signature(draft.data)
+        render.check_subject(draft.data)
         return render.to_state(draft.data, loc)
 
     def ask(self, spec: MailSpec, rng: random.Random, locale: str) -> list[LabeledQuestion]:
@@ -219,27 +212,6 @@ class MailWorkflow(BackendHolder):
     def reparse(self, state: object, *, case: object = None) -> render.ParsedMail:
         """输入：渲染后的 state。输出：纯代码能反解的部分（有没有链接）。"""
         return render.parse_state(state)
-
-    def make_judges(self, names: tuple[str, ...], locale: str) -> tuple[Judge, ...]:
-        """输入：判别器名单、语言。输出：判别器实例。预期行为：未知名字直接报错。"""
-        out: list[Judge] = []
-        for name in names:
-            if name == "link":
-                out.append(judges_mod.LinkJudge())
-            elif name == "link_text":
-                out.append(judges_mod.LinkTextJudge())
-            elif name == "sender_identity":
-                out.append(judges_mod.SenderIdentityJudge(locale))
-            elif name == "hygiene":
-                out.append(judges_mod.HygieneJudge(locale))
-            elif name == "trace":
-                out.append(judges_mod.TraceJudge(self.backend, locale))
-            else:
-                raise KeyError(
-                    f"未知判别器：{name!r}"
-                    f"（可用：link / link_text / sender_identity / hygiene / trace）"
-                )
-        return tuple(out)
 
     def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
         """输入：契约样本。输出：必须与声明语言一致的正文（整封信）。

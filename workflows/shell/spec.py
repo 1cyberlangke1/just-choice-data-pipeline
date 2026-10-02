@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from jc.jsontypes import JsonValue
+from jc.spec_dict import tagged_spec_dict
 
 from .features import Labels, TagSet
 
@@ -46,9 +47,4 @@ class ShellSpec:
 
 def spec_to_dict(spec: ShellSpec) -> dict[str, JsonValue]:
     """输入：规格。输出：可 JSON 序列化的字典（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "tags": spec.tags.as_dict(),
-        "phrasing": spec.phrasing,
-        "split": spec.split,
-        "seq": spec.seq,
-    }
+    return tagged_spec_dict(tags=spec.tags, phrasing=spec.phrasing, split=spec.split, seq=spec.seq)

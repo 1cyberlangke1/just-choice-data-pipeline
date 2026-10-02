@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from jc.jsontypes import JsonValue
+from jc.spec_dict import planned_spec_dict
 
 from .features import LogTriageCase, LogTriageLabels, LogTriagePlan, label_for
 
@@ -47,11 +48,6 @@ class LogTriageSpec:
 
 def spec_to_dict(spec: LogTriageSpec) -> dict[str, JsonValue]:
     """输入：规格。输出：可 JSON 序列化的字典（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.as_dict(),
-        "phrasing": spec.phrasing,
-        "split": spec.split,
-        "seq": spec.seq,
-        "hits": list(spec.plan.hits),
-        "distractors": [list(combo) for combo in spec.plan.distractors],
-    }
+    return planned_spec_dict(
+        case=spec.case, plan=spec.plan, phrasing=spec.phrasing, split=spec.split, seq=spec.seq
+    )

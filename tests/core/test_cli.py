@@ -8,6 +8,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -238,9 +241,42 @@ def test_gen_accepts_repeated_locales_and_builds_the_backend(
 
 
 def test_unknown_workflow_is_reported_in_plain_language() -> None:
-    """名字写错时报人话并列出已注册的 workflow，不静默跑空。"""
-    with pytest.raises(KeyError, match="未找到 workflow"):
+    """名字写错时报人话并列出**真实**已注册的 workflow，不静默跑空。
+
+    预期行为：名单必须现算（`load` 在报错前补一次 `discover`）——此前注册表空着就直接读，
+    报出来是「已注册：（空）」，等于没报。
+    """
+    with pytest.raises(KeyError, match="未找到 workflow") as info:
         cli.main(["cases", "--workflow", "nope"])
+    assert "maze" in str(info.value)
+    assert "（空）" not in str(info.value)
+
+
+def test_module_entry_point_reports_a_wrong_name_without_a_traceback() -> None:
+    """输入：`python -m jc cases --workflow nope`。输出：无。
+
+    预期行为：退出码 2、stderr 是一行人话（列出真实注册的 workflow），**不是 traceback**——
+    名字写错是用户输入问题，不该把调用栈糊到人脸上。`cli.main` 自己照旧抛 KeyError
+    （见上一条），兜的是命令行这一层。
+    """
+    root = Path(__file__).resolve().parents[2]
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([str(root / "src"), str(root)]),
+        "PYTHONIOENCODING": "utf-8",
+    }
+    proc = subprocess.run(
+        [sys.executable, "-m", "jc", "cases", "--workflow", "nope"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        check=False,
+    )
+    assert proc.returncode == 2
+    assert "未找到 workflow" in proc.stderr
+    assert "maze" in proc.stderr
+    assert "Traceback" not in proc.stderr
 
 
 def test_missing_required_flag_exits_with_usage() -> None:

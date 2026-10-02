@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
 from jc.judge import Judge, Verdict
@@ -37,6 +37,14 @@ MARKER_PREFIXES: Final[tuple[str, ...]] = ("#", "- ", "* ", "> ", "|")
 MARKER_INFIX: Final[tuple[str, ...]] = ("**", "`" * 3)
 
 
+#: 反解草稿里块类型的取值域：**从 `features.BLOCK_KINDS` 现取**，不手抄（手抄会漂）。
+#: 为什么用 `Literal` 而不是裸 `list[str]`：2026-10-02 真机复验，裸字符串时 20B 读者有 6/27 条
+#: 交回一串空串（`['', '', '']`），判据表白印了、那一条等于没判；`Literal` 会进 JSON schema 的
+#: `enum`，支持结构化输出的端点会**约束**生成，别家（browser / compact / mail / modelroute /
+#: review / routing）的反解草稿一直就是这么写的。
+BlockKind = Literal[*features.BLOCK_KINDS]
+
+
 class TraceDraft(BaseModel):
     """反解草稿：只回答「这段纯文本的块结构是什么」。
 
@@ -44,7 +52,7 @@ class TraceDraft(BaseModel):
     「不通过」——那是反解格式没对齐，不是数据本身错。
     """
 
-    kinds: list[str] = Field(description="按从上到下的顺序，每个内容块的类型")
+    kinds: list[BlockKind] = Field(description="按从上到下的顺序，每个内容块的类型（只能取判据表里那六个名字）")
     callout_kind: str = Field(default="", description="有提示框就写 note / tip / warning，没有就留空")
     list_ordered: bool = Field(default=False, description="有列表就写它有没有先后顺序，没有就填 false")
 

@@ -7,23 +7,36 @@
 
 输入：一段文本 + 语言标签（`zh` / `en`）。
 输出：`None`（一致 / 判不了）或人话理由（不一致）。
-预期行为：只数**汉字**与**拉丁字母**两类字符，算「汉字占两者的比例」；数字、标点、空白、
-代码符号（`#` `{` `|`）两种语言里都常见，算进去只会稀释信号。这是**书写系统层面的粗判据**，
+预期行为：只数**汉字**与**拉丁文字**两类，算「汉字占两者的比例」；数字、标点、空白、代码符号
+（`#` `{` `|`）两种语言里都常见，算进去只会稀释信号。这是**书写系统层面的粗判据**，
 不是语言识别：它只回答「这段文本的汉字占比配不配得上 zh / en 这个标签」。
 
-阈值是量出来的，不是拍的（2026-09-30：只取 manifest 里 `backend.name == "llm"` 的真机产物，
-逐条按 workflow 自己声明的正文（`Workflow.language_texts`）算汉字占比，再看分布的两头）：
+**两侧的单位不一样，这是量出来的**：zh 侧的分母是**拉丁词**（一个汉字对一个英文词），
+en 侧的分母是**拉丁字母**。理由是两个方向要防的东西不同——zh 侧要防「整段写成英文」，
+而英文一个词由好几个字母组成，按字母比会把「一句中文夹几个标识符」算成英文；en 侧要防
+「整段写成中文」，汉字数量不随分词变化，按字符比就够。
 
-| 侧 | 正常范围（真机） | 坏样本 | 取的阈值 |
+阈值是量出来的，不是拍的（只取真机产物，逐条按 workflow 自己声明的正文
+（`Workflow.language_texts`）算比例，再看分布的两头）：
+
+| 侧 | 单位 | 正常范围（真机） | 坏样本 | 取的阈值 |
 |---|---|---|---|
-| en（上限） | 0.000（绝大多数）、`browser` 0.068~0.084（它的元素名是中文固定词表） | `rerank` 0.577、`citation` 0.770 | **0.30** |
-| zh（下限） | `review` 0.241、`shell` 0.246、`compact` 0.344、`search` 0.384、`toolgate` 0.401、`routing` 0.469、`browser` 0.505、`rubric` 0.594、`guardrail` 0.697、`autoformat` 0.823、`citation` 0.912 | `rerank` 0.081 / 0.089 / 0.092 / 0.117 | **0.15** |
+| en（上限） | 汉字 /（汉字 + 拉丁字母） | 0.000（绝大多数）、`browser` 0.068~0.084（它的元素名是中文固定词表） | `rerank` 0.577、`citation` 0.770 | **0.30** |
+| zh（下限） | 汉字 /（汉字 + 拉丁词） | 最小 **0.333**（`causechain` 的日志行，2026-10-02 拿 1236 个真机 zh 字段重算） | `adblock` 的 `Sponsored by ABC` 0.000、`search` 的裸域名 0.000 | **0.20** |
 
-两条阈值都留了余量：en 侧离正常最大值（0.084）有 3.5 倍，zh 侧离正常最小值（0.241）还有 0.09。
+两条阈值都留了余量：en 侧离正常最大值（0.084）有 3.5 倍，zh 侧离正常最小值（0.333）还有 0.133。
+
+**zh 侧从「按字母」改成「按词」是 2026-10-02 的修复**：改之前 1619 条真机拒稿里 7 条是这条判据
+拦的，其中 `causechain` 的 3 条日志行（`S4 /api/v3/status 403-error tr_jkl012 崩溃` 这种
+「一句中文 + 一串标识符」）被按字母比算成 0.087~0.115 而**误杀**——那是合格数据。按词比它们
+是 0.222~0.300。改完拿真机重算：0.15~0.30 之间任何阈值都给出同一组判定（真机最小值 0.333、
+真阳性 0.000），取 0.20 是为了让「中文抬头 + 一大段源码」那种字段（词比 0.158）仍然被拦下
+（`tests/core/test_language.py` 钉着这条边界）。
+
 **前提是只把自然语言正文交给它**：`lint` 的 state 是「一行中文抬头 + 一段源码」（真机 zh 侧
-占比低到 0.099）、`shell` 的 state 是命令行、`maze` 的 state 是 ASCII 迷宫图——那些不该按语言
-判。所以判据挂在各 workflow 的 `check_draft` 上、只喂它认得出语言的那几个字段，**不在通用层
-对整份 state 一刀切**。
+占比低到 0.099、按词比 0.158）、`shell` 的 state 是命令行、`maze` 的 state 是 ASCII 迷宫图
+——那些不该按语言判。所以判据挂在各 workflow 的 `check_draft` 上、只喂它认得出语言的那几个
+字段，**不在通用层对整份 state 一刀切**。
 
 短文本不判：`MIN_SCRIPTED` 个「有书写系统的字符」都不到就返回 `None`——`m1`、`yes`、`3` 这种
 短标签本来就推不出语言，判它只会误伤。这条也是「选项名 / 编号 / 布尔值」能安全混进样本的原因。
@@ -31,6 +44,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from typing import Final
 
@@ -45,14 +59,17 @@ _HAN_END: Final[int] = 0x9FFF
 #: None）：「不知道」与「不一致」是两件事，把不知道报成不一致，新加一种语言就会全线误伤。
 LOCALE_SCRIPT: Final[dict[str, str]] = {"zh": "han", "en": "latin"}
 
-#: zh 侧下限：汉字占比低于它就判不一致。
-ZH_FLOOR: Final[float] = 0.15
+#: zh 侧下限：汉字占「汉字 + 拉丁词」的比例低于它就判不一致。
+ZH_FLOOR: Final[float] = 0.20
 
 #: en 侧上限：汉字占比高于它就判不一致（等价于「拉丁字母占比低于 0.70」）。
 EN_HAN_CEILING: Final[float] = 0.30
 
 #: 参与判据的字符数不到这个数就不判（理由见模块文档「短文本不判」）。
 MIN_SCRIPTED: Final[int] = 12
+
+#: 拉丁词：连续的 ASCII 字母算一个词（`mySecretToken` 是一个词，不是 13 个字母）。
+_LATIN_WORD: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]+")
 
 
 def scripted_chars(text: str) -> int:
@@ -67,11 +84,35 @@ def scripted_chars(text: str) -> int:
 def script_ratio(text: str) -> float:
     """输入：一段文本。输出：汉字占「汉字 + 拉丁字母」的比例（两类都没有时给 0.0）。
 
-    预期行为：分母为 0（纯数字 / 纯标点 / 空串）时返回 0.0——调用方要先看 `scripted_chars`
-    够不够 `MIN_SCRIPTED`，`language_mismatch` 已经把这一步包在里面了。
+    预期行为：**en 侧就用这一把**（汉字数量不随分词变化，按字符比就够）；zh 侧用 `han_share`。
+    分母为 0（纯数字 / 纯标点 / 空串）时返回 0.0——调用方要先看 `scripted_chars` 够不够
+    `MIN_SCRIPTED`，`language_mismatch` 已经把这一步包在里面了。
     """
     han = sum(1 for ch in text if _is_han(ch))
     total = scripted_chars(text)
+    return han / total if total else 0.0
+
+
+def latin_words(text: str) -> int:
+    """输入：一段文本。输出：拉丁词个数（连续的 ASCII 字母算一个词）。
+
+    预期行为：`mySecretToken` / `settings.json` / `https` 各算一个词——**不是**按字母数。
+    zh 侧的下限要防的是「整段写成英文」，而英文里一个词由好几个字母组成；按字母比时，一句中文
+    里夹几个标识符就会被算成「写成英文」（真机 `causechain` 的日志行、`toolgate` 的调用意图
+    都踩过这个）。
+    """
+    return len(_LATIN_WORD.findall(text))
+
+
+def han_share(text: str) -> float:
+    """输入：一段文本。输出：汉字占「汉字 + 拉丁词」的比例（两类都没有时给 0.0）。
+
+    预期行为：与 `script_ratio` 的区别只在分母的**单位**——zh 侧按词、en 侧按字母，
+    理由与实测数字见模块文档的阈值表。
+    """
+    han = sum(1 for ch in text if _is_han(ch))
+    words = latin_words(text)
+    total = han + words
     return han / total if total else 0.0
 
 
@@ -80,6 +121,9 @@ def language_mismatch(text: str, locale: str) -> str | None:
 
     预期行为：三道闸依次过——表外的语言不发表意见（None）、有书写系统的字符不够 `MIN_SCRIPTED`
     不判（None）、比例越界才报。报的理由带上实测比例与阈值，省得再回去数一遍。
+
+    两侧用不同的单位（zh 按拉丁**词**、en 按拉丁**字母**），理由见模块文档的阈值表；
+    `LOCALE_SCRIPT` 里只登记了这两种，所以走到最后那一行时 `script` 必是 `latin`。
     """
     script = LOCALE_SCRIPT.get(locale)
     if script is None:
@@ -87,13 +131,17 @@ def language_mismatch(text: str, locale: str) -> str | None:
     total = scripted_chars(text)
     if total < MIN_SCRIPTED:
         return None
-    ratio = script_ratio(text)
-    if script == "han" and ratio < ZH_FLOOR:
+    if script == "han":
+        share = han_share(text)
+        if share >= ZH_FLOOR:
+            return None
         return (
-            f"这段文本声明的语言是 {locale}（该以汉字为主），但汉字只占 "
-            f"{ratio:.3f}（下限 {ZH_FLOOR}）——它写成了别的语言：{_preview(text)}"
+            f"这段文本声明的语言是 {locale}（该以汉字为主），但汉字只占"
+            f"「汉字 + 拉丁词」的 {share:.3f}（下限 {ZH_FLOOR}）——它写成了别的语言："
+            f"{_preview(text)}"
         )
-    if script == "latin" and ratio > EN_HAN_CEILING:
+    ratio = script_ratio(text)
+    if ratio > EN_HAN_CEILING:
         return (
             f"这段文本声明的语言是 {locale}（该以拉丁字母为主），但汉字占到 "
             f"{ratio:.3f}（上限 {EN_HAN_CEILING}）——它写成了别的语言：{_preview(text)}"

@@ -79,3 +79,20 @@ def test_meta_placeholders_render() -> None:
         assert loc["meta"]["paren"].format(text="T").strip()
         for key in render.SECTION_KEYS:
             assert str(loc["meta"][key]).strip()
+
+
+def test_kind_labels_are_declared_and_do_not_fire_on_the_fixture_bodies() -> None:
+    """输入：两语言的档名名单与夹具正文。输出：无。
+
+    预期行为：`meta.kind_labels` 非空、每条都不是空白；夹具那几段正文一条都不许撞——
+    撞了就说明名单收得太宽，真跑时会把本来能用的数据在渲染期白拒掉（同 `banned_echo` 的口径）。
+    """
+    cases = features.build_cases(1024)
+    for lang in locales.available():
+        loc = locales.load(lang)
+        labels = loc["meta"]["kind_labels"]
+        assert isinstance(labels, list) and labels
+        assert all(str(item).strip() for item in labels)
+        for tags in cases:
+            body = body_for(tags.as_dict())
+            assert render.label_leak(body, loc) == "", (lang, body)

@@ -33,7 +33,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import Fingerprinted, cover_dims
 from jc.jsontypes import JsonValue
 
 #: 候选条数（固定 5）。定成 5 是为了让「两两比较」那一族天然配平：10 对无序对**两个方向
@@ -88,7 +88,7 @@ def coverage(text: str, terms: list[str] | tuple[str, ...]) -> int:
 
 
 @dataclass(frozen=True)
-class RerankCase:
+class RerankCase(Fingerprinted):
     """一条样本的注入特征：查询词数、相关候选条数、最相关候选落在哪一段。"""
 
     terms: int
@@ -98,10 +98,6 @@ class RerankCase:
     def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：可 JSON 序列化的字典。预期行为：键序固定（哈希分桶要用）。"""
         return {"terms": self.terms, "relevant": self.relevant, "best": self.best}
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     def describe(self) -> str:
         """输入：无。输出：一行可读描述（报告与文件名用）。"""

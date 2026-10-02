@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import cover_dims
+from jc.cover import Fingerprinted, cover_dims
 from jc.jsontypes import JsonValue
 
 #: 一张任务表固定 5 项（编号 0~4，渲染成 1~5）。
@@ -188,7 +188,7 @@ def unlocks_of(
 
 
 @dataclass(frozen=True)
-class PlanCase:
+class PlanCase(Fingerprinted):
     """一条样本的注入特征：用哪一张依赖图 + 已经完成了几项（完成顺序的前 k 项）。
 
     字段：`graph` 图形状下标；`done` 已完成项数（0~5）。
@@ -210,10 +210,6 @@ class PlanCase:
     def as_dict(self) -> dict[str, JsonValue]:
         """输入：无。输出：可 JSON 序列化的字典。预期行为：键序固定（哈希分桶要用）。"""
         return {"graph": self.graph, "done": self.done}
-
-    def fingerprint(self) -> str:
-        """输入：无。输出：case 指纹。预期行为：同一 case 任何进程都得到同一串。"""
-        return "|".join(f"{key}={value}" for key, value in self.as_dict().items())
 
     def describe(self) -> str:
         """输入：无。输出：一行可读描述（报告与文件名用）。"""
