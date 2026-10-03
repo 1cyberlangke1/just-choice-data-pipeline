@@ -17,6 +17,7 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
+from jc import locale_files
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
 from jc.state_parse import split_sections
@@ -75,19 +76,17 @@ def build_task(tags: TagSet, loc: dict[str, JsonValue], task_id: str) -> Generat
     )
 
 
+#: 本家 `label_leak` 查的键表：三段的行首标记都由代码写，模型再抄一遍就是重复标记。
+LEAK_KEYS: Final[tuple[str, ...]] = ("request_label", "catalog_label", "needs_label")
+
+
 def label_leak(text: str, loc: dict[str, JsonValue]) -> str:
     """输入：一段文本、语言字典。输出：文本开头误写的段落名（没有就空串）。
 
-    预期行为：只认「段落名 + 冒号」开头这一种写法——正文里正常提到这些词不算。
+    预期行为：只认「段落名 + 冒号」开头这一种写法——正文里正常提到这些词不算。查段落名的
+    机制只有一份，住在 `jc.locale_files.label_leak`（大小写不敏感的口径也在那里）。
     """
-    stripped = text.strip()
-    meta = loc["meta"]
-    separators = {str(meta["colon"]).strip(), "：", ":"}
-    for key in ("request_label", "catalog_label", "needs_label"):
-        name = str(meta[key])
-        if any(stripped.startswith(f"{name}{separator}") for separator in separators):
-            return name
-    return ""
+    return locale_files.label_leak(text, loc, LEAK_KEYS)
 
 
 def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:

@@ -28,7 +28,7 @@ from typing import Final, cast
 
 from jc import jsonio
 from jc.backend.types import GenerationBackend
-from jc.cover import hash_bucket, slice_by_bucket, restricted_dims
+from jc.cover import hash_bucket, slice_by_bucket, restrictor
 from jc.jsontypes import JsonValue
 from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, family_of, plan_with_phrasing, register, config_for_split
 
@@ -59,9 +59,7 @@ DIMENSION_TITLES: Final[dict[str, str]] = {
 }
 
 
-def _restricted(**overrides: tuple[JsonValue, ...]) -> dict[str, tuple[JsonValue, ...]]:
-    """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    return restricted_dims(features.DIMS, overrides)
+_restricted = restrictor(features.DIMS)
 
 
 def id_dims() -> dict[str, tuple[JsonValue, ...]]:

@@ -55,6 +55,24 @@ def test_need_words_are_not_banned() -> None:
             assert render.banned_echo(word, loc) == [], word
 
 
+def test_placeholder_names_are_banned() -> None:
+    """输入：把「虚构 / 虚拟」当成名字用的查询。输出：无。
+
+    预期行为：真机 `batch-sourceselect-zh` 10 条里有 4 条把提示词那句「一律用虚构的名字」读成了
+    字面名字（`虚构指标Y` / `虚构项目Alpha` / `虚拟技术`）——那是数据损坏，闸门必须拦住；
+    而正常说法（`虚拟化平台`）与英文的 `virtualization` 不许误伤（`虚拟` 只收组合词）。
+    """
+    loc = locales.load("zh")
+    for query in (
+        "请提供虚构指标Y的官方文档",
+        "请提供虚拟技术的最新公告",
+        "虚构项目Alpha的完整清单",
+    ):
+        assert render.banned_echo(query, loc), query
+    assert render.banned_echo("请提供虚拟化平台的最新官方文档", loc) == []
+    assert render.banned_echo("official docs about virtualization", loc) == []
+
+
 def test_meta_placeholders_render() -> None:
     """输入：两语言 meta。输出：无。预期行为：段落头、括号模板与行号模板都能格式化。"""
     for lang in locales.available():

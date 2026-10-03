@@ -24,13 +24,13 @@ def _loc() -> dict[str, object]:
 def _draft(**overrides: str) -> dict[str, str]:
     """输入：要覆盖的字段。输出：一份完整的草稿字典。"""
     base = {
-        "from_name": "Example Bank",
-        "from_address": "service@example-bank.com",
+        "from_name": "汇信银行",
+        "from_address": "service@huixin-bank.com",
         "subject": "账户通知",
         "body": "请核对您的账户信息。",
-        "signature": "Example Bank",
-        "official_domain": "example-bank.com",
-        "link_line": "https://example-bank.com/verify",
+        "signature": "汇信银行",
+        "official_domain": "huixin-bank.com",
+        "link_line": "https://huixin-bank.com/verify",
     }
     return {**base, **overrides}
 
@@ -77,11 +77,11 @@ def test_to_state_appends_the_signature_after_the_body() -> None:
         _loc(),
     )
     assert state == (
-        "From: Example Bank <service@example-bank.com>\n"
+        "From: 汇信银行 <service@huixin-bank.com>\n"
         "Subject: 账户通知\n\n"
         "正文。\n\n"
         "落款\n"
-        "官方域名：example-bank.com\n"
+        "官方域名：huixin-bank.com\n"
         "https://e.test/a"
     )
 
@@ -89,7 +89,7 @@ def test_to_state_appends_the_signature_after_the_body() -> None:
 def test_to_state_leaves_out_an_empty_link_line() -> None:
     """清单说没有链接时，链接字段留空，state 里就不许多出那一行。"""
     state = render.to_state(_draft(link_line=""), _loc())
-    assert state.endswith("官方域名：example-bank.com")
+    assert state.endswith("官方域名：huixin-bank.com")
 
 
 def test_to_state_leaves_out_an_empty_official_domain() -> None:
@@ -109,19 +109,19 @@ def test_to_state_takes_over_a_domain_line_the_model_wrote_itself() -> None:
     state = render.to_state(
         _draft(
             body="正文。\n官方域名：evil.test",
-            signature="落款\n官方域名：example-bank.com",
+            signature="落款\n官方域名：huixin-bank.com",
         ),
         _loc(),
     )
     assert state.count("官方域名") == 1
-    assert state.endswith("官方域名：example-bank.com\nhttps://example-bank.com/verify")
+    assert state.endswith("官方域名：huixin-bank.com\nhttps://huixin-bank.com/verify")
     assert "evil.test" not in state
 
 
 def test_to_state_keeps_other_lines_of_the_signature() -> None:
     """剔的只是那一行，落款里的其它内容一个字都不许动。"""
     state = render.to_state(
-        _draft(signature="诺兰商城客户服务部\n官方域名：example-bank.com\n客服热线：400-000-0000"),
+        _draft(signature="诺兰商城客户服务部\n官方域名：huixin-bank.com\n客服热线：400-000-0000"),
         _loc(),
     )
     assert "诺兰商城客户服务部" in state
@@ -149,7 +149,7 @@ def test_official_domain_is_required_for_org_claims() -> None:
     org_cases = ("known_vendor", "forged_brand")
     for sender in org_cases:
         tags = features.TagSet(sender, "none", "none", "none", "formal")
-        render.check_official_domain(tags, {"official_domain": "example-bank.com"})
+        render.check_official_domain(tags, {"official_domain": "huixin-bank.com"})
         with pytest.raises(ValueError, match="官方域名"):
             render.check_official_domain(tags, {"official_domain": "  "})
 
@@ -159,15 +159,15 @@ def test_official_domain_must_be_empty_for_plain_person() -> None:
     tags = features.TagSet("unknown_personal", "none", "none", "none", "formal")
     render.check_official_domain(tags, {"official_domain": ""})
     with pytest.raises(ValueError, match="必须留空"):
-        render.check_official_domain(tags, {"official_domain": "example-bank.com"})
+        render.check_official_domain(tags, {"official_domain": "huixin-bank.com"})
 
 
 def test_links_in_the_signature_reach_the_link_judge() -> None:
     """落款里的链接必须能被 `parse_state` 抓到——判别器只看整条 state。"""
     state = render.to_state(
-        _draft(link_line="Example Bank https://example-bank.com/verify"), _loc()
+        _draft(link_line="汇信银行 https://huixin-bank.com/verify"), _loc()
     )
-    assert render.parse_state(state).urls == ("https://example-bank.com/verify",)
+    assert render.parse_state(state).urls == ("https://huixin-bank.com/verify",)
 
 
 def test_link_text_of_counts_addresses_on_the_last_line() -> None:
@@ -202,6 +202,25 @@ def test_official_domain_of_reads_the_renderer_owned_line() -> None:
     assert render.official_domain_of("", _loc()) == ""
 
 
+def test_owned_domain_line_is_recognised_regardless_of_case() -> None:
+    """输入：行首标记写成大写 / 全大写的行。输出：认得出，取值与模板一致。
+
+    预期行为：渲染器那行来自 locale 模板（en 是小写 `official domain: `），模型偶尔写成
+    `Official domain: `——真机 `ml-36c-en` / `ml-36a-en` / `nim-smoke-13` 各 1 条就是这么漏的：
+    按字面量比既剔不掉、也数不出来，state 里于是留下两行。
+    """
+    loc = locales.load("en")
+    assert render.owned_domain_line_value("official domain: e.test", loc) == "e.test"
+    assert render.owned_domain_line_value("Official domain: e.test", loc) == "e.test"
+    assert render.owned_domain_line_value("  OFFICIAL DOMAIN: e.test", loc) == "e.test"
+    assert render.owned_domain_line_value("regards", loc) is None
+    assert render.strip_owned_domain_lines("Regards\nOfficial domain: e.test", loc) == "Regards"
+    assert (
+        render.official_domain_of("正文\n落款\nOfficial domain: example.test", loc)
+        == "example.test"
+    )
+
+
 def test_sender_domain_of_reads_the_from_line() -> None:
     """输入：带 / 不带 `From:` 行的 state。输出：发件地址（解析不出 → 空串）。
 
@@ -219,3 +238,73 @@ def test_host_of_normalizes_case_and_www() -> None:
     assert render.host_of("www.Example.Test") == "example.test"
     assert render.host_of("Service@Bank.Test") == "bank.test"
     assert render.host_of("") == ""
+
+
+@pytest.mark.parametrize(
+    ("name", "address", "domain"),
+    [
+        ("汇信银行", "service@huixin-bank.com", "huixin-bank.com"),
+        ("Mia Sanchez", "mia.sanchez@example.com", ""),
+        ("Brandon Smith", "brandon.smith@mail.test", ""),
+        ("Global Logistics Corp", "billing@globallogistics.test", "globallogistics.test"),
+        ("云杉银行客户服务中心", "service@yunshan-bank.com", "yunshan-bank.com"),
+    ],
+)
+def test_check_names_accepts_invented_names(name: str, address: str, domain: str) -> None:
+    """编出来的真名字 / 真域名一律放行。
+
+    输入：显示名、发件地址、官方域名。输出：无。
+    预期行为：`Brandon Smith` 里的 `Brand` **不算**占位词（短词按整词比，见
+    `PLACEHOLDER_STEMS` 上面那段）；`mia.sanchez@example.com` 也放行——`example.com`
+    是 RFC 2606 保留的示例域名，与「照抄字段说明里的示例品牌」是两回事。
+    """
+    render.check_names({"from_name": name, "from_address": address, "official_domain": domain})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("from_name", "VendorName"),
+        ("from_name", "Vendor Support"),
+        ("from_name", "Vendor Co."),
+        ("from_name", "ExampleVendor"),
+        ("from_name", "CloudService Vendor"),
+        ("from_name", "Acme Corp"),
+        ("from_name", "ACME Store"),
+        ("from_name", "ExampleBank 客服"),
+        ("from_name", "某某公司"),
+        ("from_name", "示例银行客服"),
+        ("from_name", "Merchant-Company 商店"),
+        ("from_address", "support@vendor.com"),
+        ("from_address", "service@example-bank.com"),
+        ("official_domain", "vendorofficial.com"),
+    ],
+)
+def test_check_names_rejects_placeholder_names(field: str, value: str) -> None:
+    """占位词当名字 / 域名一律拒稿（这些值是真机产物里原样抄下来的）。
+
+    输入：字段名与那个字段的值。输出：无。
+    预期行为：2026-10-03 拿新闸回放 998 条 mail 产物，62 条命中（18 个 run），
+    逐条看过没有误伤——拒稿会走重渲染，代价是一次调用。
+    """
+    draft = {
+        "from_name": "汇信银行",
+        "from_address": "service@huixin-bank.com",
+        "official_domain": "huixin-bank.com",
+    }
+    draft[field] = value
+    with pytest.raises(DraftError, match="占位词"):
+        render.check_names(draft)
+
+
+def test_placeholder_in_normalises_punctuation_and_case() -> None:
+    """输入：带标点 / 大小写变体的名字。输出：命中的词根 / None。
+
+    预期行为：归一化只去空白与标点、转小写，中文与字母数字都留着——所以 `Vendor Co.`
+    与 `VENDOR` 认得出同一个词根，中文的「某某公司」也认得出；真名字与空串返回 None。
+    """
+    assert render.placeholder_in("Vendor Co.") == "vendor"
+    assert render.placeholder_in("  VENDOR  ") == "vendor"
+    assert render.placeholder_in("某某公司") == "某某"
+    assert render.placeholder_in("汇信银行") is None
+    assert render.placeholder_in("") is None

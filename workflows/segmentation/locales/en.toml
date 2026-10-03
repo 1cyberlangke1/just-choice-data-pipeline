@@ -53,15 +53,15 @@ avoid = "headers such as \"Contract No / Party A / Party B / Signed on\""
 
 [source.scan]
 desc = "a stack of sheets that came out of a document scanner"
-trace = "the first line of every page must carry a scanner trace (e.g. \"Scanned: page 1 of 3\")"
+trace = "the first line of every page must carry a scanner trace: **invent** a page stamp that contains the word \"Scanned\", saying which page this is and how many pages the packet has (use the real numbers)"
 
 [source.fax]
 desc = "a stack of sheets that came in over a fax machine"
-trace = "the first line of every page must carry a fax trace (e.g. \"FAX 021-0000 2026-09-30 09:12\")"
+trace = "the first line of every page must carry a fax trace: **invent** a fax header line that contains the word \"FAX\", plus a fax number and a date/time of your own making (do not reuse fixed values you have seen elsewhere)"
 
 [source.photo]
 desc = "a stack of sheets that someone photographed with a phone"
-trace = "the first line of every page must carry a photo trace (e.g. \"Taken at: IMG_20260930_091233.jpg\")"
+trace = "the first line of every page must carry a photo trace: **invent** a line that contains \"Taken at\" plus a camera filename of your own making (`IMG_` followed by eight digits)"
 
 [prompt]
 intro = "You write synthetic data. Write the body of **one packet of paperwork** -- {pages} pages in total, every page a readable sheet of material (like a real application form / letter / receipt / contract), each page between {min} and {max} characters long."

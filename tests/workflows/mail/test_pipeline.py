@@ -398,6 +398,20 @@ def test_hygiene_judge_reads_the_marker_from_the_locale() -> None:
     assert verdict.raw["duplicated"] == ["official domain: "]
 
 
+def test_hygiene_judge_counts_the_marker_regardless_of_case() -> None:
+    """输入：模型把行首标记写成 `Official domain: `（大写 O），渲染器又追加了模板那行。
+
+    预期行为：判不通过。真机 `ml-36c-en` / `ml-36a-en` / `nim-smoke-13` 各 1 条就是这么漏的：
+    渲染器那行来自 locale 模板（小写），按字面量比就数不到大写那行，state 里留下两行。
+    """
+    judge = judges_mod.HygieneJudge("en")
+    verdict = judge.judge(
+        {"state": "Regards\nOfficial domain: example.com\nofficial domain: example.com"}
+    )
+    assert verdict.ok is False
+    assert verdict.raw["duplicated"] == ["official domain: "]
+
+
 def test_judges_skip_without_spec() -> None:
     """输入：没有 spec。输出：Verdict。
 

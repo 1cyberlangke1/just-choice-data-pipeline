@@ -60,7 +60,7 @@ rules = [
   "The finding line must state which line it points at, in the form \"line 42\"",
   "The finding line must wrap the quoted symbol in backticks (`symbol_name`), only that one",
   "On the fix line, wrap any named symbol in backticks; if told to stay vague, use no backticks there",
-  "Do not use names of real projects, companies or code libraries; invent a name instead",
+  "Do not use names of real projects, companies or code libraries: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",
   "Write everything in {language}",
 ]
 

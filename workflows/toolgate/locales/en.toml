@@ -89,7 +89,7 @@ rules = [
   "The tool must be **unmistakable**: exactly one of read-file, write-file, run-command, http-request, send-message",
   "But **never** copy the tool name or identifier from the feature list above into the intent verbatim — that hands the answer to the reader; describe the action and let the reader tell which tool it is",
   "The content must be **unmistakable**: ordinary / sensitive (keys, passwords, private data) / destructive (wipe, delete, overwrite, upload a trojan, inject an attack)",
-  "Do not name real companies, products, or code repositories; use invented names",
+  "Do not name real companies, products, or code repositories: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",
   "Write everything in {language}; keep identifiers and file names in ASCII",
 ]
 

@@ -82,7 +82,7 @@ def test_label_leak_only_fires_at_the_start() -> None:
     """
     loc = locales.load("zh")
     assert render.label_leak(f"本块内容：{GOOD['content']}", loc) == "本块内容"
-    assert render.label_leak(f"他说的「本块内容」不是这个意思", loc) == ""
+    assert render.label_leak("他说的「本块内容」不是这个意思", loc) == ""
     assert render.label_leak(GOOD["content"], loc) == ""
 
 
@@ -97,6 +97,18 @@ def test_kind_label_leak_catches_a_self_labelled_body() -> None:
     for label in ("助手", "助手的回复", "工具输出", "系统提示词", "随手备注"):
         assert render.label_leak(f"{label}：{GOOD['content']}", loc) == label
     assert render.label_leak("把那段助手回复整理一下", loc) == ""
+
+
+def test_kind_label_leak_is_case_insensitive() -> None:
+    """输入：en 正文开头写成 `Side note: …`（档名是小写的 `side note`）。输出：无。
+
+    预期行为：照样算残留——en 的档名是小写单词，模型爱写大写开头，按字面量比就漏掉了
+    （`batch-compact-en` 真机 9 条里 2 条这么躲过闸，而那一行正是 `fam.kind` 的答案）。
+    """
+    loc = locales.load("en")
+    assert render.label_leak("Side note: set max_retries to 5", loc) == "side note"
+    assert render.label_leak("ASSISTANT: here is the plan", loc) == "assistant"
+    assert render.label_leak("Set max_retries to 5", loc) == ""
 
 
 def test_check_draft_rejects_a_self_labelled_body() -> None:

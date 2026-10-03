@@ -66,8 +66,15 @@ class MailDraft(BaseModel):
     放进 schema 是结构上强制——提示词里写十遍规则，不如让它少一个必填字段。
     """
 
-    from_name: str = Field(description="发件人显示名，例如「XX 银行客服」")
-    from_address: str = Field(description="发件地址，例如 service@example-bank.com")
+    from_name: str = Field(
+        description="发件人显示名：自己编一个具体的机构名或普通人名，不要用「某某」「示例」这类占位词"
+    )
+    from_address: str = Field(
+        description=(
+            "发件地址，形如「用户名@域名」；域名用这一封信里自己编的那个，"
+            "不要照抄本字段说明里的任何字"
+        )
+    )
     subject: str = Field(description="邮件主题")
     body: str = Field(description="邮件正文，3~8 句，可含换行；**不含落款**")
     signature: str = Field(
@@ -201,6 +208,21 @@ def domain_line_prefix(loc: dict[str, JsonValue]) -> str:
     return loc["prompt"]["official_domain_line"].split("{", 1)[0]
 
 
+def owned_domain_line_value(line: str, loc: dict[str, JsonValue]) -> str | None:
+    """输入：一行文本、语言字典。输出：「官方域名」那一行的取值；不是那一行 → None。
+
+    预期行为：只认**行首标记**，但大小写不敏感——渲染器那行来自 locale 模板（en 是小写
+    `official domain: `），模型偶尔写成 `Official domain: `（实跑 `ml-36c-en` 抓到过），
+    按字面量比就会漏掉，state 里于是留下两行。比的是前 `len(prefix)` 个字符的 `lower()`，
+    这样切出来的取值长度与模板一致（`casefold` 会改个别字符的长度，这里不用）。
+    """
+    prefix = domain_line_prefix(loc)
+    stripped = line.strip()
+    if stripped[: len(prefix)].lower() != prefix.lower():
+        return None
+    return stripped[len(prefix) :].strip()
+
+
 def strip_owned_domain_lines(text: str, loc: dict[str, JsonValue]) -> str:
     """输入：一段模型写的文本、语言字典。输出：剔掉「官方域名」行之后的文本。
 
@@ -208,10 +230,9 @@ def strip_owned_domain_lines(text: str, loc: dict[str, JsonValue]) -> str:
     的副本一律作废——否则 state 里会出现两行，或者出现一行与注入特征矛盾的域名。
     实测 kimi-k3 六条里四条把这一行又写进了落款（glm 那次 35 条里 2 条），
     所以这不是偶发：schema 里写了「不要写在这里」也没用，只能结构上接管。
-    只认行首标记，不做模糊匹配。
+    只认行首标记，不做模糊匹配；大小写不敏感（口径见 `owned_domain_line_value`）。
     """
-    prefix = domain_line_prefix(loc)
-    kept = [line for line in text.splitlines() if not line.strip().startswith(prefix)]
+    kept = [line for line in text.splitlines() if owned_domain_line_value(line, loc) is None]
     return "\n".join(kept).strip()
 
 
@@ -224,11 +245,10 @@ def official_domain_of(state: object, loc: dict[str, JsonValue]) -> str:
     """
     if not isinstance(state, str):
         return ""
-    prefix = domain_line_prefix(loc)
     for line in state.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(prefix):
-            return stripped[len(prefix) :].strip()
+        value = owned_domain_line_value(line, loc)
+        if value is not None:
+            return value
     return ""
 
 
@@ -322,3 +342,72 @@ def check_subject(data: dict[str, JsonValue]) -> None:
     """
     if not str(data.get("subject", "")).strip():
         raise DraftError("草稿的「主题」是空的——渲染出来就是一行「Subject:」后面什么都没有")
+
+
+#: 占位式的名字 / 域名：模型偷懒时会把**类别词**当成真名抄下来，或者照抄字段说明里的示例。
+#: 2026-10-03 全量扫 998 条 mail 产物，62 条命中：
+#: `VendorName <support@vendorofficial.com>`、`Vendor Support <support@vendor.com>`、
+#: `Acme Corp <info@acmecorp.com>`、`ExampleVendor <support@examplevendor.com>`、
+#: `某某公司 <no-reply@companyofficial.com>`、`示例银行客服 <service@example-bank.com>`。
+#: 两档判据，避免误伤真名字：
+#: - `PLACEHOLDER_STEMS` 是长词根，**按子串**比——`VendorName` 归一化成 `vendorname` 也认；
+#: - `PLACEHOLDER_WORDS` 是短词，**按整词**比——`Brand` 按子串比会把 `Brandon Smith`
+#:   这种真人名误判成占位词（拒稿要多花一次调用，宁可漏一条也不误伤）。
+PLACEHOLDER_STEMS: Final[tuple[str, ...]] = (
+    "vendor",
+    "company",
+    "brandname",
+    "sender",
+    "recipient",
+    "placeholder",
+    "corporation",
+    "somename",
+    "acme",
+    "examplebank",
+    "examplecorp",
+    "examplebrand",
+    "examplecompany",
+    "某某",
+    "示例",
+    "占位",
+)
+PLACEHOLDER_WORDS: Final[frozenset[str]] = frozenset({"brand"})
+
+#: 按词切名字用的形状：只吃 ASCII 字母数字（中文名字由 `PLACEHOLDER_STEMS` 的子串比管）。
+WORD_PATTERN: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+")
+
+
+def placeholder_in(text: str) -> str | None:
+    """输入：一个名字或域名。输出：命中的占位词根；没命中 → None。
+
+    预期行为：先归一化——去掉空白与标点、转小写，中文与字母数字都留着——再按子串比长词根，
+    最后按整词比短词（两档的取舍见 `PLACEHOLDER_STEMS` 上面那段）。空串返回 None：
+    空名字归 schema 的必填字段管，这里不重复报。
+    """
+    lowered = text.lower()
+    squashed = re.sub(r"[\W_]+", "", lowered)
+    for stem in PLACEHOLDER_STEMS:
+        if stem in squashed:
+            return stem
+    for word in WORD_PATTERN.findall(lowered):
+        if word in PLACEHOLDER_WORDS:
+            return word
+    return None
+
+
+def check_names(data: dict[str, JsonValue]) -> None:
+    """输入：草稿字典。输出：无；显示名或域名里带占位词就抛 `DraftError`。
+
+    预期行为：查 `from_name` / `from_address` / `official_domain` 三个字段。
+    提示词里写了「自己编一个具体的机构名」，但真机里模型照样把类别词当名字抄下来
+    （统计见 `PLACEHOLDER_STEMS` 上面那段）。这种样本的**标签是对的**（金答案由特征算），
+    可名字一看就是模板，收进数据集只会教模型「Vendor 是个公司名」——所以当场拒稿走重渲染，
+    代价是一次调用。
+    """
+    for field in ("from_name", "from_address", "official_domain"):
+        value = str(data.get(field, ""))
+        hit = placeholder_in(value)
+        if hit:
+            raise DraftError(
+                f"草稿的「{field}」里出现了占位词 {hit!r}（{value}）——要自己编一个具体的名字"
+            )

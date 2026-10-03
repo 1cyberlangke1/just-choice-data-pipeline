@@ -27,7 +27,9 @@ from jc.backend.types import (
 )
 
 #: 默认关掉限速与重试，只留被测的那一项，免得测试被限速拖慢。
-_BASE = Limits(requests_per_minute=0, min_interval_ms=0, max_attempts=1)
+_BASE = Limits(
+    requests_per_minute=0, min_interval_ms=0, max_attempts=1, rate_limit_attempts=1
+)
 
 
 class SlowEngine:
@@ -103,7 +105,7 @@ def test_only_counted_faults_are_faults() -> None:
     assert _is_not_fault(SchemaUnsupportedError("400")) is True
     assert _is_not_fault(ValueError("认不出的异常")) is True
     assert _is_not_fault(TransportError("500")) is False
-    assert _is_not_fault(RateLimitError("429")) is False
+    assert _is_not_fault(RateLimitError("429")) is True  # 限流不是故障：它有自己的退避
 
 
 def test_transport_failure_is_retried_until_success(
@@ -188,7 +190,9 @@ def test_success_eases_rpm_back_towards_the_cap(
 ) -> None:
     """降过速之后每次成功抬一点，但绝不超过配置值。"""
     engine = fake_engine(script=[RateLimitError("429"), result_factory()])
-    provider = provider_factory(engine, limits=limits(requests_per_minute=40, max_attempts=2))
+    provider = provider_factory(
+        engine, limits=limits(requests_per_minute=40, max_attempts=2, rate_limit_attempts=2)
+    )
     provider.extract(task_factory(), "json_schema")
     assert 20 < provider.effective_rpm <= 40
 
@@ -196,16 +200,22 @@ def test_success_eases_rpm_back_towards_the_cap(
 def test_retry_after_wins_over_computed_backoff(
     fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
 ) -> None:
-    """429 带 Retry-After 时以服务端要求为准，不跟服务端讨价还价。"""
+    """429 带 Retry-After 时以服务端要求为准，不跟服务端讨价还价。
+
+    输入：一个带 `Retry-After: 7` 的 429，然后一个成功结果。
+    输出：无。预期行为：**两个地方**都按 7 秒来——这条请求自己的退避，和整家 provider
+    的退避窗口（并发下别的线程也得等）。测试里的 sleep 是假的、不推进时钟，
+    所以第二次正好也是 7 秒整。
+    """
     sleeps: list[float] = []
     engine = fake_engine(script=[RateLimitError("429", retry_after_s=7.0), result_factory()])
     provider = provider_factory(
         engine,
-        limits=limits(requests_per_minute=40, max_attempts=2),
+        limits=limits(requests_per_minute=40, max_attempts=2, rate_limit_attempts=2),
         sleep=sleeps.append,
     )
     provider.extract(task_factory(), "json_schema")
-    assert sleeps == [7.0]
+    assert sleeps == [7.0, 7.0]
 
 
 def test_auth_error_retires_the_key(
@@ -254,6 +264,108 @@ def test_minute_rate_limit_keeps_the_key(
     assert provider.available is True
     _, key_fp, _ = provider.extract(task_factory(), "json_schema")
     assert key_fp == fingerprint("k1")
+
+
+def test_rate_limit_gets_a_wider_retry_budget(
+    fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
+) -> None:
+    """429 是「等一会儿就能好」，重试预算必须比普通网络抖动宽。
+
+    输入：连续 4 个 429，然后一个成功结果；普通预算 2、限流预算 6。
+    输出：无。预期行为：第 5 次尝试成功——预算按 `rate_limit_attempts` 走，
+    不被 `max_attempts=2` 掐掉。
+    """
+    engine = fake_engine(script=[RateLimitError("429")] * 4 + [result_factory()])
+    provider = provider_factory(engine, limits=limits(max_attempts=2, rate_limit_attempts=6))
+    _, _, attempts = provider.extract(task_factory(), "json_schema")
+    assert attempts == 5
+
+
+def test_rate_limit_storm_never_opens_the_breaker(
+    fake_engine: object, provider_factory: object, task_factory: object
+) -> None:
+    """一波 429 不该把 provider 判死——熔断一开就再没机会退避重试了。
+
+    输入：连续 5 个 429，熔断阈值 3。
+    输出：无。预期行为：预算用尽后原样抛 429，但熔断仍是 closed、请求真的发了 5 次。
+    """
+    engine = fake_engine(script=[RateLimitError("429")] * 5)
+    provider = provider_factory(engine, limits=limits(fail_max=3, rate_limit_attempts=5))
+    with pytest.raises(RateLimitError):
+        provider.extract(task_factory(), "json_schema")
+    assert provider.breaker_state == "closed"
+    assert len(engine.calls) == 5
+
+
+def test_rate_limit_backs_the_whole_provider_off(
+    fake_engine: object,
+    provider_factory: object,
+    result_factory: object,
+    task_factory: object,
+    fake_clock: object,
+) -> None:
+    """一个线程吃到 429，整家 provider 一起退避——否则并发的别的线程接着撞。
+
+    输入：假时钟停在 0，脚本是「429、429、成功」，限流预算 3。
+    输出：无。预期行为：两次退避窗口按 1 → 2 秒指数增长，且窗口时长真的交给了睡眠函数。
+    """
+    sleeps: list[float] = []
+    engine = fake_engine(script=[RateLimitError("429"), RateLimitError("429"), result_factory()])
+    provider = provider_factory(
+        engine,
+        limits=limits(rate_limit_attempts=3),
+        sleep=sleeps.append,
+        clock=fake_clock(),
+    )
+    provider.extract(task_factory(), "json_schema")
+    assert sleeps.count(1.0) == 1  # 第一次退避：2^0
+    assert sleeps.count(2.0) == 1  # 第二次退避：2^1
+    assert provider.backoff_remaining_s == 2.0
+
+
+def test_retry_after_also_sets_the_provider_backoff(
+    fake_engine: object,
+    provider_factory: object,
+    result_factory: object,
+    task_factory: object,
+    fake_clock: object,
+) -> None:
+    """服务端给了 `Retry-After` 就按它来，别的线程也一样等这么久。"""
+    engine = fake_engine(script=[RateLimitError("429", retry_after_s=7.0), result_factory()])
+    provider = provider_factory(
+        engine,
+        limits=limits(rate_limit_attempts=2),
+        sleep=lambda _seconds: None,
+        clock=fake_clock(),
+    )
+    provider.extract(task_factory(), "json_schema")
+    assert provider.backoff_remaining_s == 7.0
+
+
+def test_success_resets_the_rate_limit_streak(
+    fake_engine: object,
+    provider_factory: object,
+    result_factory: object,
+    task_factory: object,
+    fake_clock: object,
+) -> None:
+    """通了就说明限流过去了：下一次再挨 429，退避长度从头算，不接着往上翻。"""
+    engine = fake_engine(
+        script=[
+            RateLimitError("429"),
+            result_factory(),
+            RateLimitError("429"),
+            result_factory(),
+        ]
+    )
+    provider = provider_factory(
+        engine,
+        limits=limits(rate_limit_attempts=4),
+        sleep=lambda _seconds: None,
+        clock=fake_clock(),
+    )
+    provider.extract(task_factory(), "json_schema")
+    assert provider.backoff_remaining_s == 1.0
 
 
 def test_pool_empty_raises_auth_error(

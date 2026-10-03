@@ -331,13 +331,21 @@ def test_build_backend_wires_config_to_backend() -> None:
     assert backend.providers == ["nim", "spare"]
 
 
-def test_build_backend_rejects_a_provider_without_keys() -> None:
-    """少一个环境变量就当场报人话点名，不静默变成「偷偷只用一半 provider」。"""
+def test_build_backend_skips_a_provider_without_keys() -> None:
+    """某家凭证撤下（环境变量不存在）就跳过它，链上不出现，并在能力备注里点名。"""
     config = BackendsConfig(
         providers=(provider_config("nim", "m1"), provider_config("spare", "m2"))
     )
-    with pytest.raises(ValueError, match="JC_SPARE_KEYS"):
-        build_backend(config, env={"JC_NIM_KEYS": "k1"}, sleep=lambda _s: None)
+    backend = build_backend(config, env={"JC_NIM_KEYS": "k1"}, sleep=lambda _s: None)
+    assert backend.providers == ["nim"]
+    assert any("spare" in note for note in backend.capabilities.notes)
+
+
+def test_build_backend_reports_when_no_provider_has_keys() -> None:
+    """一家都拿不到 key 才报人话，并点名是哪几家缺。"""
+    config = BackendsConfig(providers=(provider_config("nim", "m1"),))
+    with pytest.raises(ValueError, match="JC_NIM_KEYS"):
+        build_backend(config, env={}, sleep=lambda _s: None)
 
 
 def test_build_backend_never_echoes_the_key_in_errors() -> None:

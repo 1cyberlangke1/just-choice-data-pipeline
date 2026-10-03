@@ -31,7 +31,6 @@ import hashlib
 import random
 import re
 from dataclasses import dataclass
-from itertools import combinations
 from typing import Final
 
 from jc.contract import parse_hits

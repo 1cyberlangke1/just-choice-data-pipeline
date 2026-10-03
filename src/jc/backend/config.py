@@ -2,8 +2,9 @@
 
 **key 只从环境变量读，不写进配置文件**（配置文件可能入库；`keys_env` 里放的是变量名）。
 
-输入/输出：`load_config()` 读 TOML 返回 `BackendsConfig`；`resolve_keys()` 按 `keys_env`
-从环境变量取出真实 key。预期行为：任何缺项 / 非法取值都在加载期报人话，不拖到发请求时才炸。
+输入/输出：`load_config()` 读 TOML 返回 `BackendsConfig`；`resolve_keys()` / `available_keys()`
+按 `keys_env` 从环境变量取出真实 key（前者要求必须有，后者允许为空——撤下凭证是受支持的配置）。
+预期行为：任何缺项 / 非法取值都在加载期报人话，不拖到发请求时才炸。
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ class Limits:
     min_interval_ms: int = 0
     cooldown_s: float = 60.0
     max_attempts: int = 4
+    rate_limit_attempts: int = 6
     fail_max: int = 3
 
     def __post_init__(self) -> None:
@@ -49,6 +51,8 @@ class Limits:
             raise ValueError(f"cooldown_s 不能为负，得到 {self.cooldown_s}")
         if self.max_attempts < 1:
             raise ValueError(f"max_attempts 必须 >= 1，得到 {self.max_attempts}")
+        if self.rate_limit_attempts < 1:
+            raise ValueError(f"rate_limit_attempts 必须 >= 1，得到 {self.rate_limit_attempts}")
         if self.fail_max < 1:
             raise ValueError(f"fail_max 必须 >= 1，得到 {self.fail_max}")
 
@@ -151,17 +155,27 @@ def load_config(path: str | Path) -> BackendsConfig:
     return BackendsConfig(providers=tuple(providers), allow_mixed_providers=allow_mixed)
 
 
-def resolve_keys(config: ProviderConfig, env: Mapping[str, str] | None = None) -> tuple[str, ...]:
-    """输入：一个 provider 配置、环境变量映射（默认 `os.environ`）。输出：该家的 key 元组。
+def available_keys(config: ProviderConfig, env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    """输入：一个 provider 配置、环境变量映射（默认 `os.environ`）。输出：该家**能拿到**的 key 元组。
 
-    预期行为：`keys_env` 为空或变量不存在 / 为空 → 报人话并点名变量名；
-    key 用逗号分隔，自动去空白与空项。**错误信息里绝不回显 key 本身**。
+    预期行为：`keys_env` 没配 → 报人话（那是配置写错了）；配了但变量不存在 / 为空 → 返回空元组，
+    **不抛错**——撤下凭证是受支持的配置，该家自然不参与这一批，凭证放回来即恢复。
+    key 用逗号分隔，自动去空白与空项。
     """
     source = os.environ if env is None else env
     if not config.keys_env:
         raise ValueError(f"provider {config.name!r} 没配 keys_env，拿不到 key")
     raw = source.get(config.keys_env, "")
-    keys = tuple(part.strip() for part in raw.split(",") if part.strip())
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
+def resolve_keys(config: ProviderConfig, env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    """输入：一个 provider 配置、环境变量映射（默认 `os.environ`）。输出：该家的 key 元组。
+
+    预期行为：给「必须有 key」的场合用——`keys_env` 为空或变量不存在 / 为空就报人话并点名变量名；
+    key 用逗号分隔，自动去空白与空项。**错误信息里绝不回显 key 本身**。
+    """
+    keys = available_keys(config, env)
     if not keys:
         raise ValueError(
             f"provider {config.name!r} 的环境变量 {config.keys_env} 为空或没设置（key 用逗号分隔）"

@@ -76,7 +76,7 @@ def test_label_leak_only_fires_at_the_start() -> None:
     """
     loc = locales.load("zh")
     assert render.label_leak(f"工单正文：{GOOD['body']}", loc) == "工单正文"
-    assert render.label_leak(f"他说的「工单正文」不是这个意思", loc) == ""
+    assert render.label_leak("他说的「工单正文」不是这个意思", loc) == ""
     assert render.label_leak(GOOD["body"], loc) == ""
 
 

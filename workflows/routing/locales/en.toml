@@ -62,7 +62,7 @@ rules = [
   "It must read like a message the user really submitted: \"our data pipeline has been unable to upload anything since this morning\" is fine; \"issue type: outage\" is not",
   "\"what the ticket is about\" must be obvious at a glance, but **do not write that label into the body** -- no \"bug:\" or \"how-to:\" prefix, no field names",
   "\"how urgent it is\" must be obvious at a glance: can wait / blocked / deadline, exactly one of the three",
-  "Do not name any real company, product, or codebase; use invented names only",
+  "Do not name any real company, product, or codebase: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",
   "Write everything in {language}; keep the product-area codes in ASCII",
 ]
 

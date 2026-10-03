@@ -61,7 +61,7 @@ rules = [
   "The sentence must quote the element name above **verbatim** (character for character), and it must refer to that one element only — do not mention any other element",
   "Do **not** describe the element's state (clickable / greyed out / not visible / already the current screen), and do not mention its row number in the table — those belong to the \"screen elements\" table, and writing them here makes the sentence fight it",
   "Write only the one thing the user wants this turn; do not line up other operations as well",
-  "Do not name real companies, products, or code repositories; use invented names",
+  "Do not name real companies, products, or code repositories: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",
   "Write everything in {language}; keep the element name copied verbatim",
 ]
 

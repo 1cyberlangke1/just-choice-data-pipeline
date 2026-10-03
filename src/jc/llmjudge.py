@@ -98,6 +98,32 @@ def trace_options(
     return [(str(name), str(desc)) for name, desc in node.items()]
 
 
+def trace_prompt(state: str, loc: dict[str, JsonValue], families: tuple[str, ...]) -> str:
+    """组装「逐族再问一遍」的反解提示词。
+
+    输入：渲染好的 state、语言字典、要问的题族（按问的顺序）。输出：提示词。
+    预期行为：每个族的原子题连同选项原样再问一遍——选项名走 `trace_options`（优先
+    `verify.trace_options` 的覆盖节、没有就退回 `fam.<族>.criteria`），所以反解用的选项
+    与数据集里的一致，否则「答对了」与「标签对了」不是一回事。
+    为什么放在这里而不是 `jc.judge`：它要用 `trace_options`，而 `llmjudge` 已经 import 了
+    `judge`，反过来 import 会成环。`compact` / `routing` / `toolgate` / `review` / `search`
+    五家这一段逐字同构（只差 `TRACE_FAMILIES` 与选项来源），只留这一份。
+    """
+    lines = [
+        str(loc["verify"]["intro"]),
+        "",
+        str(loc["verify"]["state_header"]),
+        state,
+        "",
+        str(loc["verify"]["questions_header"]),
+    ]
+    for index, family in enumerate(families, start=1):
+        lines.append(f"{index}. {loc['fam'][family]['q'][0]}")
+        for name, desc in trace_options(family, loc):
+            lines.append(str(loc["verify"]["option_line"]).format(name=name, desc=desc))
+    return "\n".join(lines)
+
+
 @lru_cache(maxsize=8)
 def load(locale: str) -> dict[str, JsonValue]:
     """输入：语言代码。输出：提示词字典（带缓存）。

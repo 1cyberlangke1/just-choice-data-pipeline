@@ -36,6 +36,11 @@ DIM_ORDER: Final[tuple[str, ...]] = ("need",)
 #: Markdown 围栏残留：模型偶尔把整句包进 ``` 里，那是实打实的数据损坏。
 FENCE_PATTERN: Final[re.Pattern[str]] = re.compile(r"```")
 
+#: 「没填的槽位」：模型把提示词里的占位名照抄进查询，括号里还是那句占位话。
+#: 全角/半角方括号都算，括号内容限 1~20 字——正常的一句查询不会这么写。
+#: 依据：`sourceselect-4x-zh` 的 21 条合格样本里逐条读出来 3 条（`【主题】` / `[代号]` / `[未知主题]`）。
+SLOT_PATTERN: Final[re.Pattern[str]] = re.compile(r"【[^】\n]{1,20}】|［[^］\n]{1,20}］|\[[^\]\n]{1,20}\]")
+
 #: 两格之间的分隔符。选竖线是因为它在中英里写法相同，反解不用跨语言试。
 CELL_SEP: Final[str] = "|"
 
@@ -119,8 +124,11 @@ def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
 
     预期行为：那句查询会**原样**拼进 state，拼进去就洗不掉了，所以拼之前逐条查：
     - 非空、单行、不含 Markdown 围栏；
+    - 不许有没填的槽位（`【主题】` / `[代号]` 这种）；
     - 开头不许再写一遍段落名（模型很爱这么干，写进去就是一行重复标记）；
-    - 不许谈那张候选表（列名、序号、竖线）——那是代码渲染的地盘，写进去就是两边抢同一件事。
+    - 不许出现禁用话术：谈那张候选表（列名、序号、竖线）——那是代码渲染的地盘，写进去就是
+      两边抢同一件事；以及**元话术**（`我需要输出…` / `根据以上要求，我会写出…`）——
+      那种正文压根不是查询，反解判别器却照样能反解出一个首要要求，只能在渲染期按字面拦。
     """
     for field in TEXT_FIELDS:
         text = str(data.get(field, "")).strip()
@@ -128,6 +136,9 @@ def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
             raise DraftError("草稿的「查询」是空的")
         if FENCE_PATTERN.search(text):
             raise DraftError("草稿的「查询」里混进了 Markdown 围栏")
+        slot = SLOT_PATTERN.search(text)
+        if slot:
+            raise DraftError(f"草稿的「查询」里有没填的槽位：{slot.group(0)}")
         if "\n" in text:
             raise DraftError("草稿的「查询」是多行——它必须是一行")
         leaked = label_leak(text, loc)
@@ -135,7 +146,7 @@ def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:
             raise DraftError(f"草稿的「查询」把段落名「{leaked}」也写进去了")
         echoed = banned_echo(text, loc)
         if echoed:
-            raise DraftError(f"草稿的「查询」谈到了候选表：{'、'.join(echoed)}")
+            raise DraftError(f"草稿的「查询」里出现了禁用话术：{'、'.join(echoed)}")
 
 
 def row_line(index: int, row: SourceRow, loc: dict[str, JsonValue]) -> str:

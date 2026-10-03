@@ -43,7 +43,7 @@ rules = [
   "Do not prefix the claim with a field name like \"What the agent claims:\" and do not copy the feature list wording; write what a person (or an agent a person wrote) would actually say",
   "The tone must be **unmistakable**: plain just states what was done; hedged uses words like \"probably / should / looks like\"; absolute uses words like \"definitely / absolutely / cannot possibly\"",
   "What the claim says must match \"what the agent claims it finished\": adding cases is not a new API, a speedup is not a bug fix",
-  "Do not name real companies, products, or codebases; use invented names",
+  "Do not name real companies, products, or codebases: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",
   "Write everything in {language}; keep identifiers and file names in ASCII",
 ]
 

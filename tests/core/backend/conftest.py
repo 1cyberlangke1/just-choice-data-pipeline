@@ -12,6 +12,8 @@ from jc.jsontypes import JsonValue
 import pytest
 from pydantic import BaseModel
 
+import time
+
 from jc.backend.config import Limits, ProviderConfig
 from jc.backend.engine import EngineRequest, EngineResult
 from jc.backend.provider import Provider
@@ -106,6 +108,24 @@ def no_sleep() -> object:
     return lambda _seconds: None
 
 
+class FakeClock:
+    """可推进的假单调时钟：只有显式改 `now` 才走字，用来量退避窗口。"""
+
+    def __init__(self, now: float = 0.0) -> None:
+        """输入：起始刻度。输出：FakeClock 实例。"""
+        self.now = now
+
+    def __call__(self) -> float:
+        """输入：无。输出：当前刻度。预期行为：不推进就一直是同一个值。"""
+        return self.now
+
+
+@pytest.fixture
+def fake_clock() -> type[FakeClock]:
+    """工厂夹具：`fake_clock()` 造一个停在 0 的假时钟。"""
+    return FakeClock
+
+
 def make_provider(
     engine: object,
     *,
@@ -116,10 +136,11 @@ def make_provider(
     limits: Limits | None = None,
     capabilities: BackendCapabilities | None = None,
     sleep: object = None,
+    clock: object = None,
 ) -> Provider:
     """造一个 provider，默认关掉限速与真实睡眠。
 
-    输入：假引擎、可选名字 / key / 模型 / 档位 / 限额 / 能力 / 睡眠函数。
+    输入：假引擎、可选名字 / key / 模型 / 档位 / 限额 / 能力 / 睡眠函数 / 时钟。
     输出：Provider 实例。
     预期行为：`requests_per_minute=0` 与 `min_interval_ms=0` 让限速器完全不介入，
     测试只测被测的那件事，不被限速拖慢。
@@ -130,12 +151,19 @@ def make_provider(
             base_url="https://example.test/v1",
             model=model,
             mode=mode,
-            limits=limits or Limits(requests_per_minute=0, min_interval_ms=0, max_attempts=1),
+            limits=limits
+            or Limits(
+                requests_per_minute=0,
+                min_interval_ms=0,
+                max_attempts=1,
+                rate_limit_attempts=1,  # 「关掉重试」的语义要覆盖限流那一档
+            ),
         ),
         keys,
         engine,
         capabilities=capabilities,
         sleep=sleep or (lambda _seconds: None),
+        clock=clock or time.monotonic,
     )
 
 

@@ -49,7 +49,7 @@ rules = [
   "The placeholder flag must be obvious at a glance: if yes, leave one `TODO` or `FIXME` behind (like \"TODO: fill in the load-test numbers\"); if no, leave none",
   "The citation flag must be obvious too: if yes, write one bracketed number like `[1]` (like \"... twice as fast as the previous build[1]\"); if no, write none",
   "Do not write Markdown fences, do not write line numbers, and do not write the names \"material to grade / material manifest / score sheet / band table / gate table\"",
-  "Do not use the name of any real company, product, or codebase — invent fictitious names",
+  "Do not use the name of any real company, product, or codebase: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",
 ]
 
 [feature.placeholders.no]

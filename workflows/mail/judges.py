@@ -64,11 +64,16 @@ def duplicated_owned_lines(state: str, loc: dict[str, JsonValue]) -> list[str]:
 
     预期行为：那一行由渲染器写（`render.to_state` 负责追加），模型再写一遍就成了重复行。
     实跑抓到过（`nim-smoke-13` / `13b` 的 `mail-train-0000001`，落款里连着两个「官方域名：」）。
-    只认行首、只数次数，不做模糊匹配——误判会直接拒掉好数据。
+    只认行首、只数次数，不做模糊匹配——误判会直接拒掉好数据。**大小写不敏感**：渲染器那行
+    是小写模板，模型写成 `Official domain: ` 就躲过了按字面量比的版本（`ml-36c-en` 抓到过），
+    认法统一交给 `render.owned_domain_line_value`。
     """
-    prefix = owned_domain_prefix(loc)
-    hits = [line for line in state.splitlines() if line.strip().startswith(prefix)]
-    return [prefix] if len(hits) > 1 else []
+    hits = [
+        line
+        for line in state.splitlines()
+        if render.owned_domain_line_value(line, loc) is not None
+    ]
+    return [owned_domain_prefix(loc)] if len(hits) > 1 else []
 
 
 class TraceDraft(BaseModel):

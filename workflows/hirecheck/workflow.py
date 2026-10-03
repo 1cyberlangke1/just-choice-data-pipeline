@@ -36,7 +36,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket, restricted_dims
+from jc.cover import hash_bucket, slice_by_bucket, restrictor
 from jc.jsontypes import JsonValue
 from jc.knobs import require_pool
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, register
@@ -131,9 +131,7 @@ class HireCheckConfig:
             raise ValueError(f"case_limit 不能为负：{self.case_limit}（0 = 取全部）")
 
 
-def _restricted(**overrides: tuple[JsonValue, ...]) -> dict[str, tuple[JsonValue, ...]]:
-    """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    return restricted_dims(features.DIMS, overrides)
+_restricted = restrictor(features.DIMS)
 
 
 def id_dims() -> dict[str, tuple[JsonValue, ...]]:

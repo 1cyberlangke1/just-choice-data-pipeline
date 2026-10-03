@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 from jc.jsontypes import JsonValue
+from jc.state_parse import read_after_label
 
 import re
 from dataclasses import dataclass
@@ -102,23 +103,6 @@ def _unquote(line: str) -> str:
     return out
 
 
-def _header(line: str, labels: tuple[str, ...], what: str) -> str:
-    """输入：一行文本、抬头标签的几种写法、报错用的名字。输出：抬头后面的值。
-
-    预期行为：**最长前缀优先**（标签之间有前缀关系时才不会认错）；后面必须跟空格或分隔符，
-    否则「缓存复用请求号」这种更长的抬头会被认成标签本身。
-    """
-    best = ""
-    for label in labels:
-        if line.startswith(label) and len(label) > len(best):
-            rest = line[len(label) :].lstrip(" \t")
-            if rest:
-                best = label
-    if not best:
-        raise ValueError(f"{what}抬头认不出来：{line!r}")
-    return line[len(best) :].lstrip(" \t")
-
-
 def parse_state(state: object, tables: Tables) -> ParsedReuse:
     """输入：渲染出来的 `state`、三张表。输出：`ParsedReuse`。
 
@@ -132,7 +116,7 @@ def parse_state(state: object, tables: Tables) -> ParsedReuse:
         lines.pop()
     if len(lines) < 4:
         raise ValueError(f"state 太短，认不出两块轨迹：{state!r}")
-    request_id = _header(lines[0], tables.request, "请求号")
+    request_id = read_after_label(lines[0], tables.request, "请求号")
     flavor = _flavor_of(lines[1], tables)
     sides: dict[str, list[tuple[str, str]]] = {"cached": [], "current": []}
     section = ""

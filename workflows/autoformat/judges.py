@@ -24,7 +24,8 @@ from jc.judge import Judge, Verdict
 from jc.jsontypes import JsonValue
 # `answer_value` 本文件不直接调，但它是这一家的公开名字——测试与审计按 `judges.answer_value` 取，
 # 合并进通用层之后仍然从这里转出去（别的五家内部还要用它）。
-from jc.workflow import answer_value, compare_expected
+from jc.workflow import answer_value  # noqa: F401 —— 公开名字，本文件不直接调
+from jc.workflow import compare_expected
 from pydantic import BaseModel, Field
 
 from . import features, locales, parse, questions

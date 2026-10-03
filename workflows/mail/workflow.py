@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Final, cast
 
 from jc import jsonio
-from jc.cover import hash_bucket, restricted_dims
+from jc.cover import hash_bucket, restrictor
 from jc.judge import BACKEND, BARE, LOCALE
 
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register, sliced_cases
@@ -76,9 +76,7 @@ class MailConfig(CommonKnobs):
     phrasing_pool: tuple[int, ...] = (0, 1, 2)
 
 
-def _restricted(**overrides: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
-    """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    return restricted_dims(features.DIMS, overrides)
+_restricted = restrictor(features.DIMS)
 
 
 def _without_ood(values: tuple[str, ...], dropped: frozenset[str], *, by_target: bool) -> tuple[str, ...]:
@@ -203,6 +201,7 @@ class MailWorkflow(BackendHolder):
         render.check_official_domain(spec.tags, draft.data)
         render.check_signature(draft.data)
         render.check_subject(draft.data)
+        render.check_names(draft.data)
         return render.to_state(draft.data, loc)
 
     def ask(self, spec: MailSpec, rng: random.Random, locale: str) -> list[LabeledQuestion]:

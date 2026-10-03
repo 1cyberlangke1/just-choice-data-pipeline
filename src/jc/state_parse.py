@@ -115,6 +115,45 @@ def split_sections(
     return out
 
 
+def read_after_label(line: str, labels: Sequence[str], what: str) -> str:
+    """输入：一行文本、标签的几种写法、报错用的名字。输出：标签后面的原文。
+
+    预期行为：**最长前缀优先**（标签之间有前缀关系时才不会认错）；标签后面必须跟东西，
+    否则更长的标签会被认成短标签本身；一个都认不出来就报人话（渲染版式写歪了）。
+    6 家同构（`cachereuse` / `clipcut` / `planstep` / `quoteread` / `sentiment` / `siftrank`），
+    只留这一份——抄歪了会让「按 state 反解」悄悄对不上。
+    """
+    best = ""
+    for label in labels:
+        if line.startswith(label) and len(label) > len(best):
+            rest = line[len(label) :].lstrip(" \t")
+            if rest:
+                best = label
+    if not best:
+        raise ValueError(f"{what}抬头认不出来：{line!r}")
+    return line[len(best) :].lstrip(" \t")
+
+
+def read_field_value(line: str, labels: Sequence[str]) -> str | None:
+    """输入：一行文本、候选字段名。输出：分隔符后的值；都不是这一格时给 None。
+
+    预期行为：取**最长**的匹配字段名（字段名之间有前缀关系时才不会认错），并且要求字段名
+    后面紧跟分隔符——否则标题行会被认成某一格。故意收紧。3 家同构
+    （`elementpick` / `sim` / `skillpick`），只留这一份。
+    """
+    best: str | None = None
+    for label in labels:
+        if not line.startswith(label):
+            continue
+        if line[len(label) :].lstrip()[:1] not in ("：", ":"):
+            continue
+        if best is None or len(label) > len(best):
+            best = label
+    if best is None:
+        return None
+    return line[len(best) :].strip().lstrip("：:").strip()
+
+
 def recognize_locale(
     state: object, api: LocaleApi, parse: Callable[[str, dict[str, JsonValue]], Parsed]
 ) -> str | None:

@@ -24,7 +24,7 @@ rules = [
   "The user goal is one sentence stating what the command should achieve, naming a concrete path or object; never copy the command itself into it and never prefix it with \"User goal:\"",
   "The note is one sentence stating objectively what the command does (does it delete anything, does it need admin rights); do **not** judge whether it should be approved",
   "When the privilege feature says no elevation, the command must contain no sudo / Administrator / RunAs wording; when it says elevated, it must",
-  "Never use real companies, domains, production databases or host names; invent them",
+  "Never use real companies, domains, production databases or host names: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",
   "Write everything in {language}; keep commands, paths and identifiers in ASCII",
 ]
 

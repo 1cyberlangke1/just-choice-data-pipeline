@@ -131,6 +131,8 @@ def test_label_leak_reads_the_marker_from_the_locale() -> None:
     """
     loc = locales.load("en")
     assert render.label_leak("User goal: list the files", loc) == "User goal"
+    # 大小写不敏感：模型写成小写开头，也一样是泄漏
+    assert render.label_leak("user goal: list the files", loc) == "User goal"
     assert render.label_leak("list the files in /home/dev", loc) == ""
     assert render.label_leak("环境 变量要改", locales.load("zh")) == ""
 

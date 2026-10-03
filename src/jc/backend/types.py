@@ -64,9 +64,14 @@ class TransportError(BackendError):
 
 
 class RateLimitError(TransportError):
-    """429。**算 provider 故障**，可重试，且优先换 key。"""
+    """429：服务端在说「你打太快了」。**不算 provider 故障**，可重试，且优先换 key。
 
-    counts_as_fault = True
+    预期行为：把它排除在熔断计数之外——限流不是「这家坏了」，它有自己的救法
+    （指数退避 + 自适应降速，见 `provider._RetryBudget`）。计入熔断的实测后果是
+    「一波 429 连开三次就把 provider 判死 → 整批中止」，退避根本没机会跑完。
+    """
+
+    counts_as_fault = False
 
     def __init__(self, msg: str, retry_after_s: float | None = None) -> None:
         """输入：人话说明、可选的 `Retry-After` 秒数。输出：异常实例。"""

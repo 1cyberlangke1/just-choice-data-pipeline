@@ -108,7 +108,7 @@ class FakeBackend(_fakes.ScriptedBackend):
         if self.label_query:
             query = f"查询：{query}"
         if self.table_query:
-            query = f"请按候选来源表的序号挑一行"
+            query = "请按候选来源表的序号挑一行"
         return {"query": query}
 
     def _trace(self, tags: dict[str, JsonValue]) -> dict[str, JsonValue]:

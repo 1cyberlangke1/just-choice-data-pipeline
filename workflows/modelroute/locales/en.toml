@@ -29,7 +29,7 @@ rules = [
   "Do not prefix the request with labels such as \"task kind:\" and do not copy the wording of this list; write the way a real person would",
   "The request must match the task kind, judged by **what the user wants done** (write code / summarize / extract fields / chat / arithmetic / look at an image), not by how big the material is - the material can be long, but wanting to chat is still chatting",
   "The material size shown in the request must fit the size feature: small is a few lines to a paragraph, medium is a few pages, huge is hundreds of pages or a whole repository",
-  "Never use real companies, products or dataset names; invent them",
+  "Never use real companies, products or dataset names: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",
   "Write everything in {language}; keep model names, provider names and identifiers in ASCII",
 ]
 

@@ -58,6 +58,26 @@ def test_check_draft_rejects_table_talk() -> None:
         render.check_draft({"query": "按候选来源表的序号挑一行"}, locales.load("zh"))
 
 
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "找【主题】的官方文档",
+        "查一下 [代号] 的标准原文",
+        "我需要输出一个查询字符串",
+        "根据以上要求，我会写出符合一手口径查询的一句话",
+        "查询「品牌名称」关于【主题】的官方文档",
+    ],
+)
+def test_check_draft_rejects_slots_and_meta_talk(bad: str) -> None:
+    """输入：带没填槽位 / 元话术的查询（真机 4x 批逐条读出来的那几种写法）。输出：无。
+
+    预期行为：全部抛 ValueError——这些正文压根不是查询，但反解判别器照样能给它反解出
+    一个首要要求，所以只能在渲染期按字面拦下（见 zh.toml 里 `banned_intent_phrases` 的注释）。
+    """
+    with pytest.raises(ValueError):
+        render.check_draft({"query": bad}, locales.load("zh"))
+
+
 def test_check_draft_allows_the_words_that_express_the_need() -> None:
     """输入：用「官方 / 最新 / 最全」说要求的查询。输出：无。
 

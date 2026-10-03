@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from jc.jsontypes import JsonValue
+from jc.state_parse import read_after_label
 
 from . import locales
 
@@ -156,23 +157,6 @@ def merged_tables() -> Tables:
     )
 
 
-def _header(line: str, labels: tuple[str, ...], what: str) -> str:
-    """输入：一行文本、抬头标签的几种写法、报错用的名字。输出：抬头后面的值。
-
-    预期行为：**最长前缀优先**（标签之间有前缀关系时才不会认错）；后面必须是空白，
-    否则更长的抬头会被认成标签本身。
-    """
-    best = ""
-    for label in labels:
-        if line.startswith(label) and len(label) > len(best):
-            rest = line[len(label) :].lstrip(" \t")
-            if rest:
-                best = label
-    if not best:
-        raise ValueError(f"{what}抬头认不出来：{line!r}")
-    return line[len(best) :].lstrip(" \t")
-
-
 def _deps_of(cell: str, tables: Tables, count: int, index: int) -> tuple[int, ...]:
     """输入：前置那一格的原文、表、这张表有几项、这一项自己的下标。输出：前置项下标（升序）。
 
@@ -212,7 +196,7 @@ def parse_state(state: object, tables: Tables) -> ParsedPlan:
         lines.pop()
     if len(lines) < 3:
         raise ValueError(f"state 太短，认不出任务表：{state!r}")
-    request_id = _header(lines[0], tables.request, "请求号")
+    request_id = read_after_label(lines[0], tables.request, "请求号")
     # 前置那一格要等整张表读完才知道「共几项」（编号越界要报错），所以先存原文、最后一并解析。
     raw: list[tuple[str, bool, str]] = []
     rules: list[str] = []

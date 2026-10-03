@@ -112,19 +112,10 @@ def label_leak(text: str, loc: dict[str, JsonValue]) -> str:
     """输入：一段文本、语言字典。输出：文本开头误写的段落名（没有就空串）。
 
     预期行为：只认「段落名 + 冒号」开头这一种写法——正文里正常提到这些词不算
-    （模型很爱在开头再抄一遍「改动内容：」，抄进去就是一行重复标记）。
+    （模型很爱在开头再抄一遍「改动内容：」，抄进去就是一行重复标记）。查段落名的机制只有
+    一份，住在 `jc.locale_files.label_leak`（大小写不敏感的口径也在那里）；本家只声明键表。
     """
-    meta = loc["meta"]
-    stripped = text.strip()
-    if not stripped:
-        return ""
-    head = stripped.splitlines()[0].strip()
-    for key in SECTION_KEYS:
-        title = str(meta[key])
-        for sep in (str(meta["colon"]), ":", "："):
-            if head.startswith(f"{title}{sep}"):
-                return title
-    return ""
+    return locale_files.label_leak(text, loc, SECTION_KEYS)
 
 
 

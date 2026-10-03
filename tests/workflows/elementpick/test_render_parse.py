@@ -1,6 +1,7 @@
 """渲染与反解的测试：版式、逐格往返、合并表、以及各类硬伤要报人话。"""
 
 from __future__ import annotations
+from jc.state_parse import read_field_value
 
 
 import pytest
@@ -132,8 +133,8 @@ def test_field_value_prefers_the_longest_label() -> None:
 
     预期行为：取最长的那个——否则「屏」会把「屏号」那一格提前吃掉。
     """
-    assert parse._field_value("屏号：S-1", ("屏", "屏号")) == "S-1"
-    assert parse._field_value("屏：S-1", ("屏", "屏号")) == "S-1"
+    assert read_field_value("屏号：S-1", ("屏", "屏号")) == "S-1"
+    assert read_field_value("屏：S-1", ("屏", "屏号")) == "S-1"
 
 
 def test_field_value_needs_a_separator_right_after_the_label() -> None:
@@ -141,8 +142,8 @@ def test_field_value_needs_a_separator_right_after_the_label() -> None:
 
     预期行为：不算这一格——标题行确实以「元素」开头，收紧才不会误认。
     """
-    assert parse._field_value("元素清单", ("元素",)) is None
-    assert parse._field_value("今天天气不错。", ("动作",)) is None
+    assert read_field_value("元素清单", ("元素",)) is None
+    assert read_field_value("今天天气不错。", ("动作",)) is None
 
 
 def test_parse_cells_reports_hard_damage() -> None:

@@ -22,9 +22,10 @@ from jc.jsontypes import JsonValue
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 
 
-from .config import BackendsConfig, resolve_keys
+from .config import BackendsConfig, available_keys
 from .engine import Engine, InstructorEngine
 from .probe import probe_capabilities
 from .progress import STATUS_OK, ProgressEntry, RunSink
@@ -255,8 +256,9 @@ def build_backend(
     输入：整份配置、可选写入口 / 引擎 / 探测开关 / 睡眠函数 / 环境变量映射。
     输出：装配好的 `LLMBackend`。
     预期行为：
-    - key **只从环境变量读**（`keys_env` 里放的是变量名）；任何一家取不到 key 就立刻报人话，
-      不静默少一家——否则配置写错会变成「偷偷只用了一半 provider」；
+    - key **只从环境变量读**（`keys_env` 里放的是变量名）；某家取不到 key（变量不存在 / 为空）
+      就**跳过这家**、链上不出现，并在能力备注里点名——撤下凭证是受支持的配置，不该让整批
+      跑不起来；一个都没剩下才报人话（报错信息绝不回显 key）；
     - 全部 provider **共用一个引擎实例**，客户端缓存（键含端点 + key 指纹 + 档位）才有效；
     - `probe=True` 时对每家探一次能力（只拿第一个 key 探，省配额），探测结果只决定该家
       从哪一档起步；探测本身不抛异常，失败只是记一条 notes；
@@ -265,9 +267,13 @@ def build_backend(
     """
     shared = engine if engine is not None else InstructorEngine()
     providers: list[Provider] = []
+    skipped: list[str] = []
     probed: BackendCapabilities | None = None
     for item in config.providers:
-        keys = resolve_keys(item, env)
+        keys = available_keys(item, env)
+        if not keys:
+            skipped.append(f"{item.name}({item.keys_env})")
+            continue
         caps = (
             probe_capabilities(
                 base_url=item.base_url,
@@ -281,5 +287,10 @@ def build_backend(
         if probed is None:
             probed = caps
         providers.append(Provider(item, keys, shared, capabilities=caps, sleep=sleep))
+    if not providers:
+        raise ValueError(f"链上一个 provider 都没拿到 key，没法生成：{'、'.join(skipped)}")
+    if skipped:
+        base = probed or BackendCapabilities()
+        probed = replace(base, notes=base.notes + (f"跳过没凭证的 provider：{'、'.join(skipped)}",))
     chain = ProviderChain(providers, allow_mixed=config.allow_mixed_providers)
     return LLMBackend(chain, sink=sink, capabilities=probed)

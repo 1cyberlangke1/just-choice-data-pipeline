@@ -20,7 +20,7 @@ import random
 from dataclasses import dataclass
 from typing import Final, cast
 
-from jc.cover import hash_bucket, restricted_dims
+from jc.cover import hash_bucket, restrictor
 from jc.judge import BACKEND, BARE, LOCALE
 from jc.jsontypes import JsonValue
 
@@ -72,9 +72,7 @@ class ShellConfig(CommonKnobs):
     phrasing_pool: tuple[int, ...] = (0, 1, 2)
 
 
-def _restricted(**overrides: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
-    """输入：要覆盖的维度。输出：覆盖后的维度表。预期行为：不改动 `features.DIMS`。"""
-    return restricted_dims(features.DIMS, overrides)
+_restricted = restrictor(features.DIMS)
 
 
 def id_dims() -> dict[str, tuple[str, ...]]:

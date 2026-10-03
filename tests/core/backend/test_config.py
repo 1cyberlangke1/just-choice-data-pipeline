@@ -114,6 +114,20 @@ def test_resolve_keys_requires_keys_env() -> None:
         cfg.resolve_keys(provider, {"JC_X": "k"})
 
 
+def test_available_keys_returns_empty_when_the_credential_is_gone() -> None:
+    """凭证撤下（变量不存在 / 为空）→ 空元组，不抛错：撤下凭证是受支持的配置。"""
+    provider = cfg.ProviderConfig(name="a", base_url="u", model="m", keys_env="JC_ABSENT")
+    assert cfg.available_keys(provider, {}) == ()
+    assert cfg.available_keys(provider, {"JC_ABSENT": " , "}) == ()
+
+
+def test_available_keys_still_rejects_a_missing_keys_env() -> None:
+    """没配 keys_env 是配置写错，照旧报人话。"""
+    provider = cfg.ProviderConfig(name="a", base_url="u", model="m")
+    with pytest.raises(ValueError, match="没配 keys_env"):
+        cfg.available_keys(provider, {})
+
+
 def test_resolve_all_keys_matches_provider_order(tmp_path: Path) -> None:
     text = GOOD.replace(
         'model = "other/model"', 'model = "other/model"\nkeys_env = "JC_BACKUP_KEYS"'
@@ -139,6 +153,7 @@ def test_resolve_all_keys_fails_loudly_when_one_provider_is_unconfigured(tmp_pat
         ("min_interval_ms", -1, "min_interval_ms"),
         ("cooldown_s", -1.0, "cooldown_s"),
         ("max_attempts", 0, "max_attempts"),
+        ("rate_limit_attempts", 0, "rate_limit_attempts"),
         ("fail_max", 0, "fail_max"),
     ],
 )

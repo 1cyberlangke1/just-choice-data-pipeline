@@ -18,6 +18,7 @@ from typing import Final
 
 from pydantic import BaseModel, Field
 
+from jc import locale_files
 from jc.backend.types import GenerationTask
 from jc.jsontypes import JsonValue
 from jc.workflow import DraftError
@@ -207,20 +208,18 @@ def check_command(data: dict[str, JsonValue]) -> None:
         raise DraftError("草稿的「拟执行命令」以非 ASCII 字符开头——那是描述，不是一条命令")
 
 
+#: 本家 `label_leak` 查的键表：四个字段的行首标记都由代码写，模型再抄一遍就是重复标记。
+LEAK_KEYS: Final[tuple[str, ...]] = ("env_label", "goal_label", "command_label", "note_label")
+
+
 def label_leak(text: str, loc: dict[str, JsonValue]) -> str:
     """输入：一段文本、语言字典。输出：文本开头误写的字段名（没有就空串）。
 
     预期行为：模型很爱把字段名自己写进内容里（`用户目标：用户目标：查看…`），
-    只认「字段名 + 冒号」开头这一种写法——正文里正常提到「环境」这类词不算。
+    只认「字段名 + 冒号」开头这一种写法——正文里正常提到「环境」这类词不算。查标记名的
+    机制只有一份，住在 `jc.locale_files.label_leak`（大小写不敏感的口径也在那里）。
     """
-    stripped = text.strip()
-    meta = loc["meta"]
-    separators = {str(meta["colon"]).strip(), "：", ":"}
-    for key in ("env_label", "goal_label", "command_label", "note_label"):
-        name = str(meta[key])
-        if any(stripped.startswith(f"{name}{separator}") for separator in separators):
-            return name
-    return ""
+    return locale_files.label_leak(text, loc, LEAK_KEYS)
 
 
 def check_draft(data: dict[str, JsonValue], loc: dict[str, JsonValue]) -> None:

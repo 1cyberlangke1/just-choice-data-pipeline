@@ -7,11 +7,33 @@ language_name = "English"
 # "official" / "latest" / "complete" are deliberately NOT banned: they are how the primary
 # requirement is normally expressed in English, and banning them would block the one sentence this
 # task is built to read.
+# The placeholder compounds below are banned for the same reason as in `zh.toml`: a query that names
+# a "fictional company" instead of inventing a name is damaged data, not wording.
+# Added 2026-10-03: the same reading pass over `sourceselect-4x-zh` found queries that are not
+# queries at all but meta-talk about what the model is about to write ("I need to output a query
+# string...", "Based on the above, I will write...") plus unfilled placeholders ("brand name",
+# "company X"). The trace judge still reverse-reads those correctly, so they must be stopped by
+# literal phrases here.
 banned_intent_phrases = [
   "candidate source",
   "source table",
   "row number",
   "|",
+  "fictional company",
+  "fictional project",
+  "fictional product",
+  "made-up company",
+  "hypothetical company",
+  "hypothetical project",
+  "I need to output",
+  "I will write",
+  "Based on the above",
+  "Please refer to the example",
+  "Example format",
+  "You are playing",
+  "User assistant",
+  "Brand name",
+  "Company X",
 ]
 
 [meta]
@@ -41,13 +63,13 @@ need = "Primary requirement"
 intro = "Below is a lookup scenario. Write **one query sentence** (a single line) that says what you are looking for and what you need from the source."
 bullet = "- {dim}: {brief} ({hint})"
 rules = [
-  "Write **one** query, a single line; no line breaks, no Markdown fences",
+  "Write **one** query, a single line; no line breaks, no Markdown fences, and do not restate these instructions (no \"write one query sentence\" meta-talk)",
   "Do not talk about the candidate table: avoid \"candidate source / source table / row number\", and never emit a vertical bar",
-  "The requirement must be obvious at a glance: authority, freshness, or coverage — exactly one",
+  "The requirement must be obvious at a glance, and it must be the **only** one you mention: never ask for two or three at once (e.g. \"authoritative, latest and most complete\") — if you do, the primary requirement cannot be read off the sentence and the sample is unusable",
   "For authority: write it as looking for a **first-hand statement** (official docs, the standard itself, the original announcement)",
   "For freshness: write it as looking for **the latest** (newest release, most recent progress)",
   "For coverage: write it as looking for **the most complete round-up** (full list, end-to-end comparison)",
-  "Do not name any real company, product, or repository — invent the names",
+  "Do not name any real company, product, or repository: invent a brand-like or code name of your own — never write placeholder wording such as \"fictional company\" into the query",
   "Write everything in {language}",
 ]
 

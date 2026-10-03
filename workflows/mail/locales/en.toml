@@ -27,13 +27,14 @@ rules = [
   "When the sheet says the link text does not match its target, write both addresses in the form \"displayed address (actually points to real address)\"; with a single address the reader cannot tell",
   "A mail that claims an organisation must end with a line \"official domain: <domain>\" giving that organisation's real domain; a personal mail that claims no organisation must not have that line",
   "Address a plain ordinary person; do not use any real company, brand or person",
+  "Invent a specific, believable organisation name and domain for every field - never a placeholder such as \"Vendor\", \"Company\", \"Brand\", \"Acme\" or \"Example Bank\"",
   "Do not explain the features and do not write anything like \"this is a phishing email\"",
   "Write everything in {language}; invented English-looking names and domains read most naturally",
 ]
 
 [feature.sender.known_vendor]
 brief = "the sender is a legitimate vendor the recipient knows"
-hint = "display name is the vendor name, the sender domain is that vendor's official domain, and the official-domain field repeats the same domain"
+hint = "the display name is a specific organisation name you invent (never the placeholder word \"vendor\"), the sender domain is that organisation's own domain, and the official-domain field repeats the same domain"
 
 [feature.sender.unknown_personal]
 brief = "the sender is a stranger writing as an individual"
@@ -41,7 +42,7 @@ hint = "display name is an ordinary person's name, the sender address is at a fr
 
 [feature.sender.forged_brand]
 brief = "the sender impersonates a well-known organisation (the display name is theirs, the real domain is not)"
-hint = "use a brand / bank / platform name as the display name, send from a lookalike domain that does not belong to it, and put the organisation's real domain in the official-domain field"
+hint = "use a specific invented brand / bank / platform name as the display name (never a placeholder such as \"Brand\"), send from a lookalike domain that does not belong to it, and put the organisation's real domain in the official-domain field"
 
 [feature.lure.none]
 brief = "no pressure and no incentive, purely business as usual"

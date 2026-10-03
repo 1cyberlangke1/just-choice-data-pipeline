@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 from jc.jsontypes import JsonValue
+from jc.locale_files import merge_labels
+from jc.state_parse import read_field_value
 
 from dataclasses import dataclass
 from typing import Final
@@ -105,22 +107,6 @@ def labels_of(loc: dict[str, JsonValue]) -> Labels:
     )
 
 
-def _label_union(entries: list[str], field: str) -> tuple[str, ...]:
-    """输入：各语言的字段名候选、字段名。输出：合并后的候选元组。
-
-    预期行为：同一个字段名出现在多种语言里直接报人话——合并表有歧义时反解会把某一格
-    认成另一格，那比直接报错危险得多。
-    """
-    out: list[str] = []
-    seen: set[str] = set()
-    for text in entries:
-        if text in seen:
-            raise ValueError(f"{field} 的标签 {text!r} 在多种语言里都出现（合并表有歧义）")
-        seen.add(text)
-        out.append(text)
-    return tuple(out)
-
-
 def _union(entries: list[tuple[str, str]], field: str) -> dict[str, str]:
     """输入：[(原文, 键)]、词表名。输出：{原文: 键}。
 
@@ -166,10 +152,10 @@ def merged() -> Labels:
         raise ValueError(f"各语言的四格分隔符必须一致，现在是 {sorted(seps)}")
     first = per_lang[0][1]
     return Labels(
-        screen_labels=_label_union(
+        screen_labels=merge_labels(
             [text for _, labels in per_lang for text in labels.screen_labels], "screen"
         ),
-        action_labels=_label_union(
+        action_labels=merge_labels(
             [text for _, labels in per_lang for text in labels.action_labels], "action"
         ),
         cell_sep=first.cell_sep,
@@ -204,25 +190,6 @@ def decode_text(raw: str, labels: Labels) -> str:
         if raw.endswith(suffix) and raw[: -len(suffix)] in labels.label:
             return f"{SHADOW_PREFIX}{labels.label[raw[: -len(suffix)]]}"
     raise ValueError(f"文本认不出来：{raw!r}")
-
-
-def _field_value(line: str, labels: tuple[str, ...]) -> str | None:
-    """输入：一行文本、候选字段名。输出：分隔符后的值；都不是这一格时给 None。
-
-    预期行为：取**最长**的匹配字段名（字段名之间有前缀关系时才不会认错），并且要求字段名
-    后面紧跟分隔符——否则标题行会被认成某一格。故意收紧。
-    """
-    best: str | None = None
-    for label in labels:
-        if not line.startswith(label):
-            continue
-        if line[len(label) :].lstrip()[:1] not in ("：", ":"):
-            continue
-        if best is None or len(label) > len(best):
-            best = label
-    if best is None:
-        return None
-    return line[len(best) :].strip().lstrip("：:").strip()
 
 
 def _decode(field: str, text: str, labels: Labels) -> str:
@@ -269,11 +236,11 @@ def parse_screen(state: str, labels: Labels) -> ParsedScreen:
         if line.startswith("["):
             rows.append(ParsedRow(*_parse_cells(line, labels)))
             continue
-        value = _field_value(line, labels.screen_labels)
+        value = read_field_value(line, labels.screen_labels)
         if value is not None:
             screen_id = value
             continue
-        value = _field_value(line, labels.action_labels)
+        value = read_field_value(line, labels.action_labels)
         if value is not None:
             action = decode_text(value, labels)
     missing: list[str] = []

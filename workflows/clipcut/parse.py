@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from jc.jsontypes import JsonValue
+from jc.state_parse import read_after_label
 
 from . import locales
 
@@ -94,23 +95,6 @@ def _unparen(line: str) -> str:
     return out
 
 
-def _header(line: str, labels: tuple[str, ...], what: str) -> str:
-    """输入：一行文本、抬头标签的几种写法、报错用的名字。输出：抬头后面的值。
-
-    预期行为：**最长前缀优先**（标签之间有前缀关系时才不会认错）；后面必须是空白，
-    否则更长的抬头会被认成标签本身。
-    """
-    best = ""
-    for label in labels:
-        if line.startswith(label) and len(label) > len(best):
-            rest = line[len(label) :].lstrip(" \t")
-            if rest:
-                best = label
-    if not best:
-        raise ValueError(f"{what}抬头认不出来：{line!r}")
-    return line[len(best) :].lstrip(" \t")
-
-
 def parse_state(state: object, tables: Tables) -> ParsedClip:
     """输入：渲染出来的 `state`、两张表。输出：`ParsedClip`。
 
@@ -124,7 +108,7 @@ def parse_state(state: object, tables: Tables) -> ParsedClip:
         lines.pop()
     if len(lines) < 3:
         raise ValueError(f"state 太短，认不出片段表：{state!r}")
-    request_id = _header(lines[0], tables.request, "请求号")
+    request_id = read_after_label(lines[0], tables.request, "请求号")
     segments: list[tuple[str, str]] = []
     section = ""
     for line in lines[1:]:

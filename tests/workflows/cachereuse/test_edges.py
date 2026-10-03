@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from jc import assemble, jsonio
+from jc.state_parse import read_after_label
 from tests.workflows.cachereuse.conftest import tiny_config
 from workflows.cachereuse import locales, parse, render
 from workflows.cachereuse import spec as sp
@@ -165,9 +166,9 @@ def test_header_prefers_the_longest_label() -> None:
     预期行为：最长前缀优先——短的先命中会把「请求号」读成「请求」，值里平白多出「号」。
     """
     tables = parse.Tables(request=("请求", "请求号"), sources=("来源",), sections={})
-    assert parse._header("请求号 C-1", tables.request, "请求号") == "C-1"
+    assert read_after_label("请求号 C-1", tables.request, "请求号") == "C-1"
     with pytest.raises(ValueError, match="抬头认不出来"):
-        parse._header("别的抬头 C-1", tables.request, "请求号")
+        read_after_label("别的抬头 C-1", tables.request, "请求号")
 
 
 def test_parse_rejects_a_state_that_is_too_short() -> None:

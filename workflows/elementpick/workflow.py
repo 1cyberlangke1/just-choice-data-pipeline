@@ -25,7 +25,6 @@
 """
 
 from __future__ import annotations
-from jc.jsontypes import JsonValue
 
 import hashlib
 import random

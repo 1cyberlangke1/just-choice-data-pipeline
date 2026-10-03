@@ -76,6 +76,36 @@ def restricted_dims(
     merged.update(overrides)
     return merged
 
+
+#: 维度取值的占位类型：`restrictor` 不关心取值是字符串还是别的 JSON 值。
+DimValue = TypeVar("DimValue")
+
+
+class DimsRestrictor(Protocol[DimValue]):
+    """`restrictor` 造出来的包装函数：形状与原来那 38 份 `_restricted` 一模一样。
+
+    输入：要覆盖的维度（关键字实参）。输出：覆盖后的维度表。
+    预期行为：只声明形状、实现在 `restrictor` 里——本仓库的「禁 Any」尺子拦 `Callable[..., X]`
+    （那里的 `...` 就是「参数表是 Any」），所以包装函数用 `Protocol` 声明。
+    """
+
+    def __call__(self, **overrides: tuple[DimValue, ...]) -> dict[str, tuple[DimValue, ...]]:
+        ...
+
+
+def restrictor(dims: Mapping[str, tuple[DimValue, ...]]) -> DimsRestrictor[DimValue]:
+    """输入：基础维度表。输出：`_restricted(**overrides)` 那样的包装函数。
+
+    预期行为：把各家 workflow 里那三行逐字同构的 `_restricted` 收成一行赋值
+    （`_restricted = restrictor(features.DIMS)`）；每次调用现算，不改动 `dims`。
+    """
+
+    def _restricted(**overrides: tuple[DimValue, ...]) -> dict[str, tuple[DimValue, ...]]:
+        return restricted_dims(dims, overrides)
+
+    return _restricted
+
+
 #: 取值对约束：收 `(维度A, 取值A, 维度B, 取值B)`（A 在 `dims` 里更靠前），返回能否共存。
 PairRule = Callable[[str, object, str, object], bool]
 

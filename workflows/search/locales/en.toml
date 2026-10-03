@@ -75,7 +75,7 @@ rules = [
   "The topicality must be **unmistakable**: the snippet must show whether it answers the query or wanders off to another topic",
   "For the **off-topic** case, the title and the snippet must be **mainly about another subject** — read as a whole it clearly does not answer the query; one stray sentence at the end is not enough",
   "The content nature must be **unmistakable**: an ordinary page, or keyword stuffing / a funnel article / a plain ad",
-  "Do not name real companies, products, or code repositories; use invented names",
+  "Do not name real companies, products, or code repositories: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",
   "Write everything in {language}; keep file names and domain fragments in ASCII",
 ]
 

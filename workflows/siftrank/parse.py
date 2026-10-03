@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 from jc.jsontypes import JsonValue
+from jc.state_parse import read_after_label
 
 import re
 from dataclasses import dataclass
@@ -97,28 +98,13 @@ def merged_tables() -> Tables:
     )
 
 
-def _header(line: str, labels: tuple[str, ...], what: str) -> str:
-    """输入：一行文本、标签的几种写法、报错用的名字。输出：标签后面的原文。
-
-    预期行为：**最长前缀优先**（标签之间有前缀关系时才不会认错）；后面必须跟东西，
-    否则「排序请求号」这种更长的标签会被认成更短的标签本身。
-    """
-    best = ""
-    for label in labels:
-        if line.startswith(label) and len(label) > len(best) and line[len(label) :].lstrip(" \t"):
-            best = label
-    if not best:
-        raise ValueError(f"{what}那一行的抬头认不出来：{line!r}")
-    return line[len(best) :].lstrip(" \t")
-
-
 def _value(line: str, labels: tuple[str, ...], what: str) -> str:
     """输入：一行文本、标签写法、名字。输出：去掉标签与分隔符之后的值。
 
     预期行为：分隔符可有可无；去掉之后是空的就报错——「标签写了但没写值」是渲染 bug，
     不能当成空字符串往下走。
     """
-    rest = _header(line, labels, what)
+    rest = read_after_label(line, labels, what)
     if rest[:1] in COLONS:
         rest = rest[1:].strip()
     if not rest:
@@ -139,7 +125,7 @@ def _listing(line: str, tables: Tables) -> tuple[str, ...]:
 
 def _batch(line: str, tables: Tables) -> tuple[int, str]:
     """输入：一个批次那一行、表。输出：(编号, 条目串原文)。编号认不出来就报错。"""
-    rest = _header(line, tables.batch, "批次")
+    rest = read_after_label(line, tables.batch, "批次")
     matched = _BATCH.match(rest)
     if matched is None:
         raise ValueError(f"批次那一行的编号认不出来：{line!r}")

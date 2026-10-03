@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Final
 
 from jc import locale_files
-from jc.jsontypes import JsonValue
 
 
 LOCALE_DIR: Final[Path] = Path(__file__).with_name("locales")

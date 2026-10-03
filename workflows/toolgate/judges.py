@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from jc.backend.types import BackendError, GenerationBackend, GenerationTask
 from jc.judge import Verdict
 from jc.jsontypes import JsonValue
+from jc import llmjudge
 
 from . import locales, render
 from .spec import ToolGateSpec
@@ -57,25 +58,8 @@ class TraceDraft(BaseModel):
 
 
 def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
-    """组装反解提示词。
-
-    输入：渲染好的 state、语言字典。
-    输出：提示词。预期行为：把 `TRACE_FAMILIES` 里的原子题连同选项原样再问一遍——
-    反解用的选项与数据集里的一致，否则「答对了」与「标签对了」不是一回事。
-    """
-    lines = [
-        str(loc["verify"]["intro"]),
-        "",
-        str(loc["verify"]["state_header"]),
-        state,
-        "",
-        str(loc["verify"]["questions_header"]),
-    ]
-    for index, family in enumerate(TRACE_FAMILIES, start=1):
-        lines.append(f"{index}. {loc['fam'][family]['q'][0]}")
-        for name, desc in loc["fam"][family]["criteria"].items():
-            lines.append(str(loc["verify"]["option_line"]).format(name=name, desc=desc))
-    return "\n".join(lines)
+    """输入：渲染好的 state、语言字典。输出：反解提示词（`TRACE_FAMILIES` 逐族再问一遍）。"""
+    return llmjudge.trace_prompt(state, loc, TRACE_FAMILIES)
 
 
 @dataclass(frozen=True)

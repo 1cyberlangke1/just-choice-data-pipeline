@@ -39,9 +39,14 @@ def test_modes_from_rejects_unknown_mode() -> None:
         types.modes_from("yaml")
 
 
-@pytest.mark.parametrize("error_type", [types.TransportError, types.RateLimitError])
-def test_transport_failures_count_as_faults(error_type: type[types.BackendError]) -> None:
-    assert error_type.counts_as_fault is True
+def test_transport_failures_count_as_faults() -> None:
+    """网络超时 / 5xx 才是「这家坏了」——429 不算，见下一条。"""
+    assert types.TransportError.counts_as_fault is True
+
+
+def test_rate_limit_does_not_count_as_a_fault() -> None:
+    """429 只说明我们打太快、provider 是好的：计入熔断会把整批掐死在退避跑完之前。"""
+    assert types.RateLimitError.counts_as_fault is False
 
 
 @pytest.mark.parametrize(

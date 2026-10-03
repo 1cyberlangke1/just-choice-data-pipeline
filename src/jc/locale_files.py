@@ -25,6 +25,30 @@ from .jsontypes import JsonValue
 #: 语言文件缓存条数：48 个 workflow × 2 种语言还有富余。
 CACHE_SIZE: Final[int] = 256
 
+#: 「把提示词那句『用虚构的名字』读成了名字本身」的写法：`虚构项目 Alpha` / `fictional company` 这种。
+#: 这不是措辞问题——真机上 12 家写了这句规则的 workflow 里，模型会把它当成一个可以照抄的名字
+#: （`batch-sourceselect-zh` 10 条里 4 条、`cp-36b/c/d-en` 各 1 条、`batch-compact-en` 1 条）。
+#: 所以它**不归各家的清单管**：与 `banned_echo` 拼在一起，任何一家都不许出现。
+#: `虚拟` 只收组合词（`虚拟化` / `虚拟现实` 都是正常说法，不收单字）；`placeholder` 也不收——
+#: `subqa` 那一族讲的就是占位符，收了会把整族堵死。
+PLACEHOLDER_NAME_MARKS: Final[tuple[str, ...]] = (
+    "虚构",
+    "虚拟项目",
+    "虚拟公司",
+    "虚拟产品",
+    "虚拟指标",
+    "虚拟名称",
+    "虚拟平台",
+    "虚拟系统",
+    "虚拟商城",
+    "虚拟技术",
+    "fictional",
+    "fictitious",
+    "hypothetical",
+    "imaginary",
+    "made-up",
+)
+
 
 class LocaleApi(NamedTuple):
     """一个 workflow 的语言包接口。
@@ -62,6 +86,23 @@ def pick(seq: list[str], index: int) -> str:
     预期行为：问法池比题族数量少时也照常工作——回绕而不是报错（题面措辞不是判据）。
     """
     return seq[index % len(seq)]
+
+
+def merge_labels(entries: list[str], what: str) -> tuple[str, ...]:
+    """输入：各语言的字段名候选、字段名。输出：合并后的候选元组。
+
+    预期行为：同一个字段名出现在多种语言里直接报人话——合并表有歧义时反解会把某一格
+    认成另一格，那比直接报错危险得多。3 家同构（`elementpick` / `sim` / `skillpick`），
+    只留这一份。
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for text in entries:
+        if text in seen:
+            raise ValueError(f"{what} 的标签 {text!r} 在多种语言里都出现（合并表有歧义）")
+        seen.add(text)
+        out.append(text)
+    return tuple(out)
 
 
 def make(locale_dir: Path) -> LocaleApi:
@@ -175,15 +216,20 @@ def label_leak(text: str, loc: dict[str, JsonValue], keys: Sequence[str]) -> str
     `meta.colon` 与两种全半角写法。`meta[key]` 可以是**一个名字**，也可以是**一列名字**：
     后者用于「一维有好几档、每一档的名字都不许写进正文」的情形——写了就等于把答案印在
     题面里（`compact` 的 `kind_labels` 就是，见范式 §9.101）。
+    **大小写不敏感**：en 的档名是小写单词（`side note` / `note` / `assistant`），模型写成
+    `Side note: ` 就躲过了按字面量比的版本（`batch-compact-en` 抓到过），而这一行正好就是
+    `fam.kind` 的答案——那是真的把答案印进题面。zh 侧没有大小写，行为不变。
     """
-    stripped = text.strip()
+    stripped = text.strip().lower()
     meta = loc["meta"]
     separators = {str(meta["colon"]).strip(), "：", ":"}
     for key in keys:
         raw = meta[key]
         names = raw if isinstance(raw, list) else [raw]
         for name in (str(item) for item in names):
-            if any(stripped.startswith(f"{name}{separator}") for separator in separators):
+            if any(
+                stripped.startswith(f"{name}{separator}".lower()) for separator in separators
+            ):
                 return name
     return ""
 
@@ -194,8 +240,11 @@ def banned_echo(text: str, loc: dict[str, JsonValue]) -> list[str]:
     输入：模型写的一段文本、语言字典。输出：文本里出现的禁用话术（没有就空列表）。
     预期行为：只认 `banned_intent_phrases` 里点名的那几条**高精度**短语——宁可漏检也不误判，
     误判会在渲染期白拒一条本来能用的数据。大小写不敏感（英文里 `Pinned` 与 `pinned` 一样泄底）。
+    另外**一律**认 `PLACEHOLDER_NAME_MARKS`：那是「把提示词那句『用虚构的名字』读成了名字本身」，
+    任何一家都不该出现，与各家的清单无关（见那个常量的注释）。
     """
     lowered = text.lower()
-    return [
+    hits = [
         str(phrase) for phrase in loc["banned_intent_phrases"] if str(phrase).lower() in lowered
     ]
+    return hits + [mark for mark in PLACEHOLDER_NAME_MARKS if mark.lower() in lowered]
