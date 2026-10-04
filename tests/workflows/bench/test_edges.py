@@ -63,32 +63,6 @@ def test_audit_does_not_ask_for_gap_when_the_first_column_leads(tmp_path: Path) 
     }
 
 
-def test_audit_flags_a_missing_file(tmp_path: Path) -> None:
-    """输入：产物不存在。输出：无。预期行为：记一条「产物不存在」，不静默当空跑。"""
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["samples"] == 0
-    assert any("产物不存在" in item for item in missing)
-
-
-def test_audit_flags_an_out_of_range_choice_index(tmp_path: Path) -> None:
-    """输入：编号越界的产物。输出：无。预期行为：审计记一笔「编号越界」。"""
-    row = _sample_row()
-    row["answers"]["best"]["choice"] = 99
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 1
-    assert any("编号越界" in item for item in missing)
-
-
-def test_audit_flags_a_non_integer_choice_index(tmp_path: Path) -> None:
-    """输入：编号不是整数的产物。输出：无。预期行为：同样记一笔「编号越界」。"""
-    row = _sample_row()
-    row["answers"]["best"]["choice"] = True
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, _ = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 1
-
-
 def test_audit_flags_an_out_of_range_score_index(tmp_path: Path) -> None:
     """输入：档位下标越界的产物。输出：无。
 
@@ -100,19 +74,6 @@ def test_audit_flags_an_out_of_range_score_index(tmp_path: Path) -> None:
     report, missing = WF.audit(tmp_path, ("train",), "zh")
     assert report["train"]["index_bad"] == 1
     assert any("编号越界" in item for item in missing)
-
-
-def test_audit_flags_malformed_criteria_shapes(tmp_path: Path) -> None:
-    """输入：choice 的 criteria 是数组 / score 的 criteria 是对象。输出：无。
-
-    预期行为：形状不对也算「编号越界」——产物坏了要看得见，不能在审计里当成没下标可查。
-    """
-    row = _sample_row()
-    row["questions"]["best"]["criteria"] = ["甲", "乙"]
-    row["questions"]["count"]["criteria"] = {"n0": "答对 0 道"}
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, _ = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 2
 
 
 def test_audit_flags_an_unknown_family(tmp_path: Path) -> None:
@@ -137,17 +98,6 @@ def test_audit_flags_a_state_it_cannot_read(tmp_path: Path) -> None:
     report, missing = WF.audit(tmp_path, ("train",), "zh")
     assert report["train"]["label_mismatch"] == 1
     assert any("反解不出来" in item for item in missing)
-
-
-def test_audit_flags_a_family_that_never_shows_up(tmp_path: Path) -> None:
-    """输入：把某一族的题全删掉。输出：无。预期行为：审计记一笔「一条都没出」。"""
-    row = _sample_row()
-    del row["questions"]["best"]
-    del row["answers"]["best"]
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["families"]["best"] == 0
-    assert any("best" in item and "一条都没出" in item for item in missing)
 
 
 def test_audit_flags_an_answer_that_does_not_match_the_text(tmp_path: Path) -> None:

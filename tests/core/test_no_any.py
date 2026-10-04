@@ -579,9 +579,13 @@ def test_broken_type_comment_does_not_crash() -> None:
     assert any_sites_in_source("x = 1  # type: 这里写的不是类型\n") == []
 
 
-@pytest.mark.parametrize(
-    ("source", "expect"),
-    [
+def test_banned_shapes_are_found() -> None:
+    """输入：一段含 `Any` 的源码与期望行号。输出：无。预期行为：报出的行号与期望一致。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for source, expect in [
         ("from typing import Any\n", [1]),
         ("from typing import Any as Whatever\n", [1]),
         ("from typing_extensions import Any\n", [1]),
@@ -596,11 +600,12 @@ def test_broken_type_comment_does_not_crash() -> None:
         ("x = []  # type: list[Any]\n", [1]),
         ("import typing\n\nT = getattr(typing, 'Any')\n", [3]),
         ("import typing\n\nAny = 1\n", [3]),
-    ],
-)
-def test_banned_shapes_are_found(source: str, expect: list[int]) -> None:
-    """输入：一段含 `Any` 的源码与期望行号。输出：无。预期行为：报出的行号与期望一致。"""
-    assert any_sites_in_source(source) == expect
+    ]:
+        try:
+            assert any_sites_in_source(source) == expect
+        except AssertionError as exc:
+            bad.append(f"{(source, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_any_sites_reads_file(tmp_path: Path) -> None:
@@ -610,18 +615,25 @@ def test_any_sites_reads_file(tmp_path: Path) -> None:
     assert any_sites(target) == [3]
 
 
-@pytest.mark.parametrize("rel", _sources())
-def test_no_any_in_the_repo(rel: str) -> None:
-    """输入：一个相对路径。输出：无。
+def test_no_any_in_the_repo() -> None:
+    """输入：无（扫 `_sources()` 列出的每个文件）。输出：无。
 
-    预期行为：文件里不许出现 `Any` 或其等价物；报了就把**行号 + 形态**一起说出来，
-    形态直接指向模块文档里对应那条修法，不用回头猜是哪种写法。
+    预期行为：全仓库不许出现 `Any` 或其等价物。报的时候把**每一个**违规点的
+    路径 + 行号 + 形态聚合在一条断言里——形态直接指向模块文档里对应那条修法，
+    而且一次就能看全，不用像按文件参数化那样改一处再跑一遍。
+
+    为什么不按文件参数化：被测对象是「这个仓库」，文件只是遍历的粒度，不是 986 个
+    各自独立的被测对象；参数化只会把一条检查刷成 986 条用例（同族的
+    `test_locale_templates.py` 也是循环写法，这里与它对齐）。
     """
-    if rel in EXEMPT:
-        pytest.skip(EXEMPT[rel])
-    text = Path(rel).read_text(encoding="utf-8")
-    found = any_findings_in_source(text, filename=rel, rel=rel)
-    assert not found, "\n".join(f"{rel} 第 {item.line} 行：{item.shape}" for item in found)
+    offenders: list[str] = []
+    for rel in _sources():
+        if rel in EXEMPT:
+            continue
+        text = Path(rel).read_text(encoding="utf-8")
+        found = any_findings_in_source(text, filename=rel, rel=rel)
+        offenders.extend(f"{rel} 第 {item.line} 行：{item.shape}" for item in found)
+    assert not offenders, "发现 Any 或其等价物：\n" + "\n".join(offenders)
 
 
 def test_sources_are_actually_found() -> None:
@@ -683,10 +695,18 @@ _BARE_GENERIC_CASES: tuple[tuple[str, list[int]], ...] = (
 )
 
 
-@pytest.mark.parametrize(("source", "expect"), _BARE_GENERIC_CASES)
-def test_bare_generics_are_found(source: str, expect: list[int]) -> None:
-    """输入：裸泛型标注的源码与期望行号。输出：无。预期行为：报出的行号与期望一致。"""
-    assert any_sites_in_source(source) == expect
+def test_bare_generics_are_found() -> None:
+    """输入：裸泛型标注的源码与期望行号。输出：无。预期行为：报出的行号与期望一致。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for source, expect in _BARE_GENERIC_CASES:
+        try:
+            assert any_sites_in_source(source) == expect
+        except AssertionError as exc:
+            bad.append(f"{(source, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 #: 负例：这些是**真标注**，一个都不许误伤。误伤等于逼人把类型删掉，比漏报更糟。
@@ -707,10 +727,18 @@ _REAL_ANNOTATION_CASES: tuple[str, ...] = (
 )
 
 
-@pytest.mark.parametrize("source", _REAL_ANNOTATION_CASES)
-def test_real_annotations_are_not_flagged(source: str) -> None:
-    """输入：类型写全了的源码。输出：无。预期行为：一个行号都不报（尺子的下限）。"""
-    assert any_sites_in_source(source) == []
+def test_real_annotations_are_not_flagged() -> None:
+    """输入：类型写全了的源码。输出：无。预期行为：一个行号都不报（尺子的下限）。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for source in _REAL_ANNOTATION_CASES:
+        try:
+            assert any_sites_in_source(source) == []
+        except AssertionError as exc:
+            bad.append(f"{(source,)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize(
@@ -731,9 +759,15 @@ def test_callable_with_ellipsis_is_banned(source: str, expect: list[int]) -> Non
     assert any_sites_in_source(source) == expect
 
 
-@pytest.mark.parametrize(
-    ("source", "expect"),
-    [
+def test_empty_containers_without_element_type_are_banned() -> None:
+    """输入：空容器赋值的几种写法。输出：无。
+
+    预期行为：没写元素类型的空容器就报；带注解、带 `# type:`、非空、多目标的一律不报。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for source, expect in [
         ("def f() -> None:\n    rows = []\n", [2]),
         ("def f() -> None:\n    texts = {}\n", [2]),
         ("def f() -> None:\n    seen = set()\n", [2]),
@@ -741,14 +775,12 @@ def test_callable_with_ellipsis_is_banned(source: str, expect: list[int]) -> Non
         ("def f() -> None:\n    texts = {'a': 1}\n", []),
         ("class C:\n    def __init__(self) -> None:\n        self.rows = []\n", [3]),
         ("a, b = [], []\n", []),
-    ],
-)
-def test_empty_containers_without_element_type_are_banned(source: str, expect: list[int]) -> None:
-    """输入：空容器赋值的几种写法。输出：无。
-
-    预期行为：没写元素类型的空容器就报；带注解、带 `# type:`、非空、多目标的一律不报。
-    """
-    assert any_sites_in_source(source) == expect
+    ]:
+        try:
+            assert any_sites_in_source(source) == expect
+        except AssertionError as exc:
+            bad.append(f"{(source, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize(
@@ -786,16 +818,23 @@ _TYPE_IGNORE_CASES: tuple[tuple[str, list[int]], ...] = (
 )
 
 
-@pytest.mark.parametrize(("source", "expect"), _TYPE_IGNORE_CASES)
-def test_bare_type_ignore_is_banned(source: str, expect: list[int]) -> None:
+def test_bare_type_ignore_is_banned() -> None:
     """输入：几种 `# type: ignore` 写法。输出：无。
 
     预期行为：**不带** `[错误码]` 的 `# type: ignore` 报——它把整行的类型检查全关，比
     `Any` 还彻底；写清了码的放行（本仓库现有那几处都是带码的），**但码名里带 `any` 的
     除外**（`no-any-return` / `disallow-any-expr`…）：那正是「我在压一个 Any」；`# type: int`
     这种普通类型注释不是 ignore，不报；字符串里写的 `# type: ignore` 是数据，不报。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    assert any_sites_in_source(source) == expect
+    bad: list[str] = []
+    for source, expect in _TYPE_IGNORE_CASES:
+        try:
+            assert any_sites_in_source(source) == expect
+        except AssertionError as exc:
+            bad.append(f"{(source, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 #: `# type:` 注释里写成裸泛型的几种写法：(源码, 期望行号)。
@@ -812,14 +851,21 @@ _TYPE_COMMENT_SHAPE_CASES: tuple[tuple[str, list[int]], ...] = (
 )
 
 
-@pytest.mark.parametrize(("source", "expect"), _TYPE_COMMENT_SHAPE_CASES)
-def test_type_comment_shapes_are_banned(source: str, expect: list[int]) -> None:
+def test_type_comment_shapes_are_banned() -> None:
     """输入：`# type:` 注释的几种写法。输出：无。
 
     预期行为：注释里的裸泛型报（它就是隐式 Any）；带方括号的放行；函数头上那种
     `(参数表) -> 返回值` 两段都要查；注释里写人话（解析不了）不报、不崩。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    assert any_sites_in_source(source) == expect
+    bad: list[str] = []
+    for source, expect in _TYPE_COMMENT_SHAPE_CASES:
+        try:
+            assert any_sites_in_source(source) == expect
+        except AssertionError as exc:
+            bad.append(f"{(source, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 #: 「类型参数位」上写成裸泛型的几种写法：(源码, 期望行号)。
@@ -837,31 +883,42 @@ _TYPE_ARGUMENT_CASES: tuple[tuple[str, list[int]], ...] = (
 )
 
 
-@pytest.mark.parametrize(("source", "expect"), _TYPE_ARGUMENT_CASES)
-def test_type_argument_positions_are_banned(source: str, expect: list[int]) -> None:
+def test_type_argument_positions_are_banned() -> None:
     """输入：`cast` / `TypeVar` / `NewType` 的几种写法。输出：无。
 
     预期行为：类型实参位置上的裸泛型报；写全了的、以及压根不是泛型的类型（`str` /
     `SomeClass`）不报——误伤等于逼人把类型删掉，比漏报更糟。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    assert any_sites_in_source(source) == expect
+    bad: list[str] = []
+    for source, expect in _TYPE_ARGUMENT_CASES:
+        try:
+            assert any_sites_in_source(source) == expect
+        except AssertionError as exc:
+            bad.append(f"{(source, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize(
-    ("source", "rel", "expect"),
-    [
+def test_production_json_readers_are_banned() -> None:
+    """输入：源码 + 它所在的相对路径 + 期望行号。输出：无。
+
+    预期行为：生产代码（`src/` `workflows/`）里直接读 JSON 就报；测试、仓库根脚本、
+    `jc/jsonio.py` 自己放行；`json.dumps` 返回 str，任何时候都不报。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for source, rel, expect in [
         ("import json\n\nx = json.loads('{}')\n", "src/jc/cli.py", [3]),
         ("import json\n\nx = json.load(handle)\n", "workflows/mail/render.py", [3]),
         ("import json\n\nx = json.dumps({'a': 1})\n", "src/jc/cli.py", []),
         ("import json\n\nx = json.loads('{}')\n", "tests/core/test_cli.py", []),
         ("import json\n\nx = json.loads('{}')\n", "src/jc/jsonio.py", []),
         ("import json\n\nx = json.loads('{}')\n", "conftest.py", []),
-    ],
-)
-def test_production_json_readers_are_banned(source: str, rel: str, expect: list[int]) -> None:
-    """输入：源码 + 它所在的相对路径 + 期望行号。输出：无。
-
-    预期行为：生产代码（`src/` `workflows/`）里直接读 JSON 就报；测试、仓库根脚本、
-    `jc/jsonio.py` 自己放行；`json.dumps` 返回 str，任何时候都不报。
-    """
-    assert any_sites_in_source(source, rel=rel) == expect
+    ]:
+        try:
+            assert any_sites_in_source(source, rel=rel) == expect
+        except AssertionError as exc:
+            bad.append(f"{(source, rel, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)

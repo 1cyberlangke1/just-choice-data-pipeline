@@ -42,32 +42,6 @@ ELEVATION_MARKERS: Final[tuple[str, ...]] = (
     "管理员",
 )
 
-#: bash 一侧的命令词（用于方言判别：出现 PowerShell cmdlet 就算串味）。
-BASH_MARKERS: Final[tuple[str, ...]] = (
-    "rm ",
-    "rm -",
-    "ls ",
-    "cat ",
-    "grep ",
-    "find ",
-    "tail ",
-    "du ",
-    "cp ",
-    "sed ",
-    "chmod ",
-    "truncate ",
-    "curl ",
-    "wget ",
-    "git ",
-    "systemctl ",
-    "docker ",
-    "psql ",
-    "ssh ",
-    ">",
-    ">>",
-    "|",
-)
-
 #: PowerShell 的 `动词-名词` cmdlet：动词表 + **后面必须真的接一个字母**。
 #: 用正则而不是裸子串：`grep -rn "test-"` 这种命令里带引号的词会被子串匹配误伤，
 #: 而误判会直接拒掉好数据。
@@ -325,6 +299,47 @@ def command_of_any(state: object) -> str:
         if found:
             return found
     return ""
+
+
+#: 「模型写的自然语言正文」那两行：结构键 → 语言文件里的行首标记名。
+#: 命令那一行**不在这里**——命令、路径与标识符按约定保持 ASCII，喂给语言判据只会把
+#: 好数据当坏数据。
+PROSE_LINES: Final[tuple[tuple[str, str], ...]] = (("用户目标", "goal_label"), ("备注", "note_label"))
+
+
+def prose_of(state: object, loc: dict[str, JsonValue]) -> dict[str, str]:
+    """输入：state、语言字典。输出：{行名: 那一行的文本}（缺哪一行就不放哪个键）。
+
+    预期行为：只认行首标记、只取标记之后的文本，与 `command_of` 同一套路。
+    """
+    out: dict[str, str] = {}
+    if not isinstance(state, str):
+        return out
+    meta = loc["meta"]
+    for name, label in PROSE_LINES:
+        prefix = f"{meta[label]}{meta['colon']}"
+        for line in state.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(prefix):
+                out[name] = stripped[len(prefix) :].strip()
+                break
+    return out
+
+
+def prose_of_any(state: object) -> dict[str, str]:
+    """输入：state。输出：两格自然语言正文（把各语言的标记都试一遍）。
+
+    预期行为：`language_texts` 是**只读样本**的纯函数、拿不到调用方的语言，而这两行的
+    标记随语言变（「用户目标：」/「User goal: 」），所以逐语言试；命中即返回。
+    标记互不重叠（中文标点 vs ASCII 冒号），不会串味——与 `command_of_any` 同理。
+    """
+    if not isinstance(state, str):
+        return {}
+    for lang in locales.available():
+        found = prose_of(state, locales.load(lang))
+        if found:
+            return found
+    return {}
 
 
 def parse_state(state: object) -> ParsedCommand:

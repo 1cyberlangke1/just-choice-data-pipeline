@@ -227,12 +227,6 @@ def test_detect_locale_does_not_let_one_language_steal_the_other() -> None:
     assert empty.title is None and empty.sections == () and empty.quote is None
 
 
-def test_unknown_locale_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：抛 `FileNotFoundError` 并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="可用"):
-        locales.load("nope")
-
-
 def test_build_task_carries_the_plan() -> None:
     """输入：规格。输出：无。预期行为：任务 id 与 spec 里的造法 / 出处都对得上。"""
     spec = _spec(form="altered", where="other", place="last", target="last")

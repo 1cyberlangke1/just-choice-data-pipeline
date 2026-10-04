@@ -43,9 +43,13 @@ def test_every_class_set_is_a_non_empty_subset_within_the_cap() -> None:
         assert sum(1 for value in features.CLASS_SETS if cls in features.parse_classes(value)) == 7
 
 
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+def test_patterns_are_purely_literal() -> None:
+    """输入：一段页面正文。输出：无。预期行为：命中按 `CLASS_IDS` 顺序、只看字面。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("表单编号：A-1001", ("form",)),
         ("这是申请表，请填报人签字", ("form",)),
         ("Form No. 42 attached", ("form",)),
@@ -60,11 +64,12 @@ def test_every_class_set_is_a_non_empty_subset_within_the_cap() -> None:
         ("表 单 编 号：A-1001", ()),
         # 两类抬头混着写：算不清，读者也分不清。
         ("表单编号 A-1001，甲方王五", ("form", "contract")),
-    ],
-)
-def test_patterns_are_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一段页面正文。输出：无。预期行为：命中按 `CLASS_IDS` 顺序、只看字面。"""
-    assert features.matches(text) == expect
+    ]:
+        try:
+            assert features.matches(text) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("cls", features.CLASS_IDS)
@@ -122,9 +127,15 @@ def test_shape_for_puts_every_class_on_a_page(
     assert set(shape) == set(classes)
 
 
-@pytest.mark.parametrize(
-    ("shape", "docs"),
-    [
+def test_docs_for_applies_the_splitting_rule() -> None:
+    """输入：页序。输出：无。
+
+    预期行为：跨类一定切、可并的类整段算一份、不可并的类一页一份。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for shape, docs in [
         ((), 0),
         (("form",), 1),
         (("form", "form"), 1),
@@ -138,23 +149,26 @@ def test_shape_for_puts_every_class_on_a_page(
         (("receipt", "contract"), 2),
         (("receipt", "receipt", "contract", "contract"), 4),
         (("form", "letter", "receipt"), 3),
-    ],
-)
-def test_docs_for_applies_the_splitting_rule(shape: tuple[str, ...], docs: int) -> None:
-    """输入：页序。输出：无。
+    ]:
+        try:
+            assert features.docs_for(shape) == docs
+        except AssertionError as exc:
+            bad.append(f"{(shape, docs)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
-    预期行为：跨类一定切、可并的类整段算一份、不可并的类一页一份。
+
+def test_route_for_is_three_levels() -> None:
+    """输入：份数。输出：无。预期行为：1 份 / 2 份 / 3 份及以上。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    assert features.docs_for(shape) == docs
-
-
-@pytest.mark.parametrize(
-    ("docs", "route"),
-    [(0, "one"), (1, "one"), (2, "two"), (3, "many"), (4, "many"), (6, "many")],
-)
-def test_route_for_is_three_levels(docs: int, route: str) -> None:
-    """输入：份数。输出：无。预期行为：1 份 / 2 份 / 3 份及以上。"""
-    assert features.route_for(docs) == route
+    bad: list[str] = []
+    for docs, route in [(0, "one"), (1, "one"), (2, "two"), (3, "many"), (4, "many"), (6, "many")]:
+        try:
+            assert features.route_for(docs) == route
+        except AssertionError as exc:
+            bad.append(f"{(docs, route)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_plan_is_reproducible_and_distractors_swap_one_class() -> None:

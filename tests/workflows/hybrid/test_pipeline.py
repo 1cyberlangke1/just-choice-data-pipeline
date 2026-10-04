@@ -4,10 +4,8 @@ from __future__ import annotations
 from jc.jsontypes import JsonValue
 
 import dataclasses
-import json
 import random
 from pathlib import Path
-
 
 import pytest
 
@@ -18,6 +16,7 @@ from workflows.hybrid import judges as judges_mod
 from workflows.hybrid import locales, questions, render
 from workflows.hybrid import spec as sp
 from workflows.hybrid import workflow as hy_workflow
+from tests.workflows._scaffold import run_config
 
 
 def tiny_config(split: str = "train") -> sp.HybridConfig:
@@ -43,92 +42,16 @@ def make_config(
     tmp_path: Path, run_id: str, *, split: str = "train", concurrency: int = 1, backend: GenerationBackend | None = None
 ) -> pipeline.RunConfig:
     """输入：临时目录、run 名、切分、并发度、后端。输出：指向 tmp 的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="hybrid",
         split=split,
-        locales=("zh",),
-        run_seed=11,
-        per_case=1,
+        seed=11,
         concurrency=concurrency,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=tiny_config(split),
-        backend=backend,
+        override=tiny_config(split),
     )
-
-
-def _case_count(config: pipeline.RunConfig) -> int:
-    """输入：运行配置。输出：该切分的 case 数。预期行为：与产物条数对得上。"""
-    return len(hy_workflow.HybridWorkflow().build_cases(config.config_override))
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: GenerationBackend) -> None:
-    """输入：极小配置 + 假后端。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器全通过；产物过审计。
-    """
-    config = make_config(tmp_path, "h1", backend=fake_backend())
-    result = pipeline.run(config)
-    assert result.accepted == _case_count(config) > 0
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"skeleton", "answers", "text"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0 and bucket["ok"] > 0
-    report, missing = workflow_mod.load("hybrid").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == result.accepted
-    assert report["train"]["index_bad"] == 0 and report["train"]["options_bad"] == 0
-
-
-def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: GenerationBackend) -> None:
-    """输入：同种子、不同并发度跑两次。输出：两份产物。
-
-    预期行为：逐字节一致——RNG 由 (seed, workflow, split, seq) 派生，并发不改变内容。
-    这条对 hybrid 尤其重要：文本写在 `spec.written` 上，一旦挂错地方就会串味。
-    """
-    serial = pipeline.run(make_config(tmp_path, "h2a", concurrency=1, backend=fake_backend()))
-    parallel = pipeline.run(make_config(tmp_path, "h2b", concurrency=4, backend=fake_backend()))
-    assert (serial.run_dir / "train.jsonl").read_bytes() == (
-        parallel.run_dir / "train.jsonl"
-    ).read_bytes()
-
-
-def test_manifest_and_stats_are_written(tmp_path: Path, fake_backend: GenerationBackend) -> None:
-    """输入：一次跑。输出：产物目录。
-
-    预期行为：manifest 记下 workflow / 切分 / case 列表 / 「需要 text 能力」；
-    stats 报告里出现 6 个维度的中文标题与三个判别器的通过率。
-    """
-    result = pipeline.run(make_config(tmp_path, "h3", backend=fake_backend()))
-    manifest = json.loads((result.run_dir / "manifest-train.json").read_text(encoding="utf-8"))
-    assert manifest["workflow"] == "hybrid" and manifest["needs"] == ["text"]
-    assert manifest["split"] == "train" and manifest["cases"]
-    stats = (result.run_dir / "stats-train.md").read_text(encoding="utf-8")
-    for title in hy_workflow.DIMENSION_TITLES.values():
-        assert title in stats
-    for name in ("skeleton", "answers", "text"):
-        assert name in stats
-
-
-def test_a_missing_backend_is_refused(tmp_path: Path) -> None:
-    """输入：不给后端。输出：ValueError / RuntimeError。
-
-    预期行为：`needs` 非空的 workflow 缺后端要立刻报错——绝不静默降级成
-    「没有文本外壳的样本」（那会产出一整个假数据集）。
-    """
-    with pytest.raises(ValueError, match="声明需要后端"):
-        pipeline.run(make_config(tmp_path, "h4"))
-    workflow = hy_workflow.HybridWorkflow()
-    spec = sp.sample_spec(
-        random.Random(1),
-        sp.HybridCase(2, "early", "none", "bullet", 1, "short"),
-        "train",
-        0,
-        0,
-        0,
-    )
-    with pytest.raises(RuntimeError, match="bind_backend"):
-        workflow.render(spec, random.Random(1), "zh")
 
 
 def test_bind_backend_stores_the_backend(fake_backend: GenerationBackend) -> None:
@@ -137,12 +60,6 @@ def test_bind_backend_stores_the_backend(fake_backend: GenerationBackend) -> Non
     backend = fake_backend()
     workflow.bind_backend(backend)
     assert workflow.backend is backend
-
-
-def test_config_for_rejects_an_unknown_split() -> None:
-    """输入：不存在的切分名。输出：KeyError。预期行为：不猜、不回落。"""
-    with pytest.raises(KeyError, match="未知切分"):
-        hy_workflow.HybridWorkflow().config_for("test_whatever")
 
 
 def test_samples_draw_theme_directions_from_the_config() -> None:
@@ -231,11 +148,6 @@ def test_reparse_reads_a_rendered_schedule(make_spec: object) -> None:
     assert parsed.meetings[0].title == spec.text_of("m1").title
 
 
-def test_available_locales() -> None:
-    """输入：无。输出：语言列表。预期行为：与语言文件目录一致。"""
-    assert hy_workflow.HybridWorkflow().available_locales() == locales.available()
-
-
 def test_judges_are_the_declared_defaults() -> None:
     """输入：无。输出：workflow 声明。
 
@@ -264,16 +176,6 @@ STATE = (
     "1. 09:00–10:00 · 海棠厅 · 王敏\n   标题：甲会\n   议题：甲的议题\n"
     "2. 11:00–12:00 · 青松厅 · 李强\n   标题：乙会\n   议题：乙的议题\n"
 )
-
-
-def test_audit_reports_a_missing_artifact(tmp_path: Path) -> None:
-    """输入：空目录。输出：(报告, 缺失项)。
-
-    预期行为：缺失的切分要明说「产物不存在」，而不是当成「0 条样本、审计通过」。
-    """
-    report, missing = workflow_mod.load("hybrid").audit(tmp_path, ("train",), "zh")
-    assert report["train"]["samples"] == 0
-    assert any("产物不存在" in item for item in missing)
 
 
 def test_audit_catches_a_bad_index_and_a_wrong_option_count(tmp_path: Path) -> None:

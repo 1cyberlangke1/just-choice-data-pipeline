@@ -28,18 +28,6 @@ def test_split_names_and_configs() -> None:
         assert set(config.boards) == set(sp.BOARDS)
 
 
-def test_available_locales_and_declarations() -> None:
-    """输入：无。输出：无。
-
-    预期行为：语言名单来自语言目录；题型是 choice / noul / score，`needs` 为空（纯构造式）。
-    """
-    assert WF.available_locales() == locales.available()
-    assert WF.kinds == frozenset({"choice", "noul", "score"})
-    assert WF.needs == frozenset()
-    assert WF.name == "sim"
-    assert WF.judges == ("roundtrip", "label")
-
-
 def test_reparse_uses_the_merged_table() -> None:
     """输入：一份规格、英文渲染出来的文本。输出：无。
 

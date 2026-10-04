@@ -5,11 +5,16 @@
 这条把它提前到导入期，零 token。
 
 只查「方法在不在、声明项对不对、公开接口能不能拿第一个 case 走通」——不跑生成、不碰网络。
+
+为什么不是每家一条参数化用例：下面两条查的是**同一段通用代码**（协议自检、`build_cases` /
+`case_label` / `stats_dimensions` 的通用路径），换的只是各家的数据。51 个 workflow 摊成 153 条
+用例，等于把同一件事报 51 遍；收成循环之后失败信息里照样点名是哪个 workflow、哪个切分，
+用例数从 153 降到 2。原来那条「语言文件在磁盘上」被
+`tests/workflows/test_shared.py::test_every_workflow_ships_zh_and_en` 完全覆盖（它连
+「声明与磁盘逐字相同」都查），在这里删掉。
 """
 
 from __future__ import annotations
-
-import pytest
 
 from jc.workflow import Workflow, discover, load
 
@@ -24,38 +29,47 @@ def test_discover_finds_every_workflow() -> None:
         assert load(name).name == name
 
 
-@pytest.mark.parametrize("name", WORKFLOWS)
-def test_workflow_satisfies_the_protocol(name: str) -> None:
-    """输入：每个注册的 workflow 名。输出：无。预期行为：协议要求的方法与声明项一个不缺。"""
-    instance = load(name)
-    assert isinstance(instance, Workflow), f"{name} 没有实现完整的 Workflow 协议"
-    assert instance.version
-    assert isinstance(instance.kinds, frozenset) and instance.kinds
-    assert isinstance(instance.needs, frozenset)
-    assert isinstance(instance.judges, tuple) and instance.judges
+def test_workflow_satisfies_the_protocol() -> None:
+    """输入：无（名单现场列）。输出：无。预期行为：协议要求的方法与声明项一个不缺。
+
+    失败信息把**每一家**的问题都攒起来一起报（`bad` 列表），不因为第一家炸掉就看不见其余。
+    """
+    bad: list[str] = []
+    for name in WORKFLOWS:
+        instance = load(name)
+        if not isinstance(instance, Workflow):
+            bad.append(f"{name} 没有实现完整的 Workflow 协议")
+            continue
+        if not instance.version:
+            bad.append(f"{name} 没有 version")
+        if not (isinstance(instance.kinds, frozenset) and instance.kinds):
+            bad.append(f"{name} 的 kinds 不是非空 frozenset：{instance.kinds!r}")
+        if not isinstance(instance.needs, frozenset):
+            bad.append(f"{name} 的 needs 不是 frozenset：{instance.needs!r}")
+        if not (isinstance(instance.judges, tuple) and instance.judges):
+            bad.append(f"{name} 的 judges 不是非空 tuple：{instance.judges!r}")
+    assert not bad, bad
 
 
-@pytest.mark.parametrize("name", WORKFLOWS)
-def test_every_split_yields_cases_and_readable_labels(name: str) -> None:
-    """输入：每个 workflow × 它的每个切分。输出：无。
+def test_every_split_yields_cases_and_readable_labels() -> None:
+    """输入：无（名单现场列）。输出：无。
 
     预期行为：每个切分都有 case、case 有可读标签、维度表非空——这几条是管线写 manifest 与统计
     报告时一定会用到的（`case_label` 少一个就会在这里当场炸，而不是跑完整批之后）。
     """
-    instance = load(name)
-    assert instance.dimension_titles()
-    for split in instance.split_names():
-        cases = instance.build_cases(instance.config_for(split))
-        assert cases, f"{name}/{split} 一个 case 都没有"
-        case = cases[0]
-        assert instance.case_label(case)
-        assert instance.stats_dimensions(case)
-
-
-@pytest.mark.parametrize("name", WORKFLOWS)
-def test_locales_are_files_on_disk(name: str) -> None:
-    """输入：每个 workflow。输出：无。预期行为：声明的语言都真的读得出来。"""
-    instance = load(name)
-    available = instance.available_locales()
-    assert available
-    assert sorted(available) == available
+    bad: list[str] = []
+    for name in WORKFLOWS:
+        instance = load(name)
+        if not instance.dimension_titles():
+            bad.append(f"{name} 的 dimension_titles() 是空的")
+        for split in instance.split_names():
+            cases = instance.build_cases(instance.config_for(split))
+            if not cases:
+                bad.append(f"{name}/{split} 一个 case 都没有")
+                continue
+            case = cases[0]
+            if not instance.case_label(case):
+                bad.append(f"{name}/{split} 的 case_label 是空的")
+            if not instance.stats_dimensions(case):
+                bad.append(f"{name}/{split} 的 stats_dimensions 是空的")
+    assert not bad, bad

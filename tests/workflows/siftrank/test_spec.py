@@ -46,17 +46,24 @@ def test_templates_are_well_formed() -> None:
         assert all(0 <= position < len(sp.ITEMS) for position in template.pair), shape
 
 
-@pytest.mark.parametrize("shape", sp.SHAPES)
-def test_every_template_matches_the_design_table(shape: str) -> None:
+def test_every_template_matches_the_design_table() -> None:
     """输入：一个模板。输出：无。
 
     预期行为：三种映射下，这一模板的 `cut` / `relation` / `stable` 都必须与设计表一致——
     换映射只换「哪个条目占哪个位」，不该改任何答案的形状。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    want = DESIGN[shape]
-    for perm in sp.PERM_NAMES:
-        case = sp.RankCase(shape, perm, sp.FLAVORS[0])
-        assert (case.cut(), case.relation(), case.stable()) == want, case.describe()
+    bad: list[str] = []
+    for shape in sp.SHAPES:
+        try:
+            want = DESIGN[shape]
+            for perm in sp.PERM_NAMES:
+                case = sp.RankCase(shape, perm, sp.FLAVORS[0])
+                assert (case.cut(), case.relation(), case.stable()) == want, case.describe()
+        except AssertionError as exc:
+            bad.append(f"{(shape,)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_every_answer_axis_is_balanced_by_construction() -> None:

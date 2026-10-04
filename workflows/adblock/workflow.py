@@ -27,7 +27,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket, restrictor
+from jc.cover import cover_pick, hash_bucket, slice_by_bucket, restrictor
 from jc.jsontypes import JsonValue
 
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
@@ -130,20 +130,7 @@ def _cover_pick(cases: list[AdBlockCase], limit: int) -> list[AdBlockCase]:
     「4 条全中」都出不来，`combo` 与 `act` 的某些档位也取不到，均衡闸与审计都会当场报出来。
     """
     names = ("hits", "surface", "count")
-    chosen: list[AdBlockCase] = []
-    seen: dict[str, set[str]] = {name: set() for name in names}
-    remaining = list(cases)
-    while remaining and len(chosen) < limit:
-        keys = [
-            (sum(1 for name in names if _dims_of(case)[name] not in seen[name]), -index)
-            for index, case in enumerate(remaining)
-        ]
-        best = max(range(len(remaining)), key=lambda index: keys[index])
-        case = remaining.pop(best)
-        chosen.append(case)
-        for name in names:
-            seen[name].add(_dims_of(case)[name])
-    return chosen
+    return cover_pick(cases, limit, names, _dims_of)
 
 
 def cases_for(config: AdBlockConfig) -> list[AdBlockCase]:

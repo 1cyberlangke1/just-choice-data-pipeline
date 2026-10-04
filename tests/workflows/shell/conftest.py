@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from typing import Final
 
-import pytest
-
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
 from tests.workflows import _fakes
@@ -94,8 +92,14 @@ class FakeBackend(_fakes.ScriptedBackend):
         goal_line: str | None = None,
         trace_raises: Exception | None = None,
         trace_data: dict[str, JsonValue] | None = None,
+        locale: str = "zh",
     ) -> None:
-        """输入：八个作弊开关。输出：假后端实例。"""
+        """输入：八个作弊开关 + 语言。输出：假后端实例。
+
+        `locale` 决定「用户目标」「备注」两行用哪种语言写——语言闸查的就是这两格
+        （见 `workflows.shell.workflow.ShellWorkflow.language_texts`），夹具写死一种语言
+        会让另一种语言那一侧全被拒，而那是夹具的局限、不是渲染的 bug。
+        """
         self.trace_lies = trace_lies
         self.bash_in_powershell = bash_in_powershell
         self.skip_elevation = skip_elevation
@@ -104,6 +108,7 @@ class FakeBackend(_fakes.ScriptedBackend):
         self.goal_line = goal_line
         self.trace_raises = trace_raises
         self.trace_data = trace_data
+        self.locale = locale
         self.calls: list[str] = []
 
     def generate(self, task: object) -> Draft:
@@ -139,10 +144,20 @@ class FakeBackend(_fakes.ScriptedBackend):
         if self.multi_line:
             command = f"{command}\n{command}"
         return {
-            "goal_line": self.goal_line or f"把 {goal} 这件事做掉（{tags['target']}）",
+            "goal_line": self.goal_line or self._prose("goal", goal, tags["target"]),
             "command": command,
-            "note": f"这条命令会执行 {goal}，作用于 {tags['target']}",
+            "note": self._prose("note", goal, tags["target"]),
         }
+
+    def _prose(self, field: str, goal: str, target: str) -> str:
+        """输入：哪一格、动作名、目标位置。输出：那一格的自然语言正文。
+
+        预期行为：按 `self.locale` 现造；两种写法都让「汉字 / 拉丁词」的比例落在
+        `jc.language` 的两条判据之内（zh 下限 0.20、en 上限 0.30）。
+        """
+        if self.locale == "en":
+            return f"Do the {goal} thing on {target}" if field == "goal" else f"This command performs {goal} on {target}"
+        return f"把 {goal} 这件事做掉（{target}）" if field == "goal" else f"这条命令会执行 {goal}，作用于 {target}"
 
     def _trace(self, tags: dict[str, str]) -> dict[str, JsonValue]:
         """输入：注入特征。输出：`TraceDraft` 形态的字典（默认完全答对）。"""
@@ -159,7 +174,4 @@ class FakeBackend(_fakes.ScriptedBackend):
         return draft(data)
 
 
-@pytest.fixture
-def fake_backend() -> type[FakeBackend]:
-    """工厂夹具：`fake_backend(trace_lies=True)` 造一个假后端。"""
-    return FakeBackend
+fake_backend = _fakes.factory_fixture(FakeBackend)

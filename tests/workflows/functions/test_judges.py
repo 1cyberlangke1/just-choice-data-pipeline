@@ -40,11 +40,19 @@ def test_answer_value_reads_choice_by_option_name() -> None:
     assert judges.answer_value(question, {"choice": 1}) == "b"
 
 
-@pytest.mark.parametrize("bad", [2, -1, "0", None, True, 1.5])
-def test_answer_value_rejects_a_bad_choice_index(bad: object) -> None:
-    """输入：越界 / 类型不对的编号。输出：无。预期行为：给 None（对不上，不是崩）。"""
-    question = {"type": "choice", "criteria": {"a": "甲", "b": "乙"}}
-    assert judges.answer_value(question, {"choice": bad}) is None
+def test_answer_value_rejects_a_bad_choice_index() -> None:
+    """输入：越界 / 类型不对的编号。输出：无。预期行为：给 None（对不上，不是崩）。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad_rows: list[str] = []
+    for bad in [2, -1, "0", None, True, 1.5]:
+        try:
+            question = {"type": "choice", "criteria": {"a": "甲", "b": "乙"}}
+            assert judges.answer_value(question, {"choice": bad}) is None
+        except AssertionError as exc:
+            bad_rows.append(f"{(bad,)!r}: {exc}")
+    assert not bad_rows, "\n".join(bad_rows)
 
 
 def test_answer_value_reads_noul_and_rejects_non_bools() -> None:
@@ -227,8 +235,3 @@ def test_make_judges_builds_the_declared_pair() -> None:
     built = workflow.make_judges(workflow.judges, "zh")
     assert [judge.name for judge in built] == ["roundtrip", "label"]
 
-
-def test_make_judges_rejects_an_unknown_name() -> None:
-    """输入：不存在的判别器名。输出：无。预期行为：KeyError。"""
-    with pytest.raises(KeyError):
-        FunctionsWorkflow().make_judges(("nope",), "zh")

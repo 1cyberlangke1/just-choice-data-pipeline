@@ -28,7 +28,7 @@ from typing import Final, cast
 
 from jc import jsonio
 from jc.backend.types import GenerationBackend
-from jc.cover import hash_bucket, slice_by_bucket, restrictor
+from jc.cover import cover_pick, hash_bucket, slice_by_bucket, restrictor
 from jc.jsontypes import JsonValue
 from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, family_of, plan_with_phrasing, register, config_for_split
 
@@ -91,25 +91,7 @@ def _cover_pick(cases: list[PlanCase], limit: int) -> list[PlanCase]:
     均衡闸与审计会当场报出来。
     """
     names = ("graph", "done")
-    chosen: list[PlanCase] = []
-    seen: dict[str, set[JsonValue]] = {name: set() for name in names}
-    remaining = list(cases)
-    while remaining and len(chosen) < limit:
-        best: PlanCase | None = None
-        best_gain = 0
-        for case in remaining:
-            values = case.as_dict()
-            gain = sum(1 for name in names if values[name] not in seen[name])
-            if gain > best_gain:
-                best, best_gain = case, gain
-        if best is None:
-            break
-        chosen.append(best)
-        remaining.remove(best)
-        for name in names:
-            seen[name].add(best.as_dict()[name])
-    chosen.extend(remaining[: max(0, limit - len(chosen))])
-    return chosen
+    return cover_pick(cases, limit, names, lambda case: case.as_dict())
 
 
 def cases_for(config: PlanConfig) -> list[PlanCase]:

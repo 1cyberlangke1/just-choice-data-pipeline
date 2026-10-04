@@ -288,3 +288,19 @@ def test_rendered_coordinates_line_up_with_the_blocks() -> None:
         assert rendered.line_number(left) + 1 == rendered.line_number(right)
         assert not parse.is_code_line(rendered.texts[rendered.line_number(left) - 1], tokens)
         assert not parse.is_code_line(rendered.texts[rendered.line_number(right) - 1], tokens)
+
+
+def test_build_prompt_carries_the_validation_error_when_given() -> None:
+    """输入：同一份计划，一次带失败理由、一次不带。输出：无。
+
+    预期行为：带理由时末尾多出「上一版没通过校验」那一段，并**原样**带上 `check_draft` 的原话；
+    不带时一个字都不提——提了模型会以为自己写错过。
+    """
+    plan = features.build_plan(PLAIN)
+    plain = render.build_prompt(LOC, plan)
+    told = render.build_prompt(LOC, plan, "第 2 块（paragraph） 长度 58 不在 74~240")
+    header = str(LOC["doc"]["fix_header"])
+    assert header in told
+    assert told.endswith("第 2 块（paragraph） 长度 58 不在 74~240"), "理由要附在末尾"
+    assert header not in plain
+    assert "长度 58" not in plain

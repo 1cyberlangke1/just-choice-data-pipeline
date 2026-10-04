@@ -6,7 +6,6 @@ import itertools
 from collections import Counter
 from typing import Final
 
-import pytest
 
 from jc.cover import missing_pairs
 from workflows.toolgate import features
@@ -66,12 +65,6 @@ def test_pairwise_cover_still_covers_every_pair() -> None:
     assert not missing, f"成对覆盖漏了：{sorted(missing)[:5]}"
 
 
-def test_build_cases_is_deterministic() -> None:
-    """输入：同一入参调两次。输出：无。预期行为：逐条相等（case 库要能逐字节重建）。"""
-    assert features.build_cases(10_000) == features.build_cases(10_000)
-    assert features.build_cases(100) == features.build_cases(100)
-
-
 def test_forbidden_pairs_never_show_up() -> None:
     """输入：全枚举。输出：无。预期行为：读不出破坏性内容、写文件打不到外网这些组合一条都不在。"""
     for tags in features.build_cases(10_000):
@@ -89,9 +82,15 @@ def test_forbidden_pairs_never_show_up() -> None:
         assert not features.compatible(TagSet(**row)), f"{row} 本该被禁"
 
 
-@pytest.mark.parametrize(
-    ("tool", "reach", "payload", "policy", "expected"),
-    [
+def test_rule_rules() -> None:
+    """输入：一组特征与期望的命中规则。输出：无。
+
+    预期行为：`rule_for` 就是策略表**从上往下第一条命中**，顺序错了这条就红。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for tool, reach, payload, policy, expected in [
         # 破坏性内容：任何工具、任何档位、任何范围，第一条就命中。
         ("run_command", "workspace", "harmful", "permissive", "harmful_payload"),
         ("http_request", "external", "harmful", "permissive", "harmful_payload"),
@@ -110,23 +109,25 @@ def test_forbidden_pairs_never_show_up() -> None:
         ("read_file", "workspace", "benign", "balanced", "none"),
         ("run_command", "workspace", "benign", "balanced", "none"),
         ("write_file", "workspace", "benign", "balanced", "none"),
-    ],
-)
-def test_rule_rules(
-    tool: str, reach: str, payload: str, policy: str, expected: str
-) -> None:
-    """输入：一组特征与期望的命中规则。输出：无。
+    ]:
+        try:
+            tags = TagSet(tool=tool, reach=reach, payload=payload, policy=policy, approval="absent")
+            assert features.compatible(tags)
+            assert features.rule_for(tags) == expected
+        except AssertionError as exc:
+            bad.append(f"{(tool, reach, payload, policy, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
-    预期行为：`rule_for` 就是策略表**从上往下第一条命中**，顺序错了这条就红。
+
+def test_decision_rules() -> None:
+    """输入：命中的规则、审批状态、期望处置。输出：无。
+
+    预期行为：审批只能把 `needs_approval` 抬成 `allow`，抬不动 `deny`。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    tags = TagSet(tool=tool, reach=reach, payload=payload, policy=policy, approval="absent")
-    assert features.compatible(tags)
-    assert features.rule_for(tags) == expected
-
-
-@pytest.mark.parametrize(
-    ("rule", "approval", "expected"),
-    [
+    bad: list[str] = []
+    for rule, approval, expected in [
         ("none", "absent", "allow"),
         ("none", "granted", "allow"),
         ("harmful_payload", "absent", "deny"),
@@ -135,17 +136,15 @@ def test_rule_rules(
         ("external_under_strict", "granted", "deny"),
         ("outside_workspace", "absent", "needs_approval"),
         ("outside_workspace", "granted", "allow"),
-    ],
-)
-def test_decision_rules(rule: str, approval: str, expected: str) -> None:
-    """输入：命中的规则、审批状态、期望处置。输出：无。
-
-    预期行为：审批只能把 `needs_approval` 抬成 `allow`，抬不动 `deny`。
-    """
-    raw = features.RAW_DECISIONS[rule]
-    if raw == "needs_approval" and approval == "granted":
-        assert expected == "allow"
-    assert features.DECISIONS == ("allow", "needs_approval", "deny")
+    ]:
+        try:
+            raw = features.RAW_DECISIONS[rule]
+            if raw == "needs_approval" and approval == "granted":
+                assert expected == "allow"
+            assert features.DECISIONS == ("allow", "needs_approval", "deny")
+        except AssertionError as exc:
+            bad.append(f"{(rule, approval, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_decision_and_overridden_agree_on_every_case() -> None:

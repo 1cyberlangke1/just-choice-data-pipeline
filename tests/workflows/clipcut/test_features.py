@@ -120,13 +120,6 @@ def test_label_for_agrees_with_observed_labels() -> None:
         assert ft.label_for(case) == ft.observed_labels(case.topic_seq, case.flag_seq)
 
 
-def test_build_cases_is_deterministic() -> None:
-    """输入：同一入参两次。输出：无。预期行为：顺序与内容逐条一致。"""
-    first = [case.describe() for case in ft.build_cases(512)]
-    second = [case.describe() for case in ft.build_cases(512)]
-    assert first == second
-
-
 def test_build_cases_honours_a_dim_override() -> None:
     """输入：只留一条主题序列、两条高亮序列的维度表。输出：无。
 

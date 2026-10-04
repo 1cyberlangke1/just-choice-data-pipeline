@@ -12,21 +12,20 @@ from jc.jsontypes import JsonValue
 
 from workflows.review import audit, features, render, workflow as review_workflow
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.review.conftest import FakeBackend
 
 
 def make_config(tmp_path: Path, run_id: str, *, split: str = "train") -> pipeline.RunConfig:
     """构造一个小 case 集合的运行配置（指向 tmp 目录）。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=FakeBackend(),
         workflow="review",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=review_workflow.ReviewConfig(split=split, case_limit=6),
-        backend=FakeBackend(),
+        seed=7,
+        override=review_workflow.ReviewConfig(split=split, case_limit=6),
     )
 
 
@@ -54,12 +53,6 @@ def test_missing_product_is_reported(tmp_path: Path) -> None:
     assert report["train"]["samples"] == 0
     assert len(missing) == 2
     assert all("产物不存在" in item for item in missing)
-
-
-def test_unknown_locale_reports_before_reading(tmp_path: Path) -> None:
-    """输入：不存在的语言。输出：无。预期行为：当场报错，不拖到解析阶段。"""
-    with pytest.raises(FileNotFoundError):
-        audit.audit_run(tmp_path, ("train",), "nope")
 
 
 def test_a_tampered_manifest_is_caught(tmp_path: Path) -> None:
@@ -239,5 +232,4 @@ def test_an_unknown_family_is_counted(tmp_path: Path) -> None:
     report, missing = audit.audit_run(run_dir, ("train",), "zh")
     assert report["train"]["unknown_families"]["ghost_family"] == len(rows)
     assert any("题族 gate 一条都没出" in item for item in missing)
-
 

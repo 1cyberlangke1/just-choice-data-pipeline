@@ -71,13 +71,21 @@ def test_prompt_says_none_may_be_hit_when_the_plan_is_empty() -> None:
     assert str(loc["prompt"]["hits_header"]) not in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-@pytest.mark.parametrize("scene", ["colleague", "group", "stranger"])
-def test_prompt_states_the_scene_shape(lang: str, scene: str) -> None:
-    """输入：一种语言 × 一种场景。输出：无。预期行为：提示词里点明这条消息从哪儿来。"""
-    loc = locales.load(lang)
-    case = ChatCase(degree=1, scene=scene, slot=2)
-    assert render.scene_copy(loc, scene) in render.build_prompt(loc, case, _plan(case))
+def test_prompt_states_the_scene_shape() -> None:
+    """输入：一种语言 × 一种场景。输出：无。预期行为：提示词里点明这条消息从哪儿来。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in ["en", "zh"]:
+        for scene in ["colleague", "group", "stranger"]:
+            try:
+                loc = locales.load(lang)
+                case = ChatCase(degree=1, scene=scene, slot=2)
+                assert render.scene_copy(loc, scene) in render.build_prompt(loc, case, _plan(case))
+            except AssertionError as exc:
+                bad.append(f"{(lang, scene)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_prompt_has_no_unfilled_slots() -> None:

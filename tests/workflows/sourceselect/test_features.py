@@ -118,6 +118,17 @@ def test_ignoring_the_filter_gets_the_wrong_row() -> None:
     assert first_survivor == 54, first_survivor
 
 
+def test_winner_index_matches_a_literal_rereading_of_the_rules() -> None:
+    """输入：全空间的计划。输出：无。
+
+    预期行为：把印在 state 里的两条规则**照字面重写一遍**（先按首要要求过滤，再比三档优劣，
+    并列取表里靠前的），与 `winner_index` 逐条对齐——两套写法必须同解，否则就是
+    「代码干的」和「题面说的」不是一回事。
+    """
+    for case, _phrasing, plan in all_plans():
+        assert features.winner_index(plan.rows, case.need) == literal_winner(plan.rows, case.need)
+
+
 def test_requirement_table_covers_every_need() -> None:
     """输入：首要要求 → 属性。输出：无。预期行为：三个要求各落在一个属性上、取值合法。"""
     assert set(features.REQUIREMENT) == set(features.NEEDS)

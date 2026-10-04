@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from collections import Counter
 from itertools import product
 
 import pytest
 
-from tests.workflows.sim.conftest import _make_case, _make_spec
+from tests.workflows.sim.conftest import _make_case
 from workflows.sim import spec as sp
 
 #: 冷却组里**哪些动作处在冷却中**——与 `spec.CD_SETS` 是同一份数据的另一种写法，
@@ -322,26 +321,6 @@ def test_sample_spec_carries_the_derived_truth() -> None:
         assert spec.cost_level == sp.cost_level(board)
 
 
-def test_spec_to_dict_is_json_shaped() -> None:
-    """输入：一份规格。输出：无。预期行为：摘要能被 json 序列化，键齐全。"""
-    spec = _make_spec()
-    payload = sp.spec_to_dict(spec)
-    assert set(payload) == {
-        "case",
-        "unseen_dims",
-        "request_id",
-        "resources",
-        "turn",
-        "haul",
-        "done",
-        "best_slot",
-        "cost_level",
-        "legal",
-        "gains",
-        "rows",
-    }
-    assert json.loads(json.dumps(payload, ensure_ascii=False)) == payload
-    assert len(payload["rows"]) == len(sp.ACTIONS)
 
 
 def test_build_cases_enumerates_the_whole_grid() -> None:

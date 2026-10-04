@@ -14,6 +14,10 @@ language_name = "English"
 # string...", "Based on the above, I will write...") plus unfilled placeholders ("brand name",
 # "company X"). The trace judge still reverse-reads those correctly, so they must be stopped by
 # literal phrases here.
+# 2026-10-04: the same reading pass over the `5x`..`9x` runs found the same defect in Chinese samples
+# (`X项目` / `X事件` / `某项目`), i.e. a bare `X` or `某` standing in for the invented name. The
+# English side gets the matching collocations; a bare `X` is deliberately NOT banned, because code
+# names such as `X12` / `X-Zone` are exactly what the rule asks for.
 banned_intent_phrases = [
   "candidate source",
   "source table",
@@ -34,6 +38,9 @@ banned_intent_phrases = [
   "User assistant",
   "Brand name",
   "Company X",
+  "Project X",
+  "Event X",
+  "Brand X",
 ]
 
 [meta]
@@ -65,11 +72,8 @@ bullet = "- {dim}: {brief} ({hint})"
 rules = [
   "Write **one** query, a single line; no line breaks, no Markdown fences, and do not restate these instructions (no \"write one query sentence\" meta-talk)",
   "Do not talk about the candidate table: avoid \"candidate source / source table / row number\", and never emit a vertical bar",
-  "The requirement must be obvious at a glance, and it must be the **only** one you mention: never ask for two or three at once (e.g. \"authoritative, latest and most complete\") — if you do, the primary requirement cannot be read off the sentence and the sample is unusable",
-  "For authority: write it as looking for a **first-hand statement** (official docs, the standard itself, the original announcement)",
-  "For freshness: write it as looking for **the latest** (newest release, most recent progress)",
-  "For coverage: write it as looking for **the most complete round-up** (full list, end-to-end comparison)",
-  "Do not name any real company, product, or repository: invent a brand-like or code name of your own — never write placeholder wording such as \"fictional company\" into the query",
+  "The requirement must be obvious at a glance, and it must be the **only** one you mention: do not tack a second condition about the source onto the sentence, and do not say where to look - if you do, the primary requirement cannot be read off it and the sample is unusable",
+  "Do not name any real company, product, or repository: invent a brand-like or code name of your own — never write placeholder wording such as \"fictional company\" into the query, and never pad it with a bare placeholder like \"X\"",
   "Write everything in {language}",
 ]
 
@@ -79,11 +83,11 @@ hint = "write it as looking for official docs, the standard itself, or the origi
 
 [feature.need.freshness]
 brief = "this time you want **the latest**"
-hint = "write it as looking for the newest release or the most recent progress"
+hint = "write it as looking for the newest release or the most recent progress; that one requirement only, do not add a second condition on the source"
 
 [feature.need.coverage]
 brief = "this time you want **the most complete round-up**"
-hint = "write it as looking for a full list or an end-to-end comparison"
+hint = "write it as looking for a full list or an end-to-end comparison; that one requirement only, do not add a second condition on the source"
 
 [verify]
 intro = "Below is a source-selection item. Reverse-engineer it literally: which axis does this query's primary requirement land on?"

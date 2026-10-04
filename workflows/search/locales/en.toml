@@ -179,13 +179,13 @@ drop = "drop it and use another result"
 
 [fam.trust]
 q = [
-  "Which trust level does this result deserve?",
-  "Score this result's trust.",
-  "How trustworthy is this result?",
+  "Scored as source type official 3, community 2, unknown 1; -1 more if freshness is stale; spam or off-topic content forces level 0: which trust level does this result deserve?",
+  "Add up the score (source type official 3 / community 2 / unknown 1; freshness stale -1; spam or off-topic forces level 0): which level does this result get?",
+  "How trustworthy is this result? Score: source type official 3, community 2, unknown 1; freshness stale -1; spam or off-topic content forces level 0.",
 ]
 levels = [
-  "level 0: not trustworthy at all",
-  "level 1: low",
-  "level 2: medium",
-  "level 3: high",
+  "level 0: not trustworthy at all (total 0)",
+  "level 1: low (total 1)",
+  "level 2: medium (total 2)",
+  "level 3: high (total 3)",
 ]

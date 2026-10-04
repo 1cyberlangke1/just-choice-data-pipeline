@@ -15,7 +15,6 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.jsontypes import JsonValue
 from jc.knobs import require_pool
 
 from .features import QuoteCase, QuoteLabels, label_for
@@ -112,17 +111,3 @@ def sample_spec(
     """
     del rng  # 规格完全由 case 决定；签名里的 RNG 只为与协议一致
     return QuoteSpec(case=case, split=split, seq=seq, phrasing=phrasing)
-
-
-def spec_to_dict(spec: QuoteSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.as_dict(),
-        "split": spec.split,
-        "seq": spec.seq,
-        "query_id": spec.query_id,
-        "tier": spec.tier,
-        "leader": spec.leader,
-        "alert": spec.alert,
-        "divergent": spec.divergent,
-    }

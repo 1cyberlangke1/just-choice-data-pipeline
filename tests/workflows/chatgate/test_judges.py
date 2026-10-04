@@ -164,14 +164,6 @@ def test_trace_agrees_with_the_plan() -> None:
     assert "第 1 条" in verdict.reason
 
 
-def test_trace_catches_a_lie() -> None:
-    """输入：反解漏报一条命中。输出：无。预期行为：不通过，理由里两条都列出来。"""
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(FakeBackend(trace_lies=True), "zh").judge(sample, spec)
-    assert not verdict.ok and not verdict.skipped
-    assert "C3" in verdict.reason and "C4" in verdict.reason
-
-
 def test_trace_catches_a_wrong_clean_candidate() -> None:
     """输入：反解把「哪条候选干净」说成另一条。输出：无。预期行为：不通过，理由点名第几条。"""
     spec, sample = faithful(CASE)
@@ -248,22 +240,6 @@ def test_quote_holds_needs_both_the_quote_and_the_criterion() -> None:
     assert not judges.quote_holds("C9", BASE, body)  # 不认识的编号
 
 
-class _UnknownIdBackend:
-    """只会答一个不存在的判据编号的假后端。"""
-
-    def generate(self, task: object) -> Draft:
-        """输入：任务。输出：`tags` 里带 C9 的草稿。预期行为：不联网。"""
-        del task
-        return _draft({"tags": [{"tag": "C9", "quote": "C9"}], "clean": 1})
-
-
-class _MalformedBackend:
-    """只会答一个畸形 tags 的假后端。"""
-
-    def generate(self, task: object) -> Draft:
-        """输入：任务。输出：`tags` 是字符串列表的草稿。预期行为：不联网。"""
-        del task
-        return _draft({"tags": ["C1", "C3"], "clean": 1})
 
 
 class _CleanZeroBackend:

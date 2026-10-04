@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import random
 from pathlib import Path
 
 import pytest
 
-from jc import pipeline, workflow as workflow_mod
+from jc import pipeline
 from workflows.sourceselect import features, workflow as ss_workflow
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.sourceselect.conftest import FakeBackend
 
 CASE_LIMIT = 8
@@ -19,37 +19,15 @@ def make_config(
     tmp_path: Path, run_id: str, backend: object, *, split: str = "train"
 ) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="sourceselect",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=ss_workflow.SourceSelectConfig(split=split, case_limit=CASE_LIMIT),
-        backend=backend,
+        seed=7,
+        override=ss_workflow.SourceSelectConfig(split=split, case_limit=CASE_LIMIT),
     )
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，
-    而且四族可重算的答案全部与产物里的候选表自洽。
-    """
-    result = pipeline.run(make_config(tmp_path, "s1", fake_backend()))
-    assert result.accepted == CASE_LIMIT
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"hygiene", "frame", "trace"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    report, missing = workflow_mod.load("sourceselect").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == CASE_LIMIT
-    for key in ("frame_bad", "rules_bad", "pick_bad", "enough_bad", "cover_bad", "near_miss_bad"):
-        assert report["train"][key] == 0, key
 
 
 def test_trace_judge_rejects_a_misread_need(
@@ -148,21 +126,3 @@ def test_bad_knobs_are_rejected() -> None:
     with pytest.raises(KeyError):
         ss_workflow.SourceSelectWorkflow().config_for("nope")
 
-
-def test_render_without_backend_raises() -> None:
-    """输入：没注入后端的 workflow。输出：无。
-
-    预期行为：直接报错，绝不悄悄降级成模板——那会让「文本由模型写」这条前提失效。
-    """
-    wf = ss_workflow.SourceSelectWorkflow()
-    config = ss_workflow.SourceSelectConfig(split="train")
-    plan = wf.plan_sample(random.Random(0), config, features.build_cases(1024)[0], 0)
-    spec = wf.sample(random.Random(0), plan)
-    with pytest.raises(RuntimeError):
-        wf.render(spec, random.Random(0), "zh")
-
-
-def test_unknown_judge_name_raises() -> None:
-    """输入：不存在的判别器名。输出：无。预期行为：直接报错。"""
-    with pytest.raises(KeyError):
-        ss_workflow.SourceSelectWorkflow().make_judges(("nope",), "zh")

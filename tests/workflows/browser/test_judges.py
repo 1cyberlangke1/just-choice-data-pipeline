@@ -119,31 +119,29 @@ def test_trace_passes_when_the_model_agrees(fake_backend: type[FakeBackend]) -> 
     assert verdict.ok and not verdict.skipped
 
 
-def test_trace_catches_a_misread_intent(fake_backend: type[FakeBackend]) -> None:
-    """输入：反解把意图说反。输出：无。预期行为：判不通过。"""
-    verdict = judges.TraceJudge(fake_backend(trace_lies_intent=True), "zh").judge(
+#: 反解三种「说错一项」的写法：假后端开关 → 判决理由里必须点名的字段。
+#: 三条各自验一个字段（意图 / 行号 / 元素名），参数化是为了加一个字段只加一行。
+MISREAD_FIELDS: tuple[tuple[str, str], ...] = (
+    ("trace_lies_intent", "intent"),
+    ("trace_lies_row", "row"),
+    ("trace_lies_label", "label"),
+)
+
+
+@pytest.mark.parametrize("switch, field", MISREAD_FIELDS)
+def test_trace_catches_a_misread_field(
+    fake_backend: type[FakeBackend], switch: str, field: str
+) -> None:
+    """输入：反解把某一项说错的假后端。输出：无。
+
+    预期行为：判不通过，而且理由里点名是哪个字段对不上——「抓到了」但说不出抓到什么，
+    等于判别器只能靠整条不通过来报警。
+    """
+    verdict = judges.TraceJudge(fake_backend(**{switch: True}), "zh").judge(
         sample(state_of()), spec()
     )
     assert not verdict.ok
-    assert "intent" in verdict.reason
-
-
-def test_trace_catches_a_misread_row(fake_backend: type[FakeBackend]) -> None:
-    """输入：反解把行号说错。输出：无。预期行为：判不通过。"""
-    verdict = judges.TraceJudge(fake_backend(trace_lies_row=True), "zh").judge(
-        sample(state_of()), spec()
-    )
-    assert not verdict.ok
-    assert "row" in verdict.reason
-
-
-def test_trace_catches_a_misread_label(fake_backend: type[FakeBackend]) -> None:
-    """输入：反解把元素名说成另一个。输出：无。预期行为：判不通过。"""
-    verdict = judges.TraceJudge(fake_backend(trace_lies_label=True), "zh").judge(
-        sample(state_of()), spec()
-    )
-    assert not verdict.ok
-    assert "label" in verdict.reason
+    assert field in verdict.reason
 
 
 def test_trace_marks_endpoint_failure_as_skipped(fake_backend: type[FakeBackend]) -> None:
@@ -165,13 +163,6 @@ def test_trace_reraises_a_fatal_backend_error(fake_backend: type[FakeBackend]) -
     backend = fake_backend(trace_raises=AllProvidersDown("全挂了"))
     with pytest.raises(AllProvidersDown):
         judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
-
-
-def test_trace_marks_a_broken_draft_as_skipped(fake_backend: type[FakeBackend]) -> None:
-    """输入：反解草稿缺字段。输出：无。预期行为：记成跳过。"""
-    backend = fake_backend(trace_data={"intent": "fill"})
-    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
-    assert verdict.ok and verdict.skipped
 
 
 def test_trace_skips_without_spec_or_backend(fake_backend: type[FakeBackend]) -> None:

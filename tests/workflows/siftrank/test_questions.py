@@ -40,16 +40,6 @@ def test_build_returns_one_question_per_family() -> None:
     assert types["stable"] == "noul"
 
 
-def test_only_choice_options_may_be_shuffled() -> None:
-    """输入：一条规格。输出：无。
-
-    预期行为：只有 choice 允许打乱——`cut_size` 的三档有自然顺序（落差从第 1 名往后挪），
-    打乱它会把「档位」读成「随便一个等级」。
-    """
-    for item in questions.build(_make_spec(2), LOC, 0, random.Random(0)):
-        assert item.shuffle is (item.question["type"] == "choice"), item.family
-
-
 def test_answers_match_the_spec_for_every_case() -> None:
     """输入：全空间 case。输出：无。
 
@@ -126,32 +116,3 @@ def test_score_criteria_is_the_three_level_table() -> None:
     assert len(set(item.question["criteria"])) == len(sp.CUTS)
     assert item.answer == sp.CUTS.index(spec.cut)
     assert 0 <= item.answer < len(item.question["criteria"])
-
-
-def test_noul_criteria_has_true_and_false() -> None:
-    """输入：一条规格。输出：无。
-
-    预期行为：noul 带 `criteria`（官方支持描述，那我们就带上）——真 / 假两行都在，
-    答案必须是布尔而不是字符串 `"true"`。
-    """
-    item = next(
-        item
-        for item in questions.build(_make_spec(6), LOC, 0, random.Random(0))
-        if item.family == "stable"
-    )
-    assert set(item.question["criteria"]) == {"true", "false"}
-    assert isinstance(item.answer, bool)
-
-
-def test_phrasing_index_cycles_through_the_pool() -> None:
-    """输入：三种问法编号。输出：无。
-
-    预期行为：问法按编号取，取遍池子里的每一条——同一 case 的多条样本靠它换说法，
-    三种编号给同一句话等于这一维白设。
-    """
-    pool = LOC["fam"]["agg_top"]["q"]
-    seen = {
-        questions.build(_make_spec(10), LOC, index, random.Random(0))[0].question["instructions"]
-        for index in range(len(pool))
-    }
-    assert len(seen) == len(pool)

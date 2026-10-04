@@ -57,6 +57,22 @@ class Block:
     list_id: int = 0
 
 
+def split_rules_block(loc: dict[str, JsonValue]) -> str:
+    """输入：语言字典。输出：切块规则（表头一行 + 逐条一行）。
+
+    预期行为：**规则只写一处**（`[doc].split_rules`），考生题面（`questions.build`）与读者题面
+    （`judges.build_trace_prompt`）都渲染这一份——写两份就会漂，而漂的那次正是 2026-10-04 真机
+    36 条被拒 17 条（47%）的成因：渲染规则里有两处「不空行也算两块」（标题紧贴着它后面那段正文、
+    同一个列表里相邻的列表项），提示词却只写了「块与块之间用空行隔开」，于是读者把标题并进了正文，
+    而确定性读法 `parse.parse_state` 读同一份文本是对的——错的是读者手里的规则少了两条。
+    """
+    pool = loc["doc"]["split_rules"]
+    if not isinstance(pool, list) or not pool:
+        raise ValueError(f"[doc.split_rules] 必须是非空列表：{pool!r}")
+    header = str(loc["doc"]["split_header"])
+    return "\n".join([header, *(f"- {rule}" for rule in pool)])
+
+
 # ---------- 逐槽位的字面校验 ----------
 
 
@@ -418,16 +434,19 @@ def _rule_of(loc: dict[str, JsonValue], slot: Slot) -> str:
     raise DraftError(f"认不出的块类型：{slot.kind!r}")
 
 
-def build_prompt(loc: dict[str, JsonValue], plan: DocPlan) -> str:
+def build_prompt(loc: dict[str, JsonValue], plan: DocPlan, feedback: str | None = None) -> str:
     """组装提示词。
 
-    输入：语言字典、块计划。输出：完整提示词（不含答案）。
+    输入：语言字典、块计划、可选的上一次校验失败理由。输出：完整提示词（不含答案）。
     预期行为：**每一条硬性要求都写清楚**——逐块给类型与字面要求，再逐条列出「不许出现」的标记词
     （并说明命令行块例外），最后是自查与输出格式。这些就是「受控合成」的规格，判据全在
     `check_draft` 里机械复核，模型写歪了当场重渲染。
 
     为什么把「不许出现」也逐条列出来：提示框关键词与署名前缀是**反解的判据**——模型顺手在一段
     正文里写个「注意：」或「——」，那一块当场被读成提示框或引用，整份文档的块切分就错了。
+
+    `feedback` 非空时附在**末尾**（`check_draft` 的原话）：字数对模型是**计数任务**，
+    盲重采样修不掉，而原话里带着「哪一块、差多少」这个确定性信号。
     """
     doc = loc["doc"]
     lines = [str(doc["intro"]).format(topic=str(loc["topic_name"][plan.case.topic]))]
@@ -448,20 +467,26 @@ def build_prompt(loc: dict[str, JsonValue], plan: DocPlan) -> str:
         )
     lines.append(str(doc["self_check"]))
     lines.append(str(doc["output"]))
+    if feedback is not None:
+        lines.append(str(doc["fix_header"]))
+        lines.append(feedback)
     return "\n".join(lines)
 
 
-def build_task(spec: DocSpec, loc: dict[str, JsonValue]) -> GenerationTask:
-    """输入：真值规格、语言字典。输出：渲染任务。
+def build_task(
+    spec: DocSpec, loc: dict[str, JsonValue], feedback: str | None = None
+) -> GenerationTask:
+    """输入：真值规格、语言字典、可选的上一次校验失败理由。输出：渲染任务。
 
     预期行为：任务 id 由规格算（断点续跑按它查进度），`spec` 里带上块计划——后端实现与假后端
-    若想「照着计划答」，不必再解析提示词。
+    若想「照着计划答」，不必再解析提示词。**重写沿用同一个任务 id**：那是同一个 case 的同一次
+    渲染，换 id 会让断点续跑把重写当成新任务再跑一遍。
     """
     return GenerationTask(
         task_id=spec.render_task_id,
         kind="choice",
         domain="autoformat",
-        prompt=build_prompt(loc, spec.plan),
+        prompt=build_prompt(loc, spec.plan, feedback),
         response_model=SlotDraft,
         seeds=(),
         spec={

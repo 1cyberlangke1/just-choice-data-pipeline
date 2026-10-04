@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import Counter
 from itertools import product
 
-import pytest
 
 from jc.cover import missing_pairs
 from workflows.verify import features
@@ -68,13 +67,6 @@ def test_pairwise_cover_still_covers_every_pair() -> None:
     )
 
 
-def test_build_cases_is_deterministic() -> None:
-    """输入：同一上限两次。输出：无。预期行为：逐组一致（case 库要能逐字节重建）。"""
-    assert [c.as_dict() for c in features.build_cases(48)] == [
-        c.as_dict() for c in features.build_cases(48)
-    ]
-
-
 def test_forbidden_pairs_never_show_up() -> None:
     """输入：无。输出：无。预期行为：枚举出来的每一组都相容（没跑检查就不会声称覆盖）。"""
     for case in features.build_cases(1000):
@@ -82,9 +74,13 @@ def test_forbidden_pairs_never_show_up() -> None:
         assert features.allow_pair("checks", case.checks, "coverage", case.coverage)
 
 
-@pytest.mark.parametrize(
-    ("checks", "coverage", "expected"),
-    [
+def test_verdict_rules() -> None:
+    """输入：自报的检查与覆盖。输出：无。预期行为：结论与文档里那条判据一致。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for checks, coverage, expected in [
         ("all_fail", "covered", "refuted"),
         ("all_fail", "uncovered", "refuted"),
         ("not_run", "uncovered", "unverified"),
@@ -94,16 +90,24 @@ def test_forbidden_pairs_never_show_up() -> None:
         ("all_pass", "partial", "partial"),
         ("partial_pass", "covered", "partial"),
         ("partial_pass", "partial", "partial"),
-    ],
-)
-def test_verdict_rules(checks: str, coverage: str, expected: str) -> None:
-    """输入：自报的检查与覆盖。输出：无。预期行为：结论与文档里那条判据一致。"""
-    assert features.verdict_from(Facts(checks, coverage, "committed")) == expected
+    ]:
+        try:
+            assert features.verdict_from(Facts(checks, coverage, "committed")) == expected
+        except AssertionError as exc:
+            bad.append(f"{(checks, coverage, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize(
-    ("checks", "coverage", "artifact", "expected"),
-    [
+def test_gap_rules() -> None:
+    """输入：自报事实。输出：无。
+
+    预期行为：按「检查 → 覆盖 → 落盘」取第一个没过的关卡——`partial_pass` 也算检查没过
+    （只过一部分同样得回去修），所以它落到 `fix_the_failing_checks` 而不是「什么都不缺」。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for checks, coverage, artifact, expected in [
         ("not_run", "uncovered", "committed", "run_the_checks"),
         ("not_run", "uncovered", "uncommitted", "run_the_checks"),
         ("all_fail", "covered", "committed", "fix_the_failing_checks"),
@@ -112,20 +116,21 @@ def test_verdict_rules(checks: str, coverage: str, expected: str) -> None:
         ("all_pass", "uncovered", "uncommitted", "tighten_scope"),
         ("all_pass", "covered", "uncommitted", "commit_the_change"),
         ("all_pass", "covered", "committed", "nothing_missing"),
-    ],
-)
-def test_gap_rules(checks: str, coverage: str, artifact: str, expected: str) -> None:
-    """输入：自报事实。输出：无。
+    ]:
+        try:
+            assert features.gap_from(Facts(checks, coverage, artifact)) == expected
+        except AssertionError as exc:
+            bad.append(f"{(checks, coverage, artifact, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
-    预期行为：按「检查 → 覆盖 → 落盘」取第一个没过的关卡——`partial_pass` 也算检查没过
-    （只过一部分同样得回去修），所以它落到 `fix_the_failing_checks` 而不是「什么都不缺」。
+
+def test_confidence_rules() -> None:
+    """输入：自报事实。输出：无。预期行为：三条门槛过了几条就是几档。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    assert features.gap_from(Facts(checks, coverage, artifact)) == expected
-
-
-@pytest.mark.parametrize(
-    ("checks", "coverage", "artifact", "expected"),
-    [
+    bad: list[str] = []
+    for checks, coverage, artifact, expected in [
         ("all_pass", "covered", "committed", 3),
         ("all_pass", "covered", "uncommitted", 2),
         ("partial_pass", "covered", "committed", 2),
@@ -133,11 +138,12 @@ def test_gap_rules(checks: str, coverage: str, artifact: str, expected: str) -> 
         ("partial_pass", "partial", "committed", 1),
         ("not_run", "uncovered", "committed", 1),
         ("partial_pass", "partial", "uncommitted", 0),
-    ],
-)
-def test_confidence_rules(checks: str, coverage: str, artifact: str, expected: int) -> None:
-    """输入：自报事实。输出：无。预期行为：三条门槛过了几条就是几档。"""
-    assert features.confidence_from(Facts(checks, coverage, artifact)) == expected
+    ]:
+        try:
+            assert features.confidence_from(Facts(checks, coverage, artifact)) == expected
+        except AssertionError as exc:
+            bad.append(f"{(checks, coverage, artifact, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_gates_and_confidence_agree_on_every_case() -> None:

@@ -99,14 +99,6 @@ def test_parse_rejects_a_wrong_batch_size() -> None:
         parse.parse_state(state, parse.tables_of(loc))
 
 
-def test_parse_rejects_an_unknown_header() -> None:
-    """输入：抬头认不出来的 state。输出：无。预期行为：报「认不出来」，不静默当空值。"""
-    loc = locales.load("zh")
-    state = render.build(_make_spec(7), loc).replace("排序提示", "随便什么", 1)
-    with pytest.raises(ValueError, match="认不出来"):
-        parse.parse_state(state, parse.tables_of(loc))
-
-
 def test_parse_rejects_an_empty_value() -> None:
     """输入：抬头写了但值为空的 state。输出：无。预期行为：报「没写值」。"""
     loc = locales.load("zh")

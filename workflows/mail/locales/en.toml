@@ -211,16 +211,16 @@ q = [
 
 [fam.severity]
 q = [
-  "What is the risk level of this email?",
-  "On a scale from harmless to certain attack, how does this rate?",
-  "How suspicious is this message?",
+  "Scored as credentials asked +2, payment asked +1, suspicious link +1, link text not matching the real address while that link is suspicious +1 more, impersonated brand +1, pressure tactic +1, capped at 4: what is the risk level of this email?",
+  "Add up the score (credentials asked +2, payment asked +1, suspicious link +1, link text not matching the real address while that link is suspicious +1 more, impersonated brand +1, pressure tactic +1, capped at 4): what level should this mail get?",
+  "How suspicious is this message? Score: credentials asked +2, payment asked +1, suspicious link +1, link text not matching the real address while that link is suspicious +1 more, impersonated brand +1, pressure tactic +1, capped at 4.",
 ]
 levels = [
-  "Level 0: normal mail, nothing suspicious",
-  "Level 1: mildly odd but plausible",
-  "Level 2: clearly suspicious, worth a second look",
-  "Level 3: highly suspicious, high risk",
-  "Level 4: very high risk, act now",
+  "Level 0: total 0 — none of the scoring items apply",
+  "Level 1: total 1",
+  "Level 2: total 2",
+  "Level 3: total 3",
+  "Level 4: total 4 (capped)",
 ]
 
 [fam.action]
@@ -231,10 +231,10 @@ q = [
 ]
 
 [fam.action.criteria]
-deliver = "Deliver normally, no extra handling"
-review = "Deliver with a warning and queue for human review"
-quarantine = "Quarantine to the junk folder until the user confirms"
-block = "Block outright, do not deliver"
+deliver = "Deliver normally: neither phishing nor spam, and severity <= 2"
+review = "Deliver with a warning and queue for human review: classified as spam, or severity = 3; if it is also phishing, or severity reaches 4, use the heavier action below"
+quarantine = "Quarantine to the junk folder until the user confirms: classified as phishing with severity <= 2, or severity = 4; if it is phishing with severity >= 3, use the block action"
+block = "Block outright, do not deliver: classified as phishing with severity >= 3"
 
 [verify]
 intro = "Read the email below and answer each question. Pick exactly one option per question."

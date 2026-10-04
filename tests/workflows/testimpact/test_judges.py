@@ -213,9 +213,15 @@ def test_trace_prompt_carries_the_whole_state() -> None:
     assert features.PATH_FILES["P2"] in prompt
 
 
-@pytest.mark.parametrize(
-    ("pid", "quote", "expect"),
-    [
+def test_quote_holds_needs_both_the_quote_and_the_file_header() -> None:
+    """输入：几种引文。输出：无。
+
+    预期行为：引文要**原样在改动里**、且**带着这个文件的头**——只抄一段别的文件里的代码不算。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for pid, quote, expect in [
         ("P1", "diff --git a/src/api/handlers.py b/src/api/handlers.py", True),
         ("P1", "+++ b/src/api/handlers.py", True),
         # 引文被装进 JSON 数组字符串（范式 §9.88）：拆成候选之后照样算数。
@@ -223,17 +229,13 @@ def test_trace_prompt_carries_the_whole_state() -> None:
         ("P1", "diff --git a/src/db/schema.py b/src/db/schema.py", False),
         ("P1", "", False),
         ("P1", "编的一段话", False),
-    ],
-)
-def test_quote_holds_needs_both_the_quote_and_the_file_header(
-    pid: str, quote: str, expect: bool
-) -> None:
-    """输入：几种引文。输出：无。
-
-    预期行为：引文要**原样在改动里**、且**带着这个文件的头**——只抄一段别的文件里的代码不算。
-    """
-    diff = diff_for(ImpactCase(touch="P1+P2", flavor="fix"))
-    assert judges.quote_holds(pid, quote, diff) is expect
+    ]:
+        try:
+            diff = diff_for(ImpactCase(touch="P1+P2", flavor="fix"))
+            assert judges.quote_holds(pid, quote, diff) is expect
+        except AssertionError as exc:
+            bad.append(f"{(pid, quote, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_language_texts_reports_only_the_commit_title() -> None:

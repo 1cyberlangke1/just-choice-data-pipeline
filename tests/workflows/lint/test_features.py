@@ -24,9 +24,13 @@ def test_long_uses_character_count() -> None:
     assert features.matches(features.RULE_LONG, "x" * (features.LONG_LIMIT + 1))
 
 
-@pytest.mark.parametrize(
-    ("rule", "line", "expected"),
-    [
+def test_pattern_rules() -> None:
+    """输入：规则名、一行文本、期望。输出：无。预期行为：命中与否与期望一致。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for rule, line, expected in [
         (features.RULE_SECRET, 'API_KEY = "sk-live-9f2b2c"', True),
         (features.RULE_SECRET, 'DB_PASSWORD: "hunter2-x"', True),
         (features.RULE_SECRET, "API_KEY = os.environ[\"API_KEY\"]", False),
@@ -58,11 +62,12 @@ def test_long_uses_character_count() -> None:
         (features.RULE_PATH, 'ROOT = "C:\\projects\\app"', True),
         (features.RULE_PATH, 'CONFIG = "etc/app/config.yml"', False),
         (features.RULE_PATH, 'CONFIG = os.environ["CONFIG"]', False),
-    ],
-)
-def test_pattern_rules(rule: str, line: str, expected: bool) -> None:
-    """输入：规则名、一行文本、期望。输出：无。预期行为：命中与否与期望一致。"""
-    assert features.matches(rule, line) is expected
+    ]:
+        try:
+            assert features.matches(rule, line) is expected
+        except AssertionError as exc:
+            bad.append(f"{(rule, line, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_unknown_rule_is_an_error() -> None:
@@ -80,13 +85,18 @@ def test_match_any_takes_the_first_rule_in_table_order() -> None:
     assert features.match_any("import os") is None
 
 
-@pytest.mark.parametrize(
-    ("hits", "expected"),
-    [(0, "pass"), (1, "pass"), (2, "pass"), (3, "review"), (5, "review"), (6, "block"), (8, "block")],
-)
-def test_gate_bands(hits: int, expected: str) -> None:
-    """输入：命中行数、期望档位。输出：无。预期行为：三档边界正好落在 2 / 5 / 6。"""
-    assert features.gate_of(hits) == expected
+def test_gate_bands() -> None:
+    """输入：命中行数、期望档位。输出：无。预期行为：三档边界正好落在 2 / 5 / 6。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for hits, expected in [(0, "pass"), (1, "pass"), (2, "pass"), (3, "review"), (5, "review"), (6, "block"), (8, "block")]:
+        try:
+            assert features.gate_of(hits) == expected
+        except AssertionError as exc:
+            bad.append(f"{(hits, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("hits", [-1, features.SIZE + 1])
@@ -120,14 +130,22 @@ def test_plan_differs_across_phrasings() -> None:
     assert features.plan_for(case, 0).hit_rows != features.plan_for(case, 1).hit_rows
 
 
-@pytest.mark.parametrize("hits", features.HITS)
-def test_label_matched_length_matches_plan(hits: int) -> None:
-    """输入：每个命中行数。输出：无。预期行为：逐行标记长度是 8、True 的个数等于 hits。"""
-    labels = features.label_for(features.plan_for(features.LintCase("debug", "doc", hits), 0))
-    assert len(labels.matched) == features.SIZE
-    assert sum(labels.matched) == hits
-    assert labels.hits == hits
-    assert labels.gate == features.gate_of(hits)
+def test_label_matched_length_matches_plan() -> None:
+    """输入：每个命中行数。输出：无。预期行为：逐行标记长度是 8、True 的个数等于 hits。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for hits in features.HITS:
+        try:
+            labels = features.label_for(features.plan_for(features.LintCase("debug", "doc", hits), 0))
+            assert len(labels.matched) == features.SIZE
+            assert sum(labels.matched) == hits
+            assert labels.hits == hits
+            assert labels.gate == features.gate_of(hits)
+        except AssertionError as exc:
+            bad.append(f"{(hits,)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_spot_is_only_set_for_a_single_hit() -> None:

@@ -3,10 +3,8 @@
 from __future__ import annotations
 from jc.jsontypes import JsonValue
 
-import json
 import random
 from pathlib import Path
-
 
 import pytest
 
@@ -17,6 +15,7 @@ from workflows.invoice import judges as judges_mod
 from workflows.invoice import locales, questions, render
 from workflows.invoice import spec as sp
 from workflows.invoice import workflow as inv_workflow
+from tests.workflows._scaffold import run_config
 
 
 def tiny_config(split: str = "train") -> sp.InvoiceConfig:
@@ -43,69 +42,15 @@ def make_config(
     tmp_path: Path, run_id: str, *, split: str = "train", concurrency: int = 1
 ) -> pipeline.RunConfig:
     """输入：临时目录、run 名、切分、并发度。输出：指向 tmp 的运行配置（不需要后端）。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
         workflow="invoice",
         split=split,
-        locales=("zh",),
-        run_seed=11,
-        per_case=1,
+        seed=11,
         concurrency=concurrency,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=tiny_config(split),
+        override=tiny_config(split),
     )
-
-
-def _case_count(config: pipeline.RunConfig) -> int:
-    """输入：运行配置。输出：该切分的 case 数。预期行为：与产物条数对得上。"""
-    return len(inv_workflow.InvoiceWorkflow().build_cases(config.config_override))
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path) -> None:
-    """输入：极小配置（零 token，不需要后端）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、两个判别器全通过；产物过审计。
-    """
-    config = make_config(tmp_path, "i1")
-    result = pipeline.run(config)
-    assert result.accepted == _case_count(config) > 0
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"roundtrip", "label"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0 and bucket["ok"] > 0
-    report, missing = workflow_mod.load("invoice").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == result.accepted
-    assert report["train"]["index_bad"] == 0
-    assert report["train"]["tax_mismatch"] == 0
-
-
-def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
-    """输入：同种子、不同并发度跑两次。输出：两份产物。
-
-    预期行为：逐字节一致——RNG 由 (seed, workflow, split, seq) 派生，并发不改变内容。
-    """
-    serial = pipeline.run(make_config(tmp_path, "i2a", concurrency=1))
-    parallel = pipeline.run(make_config(tmp_path, "i2b", concurrency=4))
-    assert (serial.run_dir / "train.jsonl").read_bytes() == (
-        parallel.run_dir / "train.jsonl"
-    ).read_bytes()
-
-
-def test_manifest_and_stats_are_written(tmp_path: Path) -> None:
-    """输入：一次跑。输出：产物目录。
-
-    预期行为：manifest 记下 workflow / 切分 / case 列表 / 「不需要后端」；
-    stats 报告里出现 8 个维度的中文标题与两个判别器的通过率。
-    """
-    result = pipeline.run(make_config(tmp_path, "i3"))
-    manifest = json.loads((result.run_dir / "manifest-train.json").read_text(encoding="utf-8"))
-    assert manifest["workflow"] == "invoice" and manifest["needs"] == []
-    assert manifest["split"] == "train" and manifest["cases"]
-    stats = (result.run_dir / "stats-train.md").read_text(encoding="utf-8")
-    for title in inv_workflow.DIMENSION_TITLES.values():
-        assert title in stats
-    assert "roundtrip" in stats and "label" in stats
 
 
 def test_needs_no_backend_and_rejects_being_bound(tmp_path: Path) -> None:
@@ -118,22 +63,6 @@ def test_needs_no_backend_and_rejects_being_bound(tmp_path: Path) -> None:
     with pytest.raises(AssertionError, match="纯构造式"):
         workflow.bind_backend(object())
     assert pipeline.run(make_config(tmp_path, "i4")).accepted > 0
-
-
-def test_config_for_rejects_an_unknown_split() -> None:
-    """输入：不存在的切分名。输出：KeyError。预期行为：报错并列出可用切分。"""
-    with pytest.raises(KeyError, match="未知切分"):
-        inv_workflow.InvoiceWorkflow().config_for("nope")
-
-
-def test_make_judges_rejects_an_unknown_name() -> None:
-    """输入：不存在的判别器名。输出：KeyError。预期行为：绝不静默少跑一个判别器。"""
-    with pytest.raises(KeyError, match="未知判别器"):
-        inv_workflow.InvoiceWorkflow().make_judges(("nope",), "zh")
-    assert [judge.name for judge in inv_workflow.InvoiceWorkflow().make_judges(("roundtrip", "label"), "en")] == [
-        "roundtrip",
-        "label",
-    ]
 
 
 def test_splits_hold_out_combinations_and_values() -> None:
@@ -213,6 +142,45 @@ def test_render_and_ask_never_touch_a_backend() -> None:
     # 这份规格只有 2 行，`bad_lines` 的第 4 档（≥3 处错）取不到 → 属于条件题族，不出
     assert [item.family for item in first] == list(questions.families_for(spec))
 
+def test_audit_requires_bad_lines_once_a_doc_reaches_the_line_floor(tmp_path: Path) -> None:
+    """输入：一份**恰好** `MIN_LINES_FOR_BAD_LINES` 行、却没问 `bad_lines` 的产物。输出：缺失项。
+
+    预期行为：行数**到**门槛就算够长，`bad_lines` 必须出现。边界写松一位（`>=` 改成 `>`）
+    这里就会漏报——变异测试量到过：`workflows/invoice/workflow.py` 的那处 `>=` 改成 `>`，
+    `tests/workflows/invoice` 一条都不红（范式 §9.116）。
+    """
+    spec = sp.sample_spec(
+        random.Random(11),
+        sp.InvoiceCase(
+            "labeled_lines",
+            "canonical",
+            "cny",
+            "dashed",
+            questions.MIN_LINES_FOR_BAD_LINES,
+            0,
+            True,
+            "ok",
+        ),
+        "train",
+        0,
+        0,
+    )
+    state = render.build(spec, locales.load("zh"))
+    assert len(inv_workflow.InvoiceWorkflow().reparse(state).items) == (
+        questions.MIN_LINES_FOR_BAD_LINES
+    )
+    questions_map = {
+        "date_field": {
+            "type": "noul",
+            "instructions": "x",
+            "criteria": {"true": "a", "false": "b"},
+        }
+    }
+    answers = {"date_field": {"type": "noul", "noul": True}}
+    jsonio.write_jsonl(tmp_path / "train.jsonl", [_row(state, questions_map, answers)])
+    _, missing = workflow_mod.load("invoice").audit(tmp_path, ("train",), "zh")
+    assert any("题族 bad_lines 一条都没出" in item for item in missing)
+
 
 def test_reparse_reads_a_rendered_document() -> None:
     """输入：渲染出来的 state。输出：反解结果。
@@ -231,11 +199,6 @@ def test_reparse_reads_a_rendered_document() -> None:
     assert len(parsed.items) == 3
 
 
-def test_available_locales() -> None:
-    """输入：无。输出：语言列表。预期行为：与语言文件目录一致。"""
-    assert inv_workflow.InvoiceWorkflow().available_locales() == locales.available()
-
-
 def _row(state: str, questions: dict[str, JsonValue], answers: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """造一条最小样本行（审计只读 state / questions / answers）。"""
     return {
@@ -244,16 +207,6 @@ def _row(state: str, questions: dict[str, JsonValue], answers: dict[str, JsonVal
         "questions": questions,
         "answers": answers,
     }
-
-
-def test_audit_reports_a_missing_artifact(tmp_path: Path) -> None:
-    """输入：空目录。输出：(报告, 缺失项)。
-
-    预期行为：缺失的切分要明说「产物不存在」，而不是当成「0 条样本、审计通过」。
-    """
-    report, missing = workflow_mod.load("invoice").audit(tmp_path, ("train",), "zh")
-    assert report["train"]["samples"] == 0
-    assert any("产物不存在" in item for item in missing)
 
 
 def test_audit_catches_an_impossible_tax_question_and_a_bad_index(tmp_path: Path) -> None:

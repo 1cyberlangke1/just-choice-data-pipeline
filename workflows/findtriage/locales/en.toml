@@ -54,7 +54,7 @@ bullet = "- {dim}: {brief} ({hint})"
 cite_line = "The finding points at **line {n}**: use exactly that line number, do not switch to another line that is in the record."
 symbol_line = "The symbol the finding quotes is {symbol}: wrap it in backticks inside the finding, and quote only that one."
 fix_symbol_line = "The symbol the suggested fix must name is {symbol}: wrap it in backticks on the fix line."
-fix_vague_line = "The suggested fix must be **vague only**: name no symbol at all on that line, use no backticks there, and vary the wording -- do not repeat the same sentence every time."
+fix_vague_line = "The suggested fix must be **vague only**: name no symbol at all on that line, use no backticks there, and put it **in your own words** -- reuse no wording from this sheet."
 rules = [
   "Write exactly one finding line and one fix line; no line breaks, no Markdown fences",
   "The finding line must state which line it points at, in the form \"line 42\"",
@@ -82,7 +82,7 @@ hint = "write a fix someone could apply directly"
 
 [feature.fix.vague]
 brief = "the suggested fix **names no symbol at all**"
-hint = "write something that cannot be acted on -- \"needs further investigation\", \"not enough context to tell\" -- and vary the wording"
+hint = "write one sentence that cannot be acted on -- it reads as \"this cannot move forward yet, more digging is needed\" -- naming no concrete symbol, and phrased in your own words (reuse no wording from this sheet)"
 
 [verify]
 intro = "Below is a finding-triage item. Reverse-solve three things from the text alone: which record row the finding points at, which symbol it quotes, and whether the suggested fix names a concrete symbol."

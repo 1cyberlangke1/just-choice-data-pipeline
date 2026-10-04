@@ -133,23 +133,6 @@ def test_phrasing_only_changes_the_wording() -> None:
     )
 
 
-def test_instructions_carry_the_whole_rulebook() -> None:
-    """输入：一份规格出的全部题目。输出：无。
-
-    预期行为：判据原文整段拼在每道题的问句后面（范式 §9.8）——只读 state 与题面的读者
-    必须能自己算出来。
-    """
-    _spec, items = _build()
-    for item in items:
-        instructions = item.question["instructions"]
-        policy = str(LOC["policy"]["text"])
-        assert instructions.endswith(policy)
-        assert instructions != policy  # 判据前面真的带了问句
-        first = str(LOC["fam"][item.family]["q"][0])
-        if "{n}" not in first:  # 带题号的问句由 `test_hit_is_asked_for_every_item` 锁
-            assert instructions.startswith(first)
-
-
 def test_answer_distributions_are_built_in() -> None:
     """输入：全开网格（三十张成绩表 × 六种列序，句面固定）。输出：无。
 

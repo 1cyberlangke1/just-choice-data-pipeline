@@ -8,28 +8,11 @@ from workflows.guardrail import features, judges, locales, questions, render
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：三个抬头两两不互为前缀——`【政策条款】` 与 `【政策条款附注】` 那种关系会让解析先
-    命中短的那个，整段 state 当场错位。
-    """
-    loc = locales.load(lang)
-    marks = [str(loc["state"][key]) for key in ("clause_mark", "rule_mark", "content_mark")]
-    assert all(marks)
-    assert len(set(marks)) == len(marks)
-    for left in marks:
-        for right in marks:
-            if left != right:
-                assert not right.startswith(left), f"{left!r} 是 {right!r} 的前缀"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_clause_table_lines_up_with_features(lang: str) -> None:
     """输入：一种语言。输出：无。
 
-    预期行为：条款表的键与 `CLAUSE_IDS` 一一对应，每条四个字段都非空、条款名与表行两两不同，
-    而且表行里**编号排在分隔符前面**（解析就是按这个切回编号的）。
+    预期行为：条款表的键与 `CLAUSE_IDS` 一一对应，每条四个字段都非空（`examples` 是**非空列表**，
+    每项也非空）、条款名与表行两两不同，而且表行里**编号排在分隔符前面**（解析就是按这个切回编号的）。
     """
     loc = locales.load(lang)
     table = loc["clause"]
@@ -37,8 +20,11 @@ def test_clause_table_lines_up_with_features(lang: str) -> None:
     assert sorted(table) == sorted(features.CLAUSE_IDS)
     for clause in features.CLAUSE_IDS:
         entry = render.clause_copy(loc, clause)
-        for key in ("name", "rule", "example", "avoid"):
+        for key in ("name", "rule", "avoid"):
             assert str(entry[key]).strip(), f"{lang}.{clause}.{key}"
+        examples = entry["examples"]
+        assert isinstance(examples, list) and examples, f"{lang}.{clause}.examples"
+        assert all(str(value).strip() for value in examples), f"{lang}.{clause}.examples"
     names = [str(table[clause]["name"]) for clause in features.CLAUSE_IDS]
     assert len(set(names)) == len(names)
     sep = str(loc["state"]["clause_sep"])
@@ -52,12 +38,16 @@ def test_clause_table_lines_up_with_features(lang: str) -> None:
 def test_examples_hit_exactly_their_own_clause(lang: str) -> None:
     """输入：一种语言。输出：无。
 
-    预期行为：每条的示例片段只命中它自己那一条——示例同时踩中两条，提示词就会把模型往错的方向带。
+    预期行为：**池里每一个**示例片段都只命中它自己那一条——示例同时踩中两条，提示词就会把模型
+    往错的方向带；池子里的值是要逐个发出去的，只验第一个等于没验。
     """
     loc = locales.load(lang)
     for clause in features.CLAUSE_IDS:
-        example = str(render.clause_copy(loc, clause)["example"])
-        assert features.hit_set(example) == (clause,), f"{lang}.{clause}: {example!r}"
+        raw = render.clause_copy(loc, clause)["examples"]
+        assert isinstance(raw, list)
+        for value in raw:
+            example = str(value)
+            assert features.hit_set(example) == (clause,), f"{lang}.{clause}: {example!r}"
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])

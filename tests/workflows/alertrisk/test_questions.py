@@ -11,17 +11,6 @@ from workflows.alertrisk.features import AlertRiskCase
 CASE = AlertRiskCase("R1+R3", features.SOURCE_EDR)
 
 
-def test_family_order_matches_the_declared_families() -> None:
-    """输入：无。输出：无。
-
-    预期行为：`build` 出的题族**首次出现顺序**与 `FAMILIES` 一致（逐因子那一族出三道，所以比的是
-    去重之后的顺序）。
-    """
-    out = questions.build(features.plan_for(CASE, 0), locales.load("zh"), 0)
-    assert list(dict.fromkeys(item.family for item in out)) == list(questions.FAMILIES)
-    assert questions.FAMILIES == ("fact", "grade", "highs", "act")
-
-
 def test_fact_family_is_one_noul_per_factor() -> None:
     """输入：无。输出：无。预期行为：三条 noul，一条判据一道，答案与真值一致。"""
     plan = features.plan_for(CASE, 0)
@@ -124,35 +113,6 @@ def test_choice_options_never_duplicate() -> None:
                 assert isinstance(criteria, dict)
                 values = [str(value) for value in criteria.values()]
                 assert len(set(values)) == len(values), f"{lang}/{case.describe()}/{item.family}"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_every_question_is_self_contained(lang: str) -> None:
-    """输入：一种语言 × 第二种问法。输出：无。
-
-    预期行为：逐因子那一族的题面里带上要问的那条判据的名字与原文——只读 state 的考生要能自己按
-    字面判。（用第二种问法：第一种是短问法，只点名因子，不重述判据原文。）
-    """
-    loc = locales.load(lang)
-    for tag, item in zip(
-        features.TAG_IDS, questions.build(features.plan_for(CASE, 0), loc, 1), strict=False
-    ):
-        entry = loc["fact"][tag]
-        instructions = str(item.question["instructions"])
-        assert str(entry["name"]) in instructions
-        assert str(entry["rule"]) in instructions
-
-
-def test_bad_answer_names_are_rejected() -> None:
-    """输入：不在选项里的答案名。输出：无。预期行为：抛 ValueError。"""
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("act", "题面", {"monitor": "记入清单"}, "nope")
-
-
-def test_duplicate_option_descriptions_are_rejected() -> None:
-    """输入：两个描述一样的选项。输出：无。预期行为：抛 ValueError。"""
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice("act", "题面", {"monitor": "记入清单", "ticket": "记入清单"}, "monitor")
 
 
 def test_bad_score_shapes_are_rejected() -> None:

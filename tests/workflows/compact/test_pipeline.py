@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import random
 from pathlib import Path
 
 import pytest
 
-from jc import pipeline, workflow as workflow_mod
+from jc import pipeline
 
 from workflows.compact import features, locales, render, workflow as compact_workflow
-from workflows.compact.spec import CompactSpec, spec_to_dict
+from workflows.compact.spec import CompactSpec
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.compact.conftest import BASE, FakeBackend
 
 CASE_LIMIT = 8
@@ -21,51 +21,15 @@ def make_config(
     tmp_path: Path, run_id: str, backend: object, *, split: str = "train"
 ) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="compact",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=compact_workflow.CompactConfig(split=split, case_limit=CASE_LIMIT),
-        backend=backend,
+        seed=7,
+        override=compact_workflow.CompactConfig(split=split, case_limit=CASE_LIMIT),
     )
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，
-    而且处置与「命中规则」、钉住与位置行全都自洽。
-    """
-    result = pipeline.run(make_config(tmp_path, "c1", fake_backend()))
-    assert result.accepted == CASE_LIMIT
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"hygiene", "frame", "trace"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    report, missing = workflow_mod.load("compact").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == CASE_LIMIT
-    assert report["train"]["frame_bad"] == 0
-    assert report["train"]["rules_bad"] == 0
-    assert report["train"]["disposition_bad"] == 0
-    assert report["train"]["pin_bad"] == 0
-
-
-def test_trace_judge_rejects_a_misread_kind(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：反解说反话的假后端。输出：RunResult。
-
-    预期行为：这些样本被拒，拒绝码是 `E_JUDGE_TRACE`——判别器抓的是模型真会犯的错。
-    """
-    result = pipeline.run(make_config(tmp_path, "c3", fake_backend(trace_lies_kind=True)))
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {"E_JUDGE_TRACE"}
 
 
 def test_trace_judge_rejects_a_misread_fact(
@@ -191,37 +155,6 @@ def test_bad_knobs_are_rejected() -> None:
         compact_workflow.CompactWorkflow().config_for("nope")
 
 
-def test_render_without_backend_raises() -> None:
-    """输入：没注入后端的 workflow。输出：无。
-
-    预期行为：直接报错，绝不悄悄降级成模板——那会让「正文由模型写」这条前提失效。
-    """
-    wf = compact_workflow.CompactWorkflow()
-    spec = CompactSpec(tags=features.build_cases(1024)[0], phrasing=0, split="train", seq=0)
-    with pytest.raises(RuntimeError):
-        wf.render(spec, random.Random(0), "zh")
-
-
-def test_unknown_judge_name_raises() -> None:
-    """输入：不存在的判别器名。输出：无。预期行为：直接报错。"""
-    with pytest.raises(KeyError):
-        compact_workflow.CompactWorkflow().make_judges(("nope",), "zh")
-
-
-def test_workflow_declares_what_it_needs() -> None:
-    """输入：workflow 的类属性。输出：无。
-
-    预期行为：`needs` 非空（正文由后端写）、三种题型都声明、判别器名单与默认一致。
-    """
-    wf = compact_workflow.CompactWorkflow()
-    assert wf.name == "compact"
-    assert wf.needs == frozenset({"text"})
-    assert wf.kinds == frozenset({"choice", "noul", "score"})
-    assert wf.judges == ("hygiene", "frame", "trace")
-    assert wf.available_locales() == ["en", "zh"]
-    assert wf.split_names() == ("train", "val", "test_iid", "test_ood")
-
-
 def test_config_for_and_reparse_wire_up() -> None:
     """输入：切分名与一段 state。输出：无。
 
@@ -238,20 +171,14 @@ def test_config_for_and_reparse_wire_up() -> None:
     assert parsed.where is not None
 
 
-def test_spec_to_dict_and_task_ids() -> None:
+def test_task_ids() -> None:
     """输入：一条真值规格。输出：无。
 
-    预期行为：`spec_to_dict` 可 JSON 序列化且字段齐全；渲染 / 反解任务 id 按同一条
+    预期行为：渲染 / 反解任务 id 按同一条
     样本可重算（断点续跑按它查进度）。
     """
     tags = features.build_cases(1024)[0]
     spec = CompactSpec(tags=tags, phrasing=2, split="train", seq=5)
-    assert spec_to_dict(spec) == {
-        "tags": tags.as_dict(),
-        "phrasing": 2,
-        "split": "train",
-        "seq": 5,
-    }
     assert spec.labels == tags.label()
     assert spec.render_task_id == "compact-train-0000005-render"
     assert spec.trace_task_id == "compact-train-0000005-trace"

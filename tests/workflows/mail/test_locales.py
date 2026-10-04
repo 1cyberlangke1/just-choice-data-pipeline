@@ -17,25 +17,6 @@ from workflows.mail import features, judges, locales, questions
 LOCALES = locales.available()
 
 
-def test_locales_are_present() -> None:
-    """至少要中英两份，且文件名就是语言代码。"""
-    assert set(LOCALES) == {"zh", "en"}
-
-
-def test_missing_language_file_lists_what_exists() -> None:
-    """输入：不存在的语言代码。输出：FileNotFoundError。
-
-    预期行为：报错里必须列出可用语言，否则调用方只能猜。
-    """
-    with pytest.raises(FileNotFoundError, match="可用"):
-        locales.load("fr")
-
-
-def test_pick_wraps_around() -> None:
-    """输入：候选列表、越界编号。输出：回绕后的那一项。"""
-    assert locales.pick(["a", "b"], 3) == "b"
-
-
 @pytest.mark.parametrize("lang", LOCALES)
 def test_feature_phrases_cover_every_dimension_value(lang: str) -> None:
     """每个维度取值都要有 brief 与 hint——缺一条就等于让模型自由发挥。"""

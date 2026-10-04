@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import random
 
 
@@ -188,17 +187,6 @@ def test_money_slots_drop_tax_without_a_tax_row(make_spec: object) -> None:
     assert make_spec(14, tax_state="ok").money_slots == sp.MONEY_SLOTS
 
 
-def test_spec_to_dict_is_serializable_and_carries_the_case(make_spec: object) -> None:
-    """输入：一份规格。输出：字典。预期行为：能直接 `json.dumps`（manifest 要用），
-    并且带上 case 描述、每行的一致性结论。
-    """
-    spec = make_spec(15, tax_state="off", lines=4, defects=2)
-    data = sp.spec_to_dict(spec)
-    json.dumps(data)
-    assert data["case"] == spec.case.describe()
-    assert len(data["items"]) == spec.case.lines
-    assert sum(1 for item in data["items"] if not item["ok"]) == 2
-    assert data["tax_rate"] == spec.tax_rate
 
 
 def test_case_describe_and_as_dict_cover_every_dimension() -> None:

@@ -14,19 +14,26 @@ def _parsed(case: sp.ReuseCase, lang: str) -> parse.ParsedReuse:
     return parse.parse_state(render.build(spec, loc), parse.tables_of(loc))
 
 
-@pytest.mark.parametrize("lang", ("zh", "en"))
-@pytest.mark.parametrize("band", sp.BANDS)
-def test_roundtrip_keeps_the_steps(band: str, lang: str) -> None:
+def test_roundtrip_keeps_the_steps() -> None:
     """输入：四档 × 两种语言。输出：无。
 
     预期行为：反解出来的步数、请求号、来源都与真值对得上——渲染的每一行都能被认回来。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    case = sp.ReuseCase(5, band, "action", sp.SYNONYM, "desktop")
-    spec = sp.sample_spec(__import__("random").Random(0), case, "train", 0, 0)
-    parsed = _parsed(case, lang)
-    assert parsed.request_id == spec.query_id
-    assert parsed.flavor == locales.load(lang)["flavor"]["desktop"]
-    assert len(parsed.cached) == len(parsed.current) == case.length
+    bad: list[str] = []
+    for lang in ("zh", "en"):
+        for band in sp.BANDS:
+            try:
+                case = sp.ReuseCase(5, band, "action", sp.SYNONYM, "desktop")
+                spec = sp.sample_spec(__import__("random").Random(0), case, "train", 0, 0)
+                parsed = _parsed(case, lang)
+                assert parsed.request_id == spec.query_id
+                assert parsed.flavor == locales.load(lang)["flavor"]["desktop"]
+                assert len(parsed.cached) == len(parsed.current) == case.length
+            except AssertionError as exc:
+                bad.append(f"{(lang, band)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", ("zh", "en"))

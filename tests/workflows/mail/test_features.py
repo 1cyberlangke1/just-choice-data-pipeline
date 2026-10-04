@@ -60,6 +60,26 @@ def test_phishing_requires_both_a_request_and_a_suspicious_signal() -> None:
     assert only_suspicious.label().is_phishing is False
     assert both.label().is_phishing is True
 
+def test_spam_needs_a_promo_lure_or_a_stranger_asking_for_something() -> None:
+    """输入：四种贴着判据的组合。输出：无。
+
+    预期行为：`is_spam` 的两条路各钉一头——① 促销诱因（中奖 / 好奇）本身就算，与发件人是谁
+    无关；② 陌生个人**并且**提了要求才算，陌生个人但没提要求不算。变异测试把第二支的
+    `ask != none` 翻成 `== none`，全空间 2640 条里 528 条标签会变，而改前**一条测试都不红**
+    （`tmp/probe_mutation3.py` / `tmp/probe_mail_spam.py`）。
+    """
+    promo = features.TagSet("known_vendor", "reward", "none", "official_honest", "formal")
+    stranger_asks = features.TagSet(
+        "unknown_personal", "none", "credentials", "official_honest", "formal"
+    )
+    stranger_quiet = features.TagSet("unknown_personal", "none", "none", "official_honest", "formal")
+    known_quiet = features.TagSet("known_vendor", "none", "none", "official_honest", "formal")
+    assert promo.label().is_spam is True
+    assert stranger_asks.label().is_spam is True
+    assert stranger_quiet.label().is_spam is False
+    assert known_quiet.label().is_spam is False
+
+
 
 def test_atomic_answers_are_read_off_the_tags() -> None:
     """四个原子题的答案就是对应维度的取值（不是二次推断出来的）。"""

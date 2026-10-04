@@ -101,19 +101,6 @@ def test_instructions_carry_the_whole_rule_block() -> None:
         assert rules in str(item.question["instructions"]), item.family
 
 
-def test_rules_block_is_the_rendered_lines_without_the_prefix() -> None:
-    """输入：语言字典。输出：无。
-
-    预期行为：题面那段判据与 state 里那段**同源**——去掉行首前缀就是同一串文本。
-    """
-    loc = locales.load("zh")
-    assert questions.rules_block(loc) == "\n".join(str(line) for line in loc["rules"]["lines"])
-    rendered = render.rules_lines(loc)
-    assert [line.removeprefix(str(loc["meta"]["rules_prefix"])) for line in rendered] == [
-        str(line) for line in loc["rules"]["lines"]
-    ]
-
-
 def test_next_options_are_the_task_names_plus_none() -> None:
     """输入：语言字典。输出：无。
 

@@ -19,13 +19,15 @@
 跑过 train 不蕴含跑过 ood。补这一遍之前，`maze` 的 `test_ood`（8×10 大迷宫、4000 条）
 在**任何测试里都没端到端跑过**——`tests/workflows/maze/test_labels.py` 只验了
 `config_for("test_ood").size`，那是配置，不是产物。
+
+为什么不是每家每个切分一条参数化用例：`_sweep_one` 是同一段端到端流程，28 条用例只是把
+同一件事报 28 遍。收成一条循环之后，失败信息攒在 `bad` 里一起报（点名到 workflow / 切分），
+用例数从 28 降到 1；跑的总量不变（该跑的一家都没少）。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 from jc import pipeline
 from jc import workflow as workflow_mod
@@ -35,6 +37,8 @@ from tests.workflows._contract import (
     assert_audit_reads_a_mixed_file,
     assert_contract,
     assert_language_texts_are_declared,
+    assert_manifest_and_stats,
+    assert_no_unresolved_slots,
 )
 
 
@@ -56,10 +60,8 @@ def test_constructive_workflows_are_found() -> None:
     assert len(CONSTRUCTIVE) >= 5, f"只找到 {CONSTRUCTIVE}，纯构造 workflow 不该这么少"
 
 
-@pytest.mark.parametrize("split", ("train", "test_ood"))
-@pytest.mark.parametrize("name", CONSTRUCTIVE)
-def test_every_locale_runs_without_rejects(name: str, split: str, tmp_path: Path) -> None:
-    """输入：workflow 名、切分、临时目录。输出：无。
+def _sweep_one(name: str, split: str, tmp_path: Path) -> None:
+    """输入：workflow 名、切分、临时目录。输出：无（断言）。
 
     预期行为：给定切分在**每个语言**下都零拒稿、零审计缺失、产物非空、过通用格式契约，
     而且**各语言出的条数一致**。
@@ -92,6 +94,8 @@ def test_every_locale_runs_without_rejects(name: str, split: str, tmp_path: Path
         run_dirs.append(result.run_dir)
         assert_audit_ignores_the_callers_locale(wf, result.run_dir, split, f"{name}/{locale}/{split}")
         assert_contract(result.run_dir, split, f"{name}/{locale}/{split}")
+        assert_no_unresolved_slots(result.run_dir, split, f"{name}/{locale}/{split}")
+        assert_manifest_and_stats(result.run_dir, split, wf, f"{name}/{locale}/{split}", locale)
         # 纯构造族必须报**空**：它们的 state 由代码按语言模板写（迷宫图 / 发票 / 表格），
         # 按语言判只会把好数据当坏数据。
         assert_language_texts_are_declared(
@@ -99,3 +103,19 @@ def test_every_locale_runs_without_rejects(name: str, split: str, tmp_path: Path
         )
     assert len(set(counts.values())) == 1, f"{name}/{split} 各语言出的条数不一致：{counts}"
     assert_audit_reads_a_mixed_file(wf, run_dirs, split, f"{name}/{split}", tmp_path)
+
+
+def test_every_locale_runs_without_rejects(tmp_path: Path) -> None:
+    """输入：无（名单现场列）。输出：无。
+
+    预期行为：每个 (workflow, 切分) 都过 `_sweep_one` 那一整套；问题攒在 `bad` 里一起报
+    （点名到 workflow / 切分），不因为第一家炸掉就看不见其余。
+    """
+    bad: list[str] = []
+    for name in CONSTRUCTIVE:
+        for split in ("train", "test_ood"):
+            try:
+                _sweep_one(name, split, tmp_path)
+            except AssertionError as error:
+                bad.append(f"{name}/{split}：{error}")
+    assert not bad, bad

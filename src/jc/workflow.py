@@ -27,6 +27,7 @@ from .cover import slice_by_bucket
 from .contract import TYPE_CHOICE, TYPE_NOUL, TYPE_SCORE, is_index, option_names
 from .judge import COMMON_JUDGES, ROUNDTRIP_JUDGES, Judge, JudgeTable, standard_judges
 from .locale_files import LocaleApi
+from .optional import llm_extra_hint
 
 if TYPE_CHECKING:  # 只在类型检查时引入：核心层不装 [llm] extra 也能跑构造式 workflow
     from .backend.types import GenerationBackend
@@ -388,19 +389,30 @@ def discover() -> list[str]:
     输入：无。输出：排序后的已注册名字。
     预期行为：注册靠「导入即注册」，所以列名单前必须先把各 workflow 导进来；
     单个 workflow 导入失败只写一行警告到 stderr，不连坐其他 workflow，
-    也不让通用层静态依赖任何具体 workflow。
+    也不让通用层静态依赖任何具体 workflow。**缺 `[llm]` 可选依赖的那一批按原因并成一条**：
+    它们的原因逐字相同，按家各报一行会让 37 家刷满一屏，反而盖住真正异常的 workflow。
     """
     try:
         package = importlib.import_module("workflows")
     except ModuleNotFoundError:
         return registered()
+    missing_extra: dict[str, list[str]] = {}
     for module in pkgutil.iter_modules(package.__path__):
         if module.name.startswith("_"):
             continue
         try:
             importlib.import_module(f"workflows.{module.name}")
         except Exception as exc:  # noqa: BLE001 坏掉的 workflow 不该拖垮名单
+            hint = llm_extra_hint(exc) if isinstance(exc, ModuleNotFoundError) else None
+            if hint is not None:
+                missing_extra.setdefault(hint, []).append(module.name)
+                continue
             print(f"⚠️ 跳过 workflow {module.name}：{exc}", file=sys.stderr)
+    for hint, names in missing_extra.items():
+        print(
+            f"⚠️ 跳过 {len(names)} 个 workflow（{', '.join(names)}）：{hint}",
+            file=sys.stderr,
+        )
     return registered()
 
 
@@ -420,6 +432,9 @@ def load(name: str) -> Workflow:
             # （谁都没 import 过任何 workflow），直接读它会报成「（空）」——那等于没报。
             discover()
             known = ", ".join(registered()) or "（空）"
+            hint = llm_extra_hint(exc)
+            if hint is not None:
+                raise KeyError(f"workflow {name!r} 装不上：{hint}（已注册：{known}）") from exc
             raise KeyError(f"未找到 workflow {name!r}（已注册：{known}）") from exc
     if name not in _REGISTRY:
         raise KeyError(f"workflow {name!r} 被导入但没有自注册；已注册：{', '.join(registered())}")

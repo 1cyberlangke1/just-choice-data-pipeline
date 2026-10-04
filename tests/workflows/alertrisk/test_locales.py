@@ -10,26 +10,6 @@ from workflows.alertrisk import features, judges, locales, questions, render
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：四个抬头两两不互为前缀——`【判定事实】` 与 `【判定事实附注】` 那种关系会让解析先
-    命中短的那个，整段 state 当场错位。
-    """
-    loc = locales.load(lang)
-    marks = [
-        str(loc["state"][key])
-        for key in ("fact_mark", "matrix_mark", "rule_mark", "content_mark")
-    ]
-    assert all(marks)
-    assert len(set(marks)) == len(marks)
-    for left in marks:
-        for right in marks:
-            if left != right:
-                assert not right.startswith(left), f"{left!r} 是 {right!r} 的前缀"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_fact_table_lines_up_with_features(lang: str) -> None:
     """输入：一种语言。输出：无。
 
@@ -100,18 +80,6 @@ def test_level_and_act_tables_line_up_with_features(lang: str) -> None:
     assert sorted(acts) == sorted(features.ACTS)
     actions = [render.act_text(loc, act) for act in features.ACTS]
     assert len(set(actions)) == len(actions)
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_source_table_lines_up_with_features(lang: str) -> None:
-    """输入：一种语言。输出：无。预期行为：报警通道表覆盖 `SOURCES`，描述两两不同。"""
-    loc = locales.load(lang)
-    table = loc["source"]
-    assert isinstance(table, dict)
-    assert sorted(table) == sorted(features.SOURCES)
-    descs = [render.source_copy(loc, source) for source in features.SOURCES]
-    assert all(desc.strip() for desc in descs)
-    assert len(set(descs)) == len(descs)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])

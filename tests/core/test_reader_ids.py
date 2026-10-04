@@ -17,7 +17,6 @@ import pathlib
 import re
 from typing import Final
 
-import pytest
 
 #: 找「取值域」的两条写法（判别器里现成的那两行）。
 PAIRS_RE: Final[re.Pattern[str]] = re.compile(
@@ -77,14 +76,21 @@ def test_reader_id_fields_are_literal() -> None:
     assert bare == [], f"这些反解草稿的编号字段还是裸 str：{bare}（取值域要写进 Literal）"
 
 
-@pytest.mark.parametrize("path,name,const", _targets())
-def test_literal_values_come_from_features(path: pathlib.Path, name: str, const: str) -> None:
+def test_literal_values_come_from_features() -> None:
     """输入：一家 judges.py、它的字段名与常量名。输出：无。
 
     预期行为：标注是 `Literal[*features.X]`，**不是手抄的字符串表**——手抄会与 features 漂开。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    annotation = _annotation(path, name)
-    assert annotation is not None
-    # `ast.unparse` 会给单元素下标补一个尾逗号（`Literal[*features.TAG_IDS,]`），抹掉再比。
-    value = (_alias_value(path, annotation) or "").replace(",]", "]")
-    assert value == f"Literal[*features.{const}]", f"{path.parent.name}: {annotation} = {value}"
+    bad: list[str] = []
+    for path, name, const in _targets():
+        try:
+            annotation = _annotation(path, name)
+            assert annotation is not None
+            # `ast.unparse` 会给单元素下标补一个尾逗号（`Literal[*features.TAG_IDS,]`），抹掉再比。
+            value = (_alias_value(path, annotation) or "").replace(",]", "]")
+            assert value == f"Literal[*features.{const}]", f"{path.parent.name}: {annotation} = {value}"
+        except AssertionError as exc:
+            bad.append(f"{(path, name, const)!r}: {exc}")
+    assert not bad, "\n".join(bad)

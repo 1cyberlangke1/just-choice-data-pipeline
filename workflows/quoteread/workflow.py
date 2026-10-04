@@ -29,7 +29,7 @@ from typing import Final, cast
 
 from jc import jsonio
 from jc.backend.types import GenerationBackend
-from jc.cover import hash_bucket, slice_by_bucket
+from jc.cover import cover_pick, hash_bucket, slice_by_bucket
 from jc.jsontypes import JsonValue
 from jc.workflow import LabeledQuestion, SplitSpec, StandardMethods, family_of, plan_with_phrasing, register, config_for_split
 
@@ -94,23 +94,7 @@ def _cover_pick(cases: list[QuoteCase], limit: int) -> list[QuoteCase]:
     一条「中等波动」都出不来，`tier` 的某些档位取不到，均衡闸与审计都会当场报出来。
     """
     names = ("values", "units")
-    chosen: list[QuoteCase] = []
-    seen: dict[str, set[str]] = {name: set() for name in names}
-    remaining = list(cases)
-    while remaining and len(chosen) < limit:
-        keys = [
-            (
-                sum(1 for name in names if _dims_of(case)[name] not in seen[name]),
-                -index,
-            )
-            for index, case in enumerate(remaining)
-        ]
-        best = max(range(len(remaining)), key=lambda index: keys[index])
-        case = remaining.pop(best)
-        chosen.append(case)
-        for name in names:
-            seen[name].add(_dims_of(case)[name])
-    return chosen
+    return cover_pick(cases, limit, names, _dims_of)
 
 
 def cases_for(config: QuoteConfig) -> list[QuoteCase]:

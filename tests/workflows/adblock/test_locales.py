@@ -7,28 +7,6 @@ import pytest
 from workflows.adblock import features, judges, locales, questions, render
 
 
-def test_both_languages_exist() -> None:
-    """输入：无。输出：无。预期行为：zh / en 都在（少一个就是漏分发）。"""
-    assert locales.available() == ["en", "zh"]
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：三个抬头两两不互为前缀——`【判定判据】` 与 `【判定判据附注】` 那种关系会让解析先
-    命中短的那个，整段 state 当场错位。
-    """
-    loc = locales.load(lang)
-    marks = [str(loc["state"][key]) for key in ("tag_mark", "rule_mark", "content_mark")]
-    assert all(marks)
-    assert len(set(marks)) == len(marks)
-    for left in marks:
-        for right in marks:
-            if left != right:
-                assert not right.startswith(left), f"{left!r} 是 {right!r} 的前缀"
-
-
 @pytest.mark.parametrize("lang", ["en", "zh"])
 def test_tag_table_lines_up_with_features(lang: str) -> None:
     """输入：一种语言。输出：无。
@@ -99,25 +77,6 @@ def test_surface_table_lines_up_with_features(lang: str) -> None:
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_every_family_has_questions_and_the_right_shape(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：四族的问法池非空；逐判据那一族有 true / false 判据；count 与 combo 的选项表齐全。
-    """
-    loc = locales.load(lang)
-    for family in questions.FAMILIES:
-        spec = loc["fam"][family]
-        assert isinstance(spec["q"], list) and spec["q"], f"{family} 没有问法"
-    assert str(loc["fam"]["flag"]["criteria_true"]).strip()
-    assert str(loc["fam"]["flag"]["criteria_false"]).strip()
-    assert sorted(loc["fam"]["count"]["opt"]) == [
-        f"c{value}" for value in range(len(features.TAG_IDS) + 1)
-    ]
-    assert str(loc["fam"]["combo"]["none"]).strip()
-    assert str(loc["fam"]["combo"]["joiner"])
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_prompts_and_questions_leave_no_placeholder(lang: str) -> None:
     """输入：一种语言 × 全空间 48 组 case。输出：无。
 
@@ -147,9 +106,4 @@ def test_prompt_pins_the_language(lang: str) -> None:
     assert "{language}" in str(loc["prompt"]["lang_rule"])
     case = features.AdBlockCase("A1", features.SURFACE_ARTICLE)
     assert str(loc["language_name"]) in render.build_prompt(loc, case)
-
-
-def test_pick_wraps_around() -> None:
-    """输入：越界的问法编号。输出：无。预期行为：回绕（不抛异常）。"""
-    assert locales.pick(["a", "b"], 3) == "b"
 

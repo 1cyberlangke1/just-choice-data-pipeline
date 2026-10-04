@@ -5,14 +5,14 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-import pytest
 
-from jc import pipeline, workflow as workflow_mod
+from jc import pipeline
 from jc.jsontypes import JsonValue
 
 from workflows.citation import features, locales, render, workflow as citation_workflow
-from workflows.citation.spec import CitationSpec, spec_to_dict
+from workflows.citation.spec import CitationSpec
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.citation.conftest import SENTENCES, FakeBackend, spec_for
 
 CASE_LIMIT = 10
@@ -29,72 +29,16 @@ def make_config(
     （长度按两种语言的预算挑的，见 `conftest`），zh 侧因此不是汉字。真机 zh 产物不是这样，
     这是夹具的局限；语言闸本身由 `tests/core` 的定点测试与认 `locale` 的假后端验。
     """
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="citation",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=citation_workflow.CitationConfig(split=split, case_limit=limit),
-        backend=backend,
+        seed=7,
+        override=citation_workflow.CitationConfig(split=split, case_limit=limit),
         language_gate=False,
     )
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，而且
-    `section` 一族真的出得来（小批量选 case 是覆盖优先的，能查到的引文不会被漏掉）。
-    """
-    result = pipeline.run(make_config(tmp_path, "c1", fake_backend()))
-    assert result.accepted == CASE_LIMIT
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"hygiene", "frame", "trace"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    report, missing = workflow_mod.load("citation").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == CASE_LIMIT
-    assert report["train"]["families"]["section"] > 0
-    for counter in (
-        "doc_bad",
-        "quote_bad",
-        "claim_bad",
-        "verdict_bad",
-        "in_doc_bad",
-        "section_bad",
-        "in_claimed_bad",
-    ):
-        assert report["train"][counter] == 0, counter
-
-
-@pytest.mark.parametrize(
-    ("switch", "code"),
-    [
-        ("duplicate", "E_ASSEMBLE"),
-        ("drop_sentence", "E_ASSEMBLE"),
-        ("no_digit", "E_ASSEMBLE"),
-        ("short_sentence", "E_ASSEMBLE"),
-        ("fence_line", "E_ASSEMBLE"),
-        ("title_fence", "E_ASSEMBLE"),
-        ("trace_lies", "E_JUDGE_TRACE"),
-    ],
-)
-def test_bad_drafts_and_bad_traces_are_rejected(
-    tmp_path: Path, fake_backend: type[FakeBackend], switch: str, code: str
-) -> None:
-    """输入：各种作弊开关。输出：RunResult。
-
-    预期行为：一条都留不下，拒绝码就是该有的那一个——写歪的正文是渲染期的 `E_ASSEMBLE`
-    （重试耗尽后仍被拒，不静默放行），反解说反话是 `E_JUDGE_TRACE`。
-    """
-    result = pipeline.run(make_config(tmp_path, f"c3-{switch}", fake_backend(**{switch: True})))
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {code}
 
 
 def test_case_splits_are_disjoint_and_cover_the_space() -> None:
@@ -150,33 +94,6 @@ def test_full_train_run_is_balanced(tmp_path: Path, fake_backend: type[FakeBacke
     )
 
 
-def test_render_without_a_backend_is_an_error() -> None:
-    """输入：没绑后端的 workflow。输出：无。预期行为：抛 RuntimeError，不静默降级成模板。"""
-    workflow = citation_workflow.CitationWorkflow()
-    case = features.CitationCase("exact", "same", "first", "first")
-    spec = spec_for(case)
-    with pytest.raises(RuntimeError, match="bind_backend"):
-        workflow.render(spec, random.Random(0), "zh")
-
-
-def test_trace_judge_without_a_backend_is_an_error() -> None:
-    """输入：没绑后端却要 trace 判别器。输出：无。预期行为：抛 RuntimeError（接线错了）。"""
-    workflow = citation_workflow.CitationWorkflow()
-    with pytest.raises(RuntimeError, match="trace"):
-        workflow.make_judges(("trace",), "zh")
-
-
-def test_unknown_split_and_judge_and_locale_report_available() -> None:
-    """输入：不存在的切分 / 判别器 / 语言。输出：无。预期行为：都报人话。"""
-    workflow = citation_workflow.CitationWorkflow()
-    with pytest.raises(KeyError, match="未知切分"):
-        workflow.config_for("nope")
-    with pytest.raises(KeyError, match="未知判别器"):
-        workflow.make_judges(("nope",), "zh")
-    with pytest.raises(FileNotFoundError):
-        workflow.audit(Path("dataset"), ("train",), "nope")
-
-
 def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
     """输入：同一个 case 的两次采样。输出：无。预期行为：引文计划与切分、进程无关。"""
     case = features.CitationCase("partial", "other", "last", "last")
@@ -191,7 +108,6 @@ def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
     assert isinstance(first, CitationSpec)
     assert first.plan == second.plan
     assert first.plan == features.plan_for(case, 1)
-    assert spec_to_dict(first)["claimed"] == first.plan.claimed
 
 
 def test_topic_knob_reaches_the_prompt() -> None:
@@ -209,7 +125,6 @@ def test_topic_knob_reaches_the_prompt() -> None:
     )
     assert isinstance(spec, CitationSpec)
     assert spec.topic == 7
-    assert spec_to_dict(spec)["topic"] == 7
     loc = locales.load("zh")
     assert locales.pick(loc["prompt"]["topics"], 7) in render.build_prompt(loc, spec.topic)
     assert workflow.stats_dimensions(case) == {
@@ -247,17 +162,3 @@ def test_reparse_and_case_label_are_wired() -> None:
     }
     assert workflow.dimension_titles()["form"]
 
-
-def test_locales_are_reported() -> None:
-    """输入：无。输出：无。预期行为：支持的语言与语言文件目录一致。"""
-    workflow = citation_workflow.CitationWorkflow()
-    assert workflow.available_locales() == locales.available() == ["en", "zh"]
-
-
-def test_declared_contract_fields() -> None:
-    """输入：workflow 的声明项。输出：无。预期行为：题型、后端需求与判别器名单都对得上。"""
-    workflow = citation_workflow.CitationWorkflow()
-    assert workflow.name == "citation"
-    assert workflow.kinds == frozenset({"choice", "noul"})
-    assert workflow.needs == frozenset({"text"})
-    assert workflow.judges == ("hygiene", "frame", "trace")

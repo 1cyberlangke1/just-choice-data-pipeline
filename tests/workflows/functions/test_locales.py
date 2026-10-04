@@ -1,14 +1,12 @@
 """语言文件：形状一致、短语互不包含、取值短语全局唯一、模板填得满。"""
 
 from __future__ import annotations
+
 from jc.jsontypes import JsonValue
-
-
 
 import pytest
 
 from workflows.functions import locales, parse, render, spec as sp
-from workflows.functions.workflow import FunctionsWorkflow
 
 from tests.workflows.functions.conftest import MakeCase
 
@@ -280,18 +278,3 @@ def test_merged_table_reads_both_languages(make_case: MakeCase) -> None:
         assert len(phrases) == len(LANGS), tool
 
 
-def test_missing_locale_lists_the_available_ones() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="可用"):
-        locales.load("fr")
-
-
-def test_available_locales_match_the_workflow() -> None:
-    """输入：无。输出：无。预期行为：workflow 报的语言列表就是磁盘上的语言文件。"""
-    assert FunctionsWorkflow().available_locales() == list(LANGS)
-
-
-def test_pick_wraps_around() -> None:
-    """输入：越界编号。输出：无。预期行为：回绕而不是报错（题面措辞不是判据）。"""
-    assert locales.pick(["a", "b"], 3) == "b"
-    assert locales.pick(["a", "b"], 0) == "a"

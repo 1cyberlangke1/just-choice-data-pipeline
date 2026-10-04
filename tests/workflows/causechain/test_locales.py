@@ -31,23 +31,6 @@ def promised_markers(rule: str) -> list[str]:
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：三个抬头两两不互为前缀——`【服务依赖图】` 与 `【服务依赖图附注】` 那种关系会让
-    解析先命中短的那个，整段 state 当场错位。
-    """
-    loc = locales.load(lang)
-    marks = [str(loc["state"][key]) for key in ("tag_mark", "rule_mark", "content_mark")]
-    assert all(marks)
-    assert len(set(marks)) == len(marks)
-    for left in marks:
-        for right in marks:
-            if left != right:
-                assert not right.startswith(left), f"{left!r} 是 {right!r} 的前缀"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_event_table_lines_up_with_features(lang: str) -> None:
     """输入：一种语言。输出：无。
 

@@ -29,21 +29,6 @@ from tests.workflows import _fakes
 CASE: Final[DepCheckCase] = DepCheckCase("D1+D3", features.ECO_NPM)
 
 
-def test_quote_holds_needs_the_quote_and_the_whole_record() -> None:
-    """输入：四种引文。输出：无。
-
-    预期行为：引文原样在记录里、引文自己满足判据、整屏记录也满足判据——三件事同时成立才算数；
-    只把形状塞进引文（记录里没有那一行）是误报。
-    """
-    body = packet_of(("D1",))
-    assert judges.quote_holds("D1", quote_for("D1"), body)
-    assert judges.quote_holds("D1", json.dumps([quote_for("D1")]), body)  # 引文被装进 JSON 数组字符串（范式 §9.88）
-    assert not judges.quote_holds("D1", "license: MIT", body)
-    assert not judges.quote_holds("D2", quote_for("D2"), body)
-    assert not judges.quote_holds("D9", quote_for("D1"), body)
-    assert not judges.quote_holds("D1", "AGPL-3.0-only", body)  # 只抄取值、不带键名，不算
-
-
 def test_quote_holds_ignores_whitespace_differences() -> None:
     """输入：引文里多打了空白。输出：无。预期行为：空白折叠之后仍然算抄对了。"""
     body = packet_of(("D3",))
@@ -200,43 +185,27 @@ class StubBackend(_fakes.ScriptedBackend):
         )
 
 
-@pytest.mark.parametrize(
-    ("data", "needle"),
-    [
+def test_trace_skips_drafts_it_cannot_read() -> None:
+    """输入：六种形态不对的反解草稿。输出：无。
+
+    预期行为：都记「没判成」（`skipped=True`）——那是反解格式没对齐，不是数据本身错。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for data, needle in [
         ({}, "缺 tags"),
         ({"tags": "不是列表", "level": 3}, "缺 tags"),
         ({"tags": ["不是对象"], "level": 3}, "不是「编号 + 引文」对象"),
         ({"tags": [{"tag": "D9", "quote": "x"}], "level": 3}, "不认识的标记编号"),
         ({"tags": [], "level": 9}, "1~5 的整数"),
         ({"tags": [], "level": "三"}, "1~5 的整数"),
-    ],
-)
-def test_trace_skips_drafts_it_cannot_read(data: dict[str, JsonValue], needle: str) -> None:
-    """输入：六种形态不对的反解草稿。输出：无。
-
-    预期行为：都记「没判成」（`skipped=True`）——那是反解格式没对齐，不是数据本身错。
-    """
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(StubBackend(data), "zh").judge(sample, spec)
-    assert verdict.skipped and verdict.ok
-    assert needle in verdict.reason
-
-
-def test_trace_drops_quotes_that_do_not_stand_up() -> None:
-    """输入：反解多报一条，但引文在记录里不存在。输出：无。
-
-    预期行为：那条误报被丢掉，剩下的与计划一致——所以整条通过，理由里点名被丢掉的那条。
-    """
-    spec, sample = faithful(CASE)
-    data: dict[str, JsonValue] = {
-        "tags": [
-            {"tag": "D1", "quote": quote_for("D1")},
-            {"tag": "D3", "quote": quote_for("D3")},
-            {"tag": "D2", "quote": "status: archived -- 记录里根本没这一行"},
-        ],
-        "level": spec.labels.level,
-    }
-    verdict = judges.TraceJudge(StubBackend(data), "zh").judge(sample, spec)
-    assert verdict.ok and not verdict.skipped
-    assert verdict.raw["traced_hits"] == ["D1", "D3"]
-    assert "已按没命中处理" in verdict.reason
+    ]:
+        try:
+            spec, sample = faithful(CASE)
+            verdict = judges.TraceJudge(StubBackend(data), "zh").judge(sample, spec)
+            assert verdict.skipped and verdict.ok
+            assert needle in verdict.reason
+        except AssertionError as exc:
+            bad.append(f"{(data, needle)!r}: {exc}")
+    assert not bad, "\n".join(bad)

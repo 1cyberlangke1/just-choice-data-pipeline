@@ -43,8 +43,6 @@ ID_SLOTS: Final[tuple[str, ...]] = ("doc", "po", "contract")
 
 #: 可能出现的税率（百分数）。
 TAX_RATES: Final[tuple[int, ...]] = (3, 6, 9, 13)
-#: 明细行的列（渲染表头用；反解不靠它认列，靠「后三格是数字」）。
-LINE_COLS: Final[tuple[str, ...]] = ("name", "qty", "unit", "amount")
 #: spec 里存的是词表**下标**，所以每种语言的词表长度都不能小于这个数（测试锁住）。
 WORD_POOL: Final[int] = 12
 
@@ -362,23 +360,3 @@ def sample_spec(
         total=subtotal + tax_amount + shipping,
         phrasing=phrasing,
     )
-
-
-def spec_to_dict(spec: InvoiceSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.describe(),
-        "unseen_dims": list(spec.case.unseen_dims()),
-        "split": spec.split,
-        "seq": spec.seq,
-        "doc_no": spec.doc_no,
-        "subtotal": spec.subtotal,
-        "shipping": spec.shipping,
-        "tax_rate": spec.tax_rate,
-        "tax_amount": spec.tax_amount,
-        "total": spec.total,
-        "items": [
-            {"qty": item.qty, "unit": item.unit, "amount": item.amount, "ok": item.consistent}
-            for item in spec.items
-        ],
-    }

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from jc import jsonio, pipeline
 from jc.jsontypes import JsonValue
@@ -180,7 +179,3 @@ def test_unknown_family_is_reported(tmp_path: Path) -> None:
     assert report["train"]["unknown_families"]["bogus"] == CASE_LIMIT
 
 
-def test_unknown_locale_is_rejected() -> None:
-    """输入：不存在的语言。输出：无。预期行为：审计当场报错，不静默跳过。"""
-    with pytest.raises(FileNotFoundError):
-        lint_workflow.LintWorkflow().audit(Path("dataset"), ("train",), "nope")

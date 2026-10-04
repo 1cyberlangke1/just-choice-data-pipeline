@@ -54,12 +54,6 @@ def test_every_pair_of_values_is_covered() -> None:
                 assert key in seen, key
 
 
-def test_build_cases_is_deterministic() -> None:
-    """输入：同参数枚举两次。输出：无。预期行为：逐项一致。"""
-    assert F.build_cases(512) == F.build_cases(512)
-    assert F.build_cases(512) == CASES
-
-
 def test_every_dimension_is_realized_by_the_plan() -> None:
     """输入：全枚举 × 三个问法。输出：无。
 

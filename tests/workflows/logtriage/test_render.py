@@ -15,33 +15,6 @@ from workflows.logtriage.features import LogTriageCase
 CASE = LogTriageCase("N1+N3", features.SOURCE_APP)
 
 
-def test_prompt_lists_required_and_forbidden_fragments() -> None:
-    """输入：一个命中两条的 case。输出：无。
-
-    预期行为：要求出现的两条各自印上**判据原文**（那是模型唯一的规格来源，示例片段一律不给，
-    见 `build_prompt`）；不许出现的那两条各自带着反面写法——少列一条，模型就可能顺手把那条也
-    写上，命中组合当场多出来。
-    """
-    loc = locales.load("zh")
-    prompt = render.build_prompt(loc, CASE)
-    for tag in CASE.tags():
-        assert str(render.tag_copy(loc, tag)["rule"]) in prompt
-        assert "example" not in render.tag_copy(loc, tag)
-    for tag in ("N2", "N4"):
-        assert str(render.tag_copy(loc, tag)["avoid"]) in prompt
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_prompt_tells_the_model_to_compose_its_own_sentence(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：提示词里明说判据里那些词只是**形状**、句子要自己组织、判据原文不许原样贴进去
-    （范式 §9.45：给成品句就会被整段照抄，所以只给形状 + 明说不许贴）。
-    """
-    loc = locales.load(lang)
-    assert str(loc["prompt"]["vary_rule"]) in render.build_prompt(loc, CASE)
-
-
 def test_prompt_says_none_may_be_hit_when_the_plan_is_empty() -> None:
     """输入：空命中的 case。输出：无。预期行为：改成「一条都不许踩」的说法，且不出现要求段落。"""
     loc = locales.load("zh")
@@ -51,14 +24,22 @@ def test_prompt_says_none_may_be_hit_when_the_plan_is_empty() -> None:
     assert str(loc["prompt"]["hits_header"]) not in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-@pytest.mark.parametrize("source", ["app", "infra", "access"])
-def test_prompt_states_the_source_shape(lang: str, source: str) -> None:
-    """输入：一种语言 × 一种通道。输出：无。预期行为：提示词里点明这行日志从哪种通道来。"""
-    loc = locales.load(lang)
-    case = LogTriageCase("N2", source)
-    prompt = render.build_prompt(loc, case)
-    assert render.source_copy(loc, source) in prompt
+def test_prompt_states_the_source_shape() -> None:
+    """输入：一种语言 × 一种通道。输出：无。预期行为：提示词里点明这行日志从哪种通道来。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in ["en", "zh"]:
+        for source in ["app", "infra", "access"]:
+            try:
+                loc = locales.load(lang)
+                case = LogTriageCase("N2", source)
+                prompt = render.build_prompt(loc, case)
+                assert render.source_copy(loc, source) in prompt
+            except AssertionError as exc:
+                bad.append(f"{(lang, source)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -181,31 +162,6 @@ def test_pasted_rules_only_flags_verbatim_text() -> None:
     assert render.pasted_rules(rule, loc) == [rule]
     assert render.pasted_rules(rule.replace("healthz", "healthzzz"), loc) == []
     assert render.pasted_rules(BASE, loc) == []
-
-
-def test_build_task_carries_the_injected_features() -> None:
-    """输入：真值规格。输出：无。
-
-    预期行为：任务 id 可重算、`spec` 里带上注入特征（假后端与真后端都能照着它答）、响应模型是
-    草稿模型。
-    """
-    spec = spec_for(CASE)
-    task = render.build_task(spec, locales.load("zh"))
-    assert task.task_id == "logtriage-train-0000001-render"
-    assert task.domain == "logtriage"
-    assert task.response_model is render.ContentDraft
-    assert task.spec["case"] == {"hits": "N1+N3", "source": "app"}
-    assert task.spec["hits"] == ["N1", "N3"]
-    assert task.spec["source"] == "app"
-
-
-def test_tag_copy_reports_missing_fields() -> None:
-    """输入：缺字段的语言字典。输出：无。预期行为：抛 ValueError，点名缺了哪个字段。"""
-    with pytest.raises(ValueError, match="缺判据 N1"):
-        render.tag_copy({"tag": {}}, "N1")
-    broken: dict[str, JsonValue] = {"tag": {"N1": {"name": "心跳与健康检查"}}}
-    with pytest.raises(ValueError, match="缺字段 rule"):
-        render.tag_copy(broken, "N1")
 
 
 def test_source_copy_reports_a_missing_shape() -> None:

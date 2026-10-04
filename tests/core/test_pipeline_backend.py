@@ -373,7 +373,9 @@ def test_load_backend_assembles_with_probe(monkeypatch: object) -> None:
     """输入：一个配置路径（`jc.backend` 被换掉，不真读文件、不真联网）。
 
     输出：装配出来的后端对象。
-    预期行为：先 `load_config` 再 `build_backend(probe=True)`——开机探测是 PLAN 3.1.1 的要求。
+    预期行为：先 `load_config` 再 `build_backend(probe=True, env=None)`——开机探测是 PLAN 3.1.1
+    的要求；没给 `--env-file` 时 `env` 必须是 None（后端照旧读进程环境），假装配器收到的参数
+    与真装配器逐字对齐，签名漂移在这里当场红灯。
     """
     import jc.backend as backend_mod
 
@@ -383,15 +385,16 @@ def test_load_backend_assembles_with_probe(monkeypatch: object) -> None:
         seen["path"] = path
         return "CFG"
 
-    def fake_build_backend(cfg: str, *, probe: bool) -> str:
+    def fake_build_backend(cfg: str, *, probe: bool, env: object = None) -> str:
         seen["cfg"] = cfg
         seen["probe"] = probe
+        seen["env"] = None if env is None else "SET"
         return "BACKEND"
 
     monkeypatch.setattr(backend_mod, "load_config", fake_load_config)
     monkeypatch.setattr(backend_mod, "build_backend", fake_build_backend)
     assert cli._load_backend("x.toml") == "BACKEND"
-    assert seen == {"path": "x.toml", "cfg": "CFG", "probe": True}
+    assert seen == {"path": "x.toml", "cfg": "CFG", "probe": True, "env": None}
 
 
 # ---- LLM 质检判别器接进管线（PLAN 6.2）--------------------------------------

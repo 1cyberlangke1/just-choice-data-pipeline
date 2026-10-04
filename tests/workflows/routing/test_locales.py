@@ -72,20 +72,6 @@ def test_feature_line_raises_on_a_missing_phrase() -> None:
         locales.feature_line(loc, "issue", "bogus")
 
 
-def test_banned_phrases_do_not_fire_on_the_fixture_bodies() -> None:
-    """输入：夹具里那几段正文。输出：无。
-
-    预期行为：一条都不许撞禁用语——撞了就说明禁用语写得过宽，真跑时会把本来能用的
-    数据在渲染期白拒掉。
-    """
-    cases = features.build_cases(2048)
-    for lang in locales.available():
-        loc = locales.load(lang)
-        for tags in cases:
-            body = body_for(tags.as_dict())
-            assert render.banned_echo(body, loc) == [], body
-
-
 def test_issue_labels_are_declared_and_do_not_fire_on_the_fixture_bodies() -> None:
     """输入：两语言的档名名单与夹具正文。输出：无。
 

@@ -416,18 +416,3 @@ def sample_spec(case: SkillCase, split: str, seq: int, phrasing: int, rng: rando
         allowed=allow,
         conflicts=clash,
     )
-
-
-def spec_to_dict(spec: SkillSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.describe(),
-        "unseen_dims": list(spec.case.unseen_dims()),
-        "request_id": spec.request_id,
-        "target_slot": spec.target_slot,
-        "target_entry": spec.target_entry,
-        "inuse_tag": spec.inuse_tag,
-        "allowed": spec.allowed,
-        "conflicts": spec.conflicts,
-        "rows": [row.describe() for row in spec.rows],
-    }

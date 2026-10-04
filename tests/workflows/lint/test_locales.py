@@ -21,17 +21,6 @@ def all_keys(node: object, path: str = "") -> set[str]:
     return {path}
 
 
-def test_available_locales() -> None:
-    """输入：无。输出：无。预期行为：就 zh / en 两个，按文件名排序。"""
-    assert locales.available() == ["en", "zh"]
-
-
-def test_missing_locale_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("nope")
-
-
 def test_locales_have_the_same_structure() -> None:
     """输入：两个语言。输出：无。预期行为：叶子路径集合完全一致（少一条就是漏翻）。"""
     assert all_keys(locales.load("zh")) == all_keys(locales.load("en"))

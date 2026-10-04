@@ -72,7 +72,9 @@ def build(spec: DocSpec, loc: dict[str, JsonValue], phrasing: int) -> list[Label
     if not spec.texts:
         raise ValueError("出题前必须先渲染（spec.texts 是空的）")
     rendered = render.layout(spec.plan, spec.texts, loc)
-    context = str(loc["doc"]["context"])
+    # 题面自带上下文，而且**切块规则与读者题面同一份**（`render.split_rules_block`）：规则写两处
+    # 就会漂，漂的那次是 2026-10-04 真机 47% 被拒（读者把紧贴正文的标题并进了正文）。
+    context = str(loc["doc"]["context"]) + "\n" + render.split_rules_block(loc)
     out: list[LabeledQuestion] = []
 
     join_entry = loc["fam"]["join"]

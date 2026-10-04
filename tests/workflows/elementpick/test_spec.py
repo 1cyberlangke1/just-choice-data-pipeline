@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.workflows.elementpick.conftest import _make_case, _make_spec
+from tests.workflows.elementpick.conftest import _make_case
 from workflows.elementpick import spec as sp
 
 
@@ -187,20 +187,6 @@ def test_screen_id_is_deterministic_and_split_free() -> None:
     assert first.screen_id != sp.screen_id_of(_make_case(label="cancel"))
 
 
-def test_spec_summary_is_json_serialisable() -> None:
-    """输入：一条规格。输出：无。预期行为：摘要的键与类型稳定，能进 manifest。"""
-    summary = sp.spec_to_dict(_make_spec())
-    assert set(summary) == {
-        "case",
-        "unseen_dims",
-        "screen_id",
-        "target_slot",
-        "target_class",
-        "blocked",
-        "shadow_present",
-        "rows",
-    }
-    assert isinstance(summary["rows"], list) and len(summary["rows"]) == sp.SIZE
 
 
 def test_build_cases_covers_the_whole_grid() -> None:

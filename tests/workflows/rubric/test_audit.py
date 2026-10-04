@@ -12,6 +12,7 @@ from jc.jsontypes import JsonValue
 from workflows.rubric import audit, features, locales, render, workflow as rubric_workflow
 from workflows.rubric.features import TagSet
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.rubric.conftest import FakeBackend
 
 
@@ -21,16 +22,14 @@ def make_config(tmp_path: Path, run_id: str, *, split: str = "train") -> pipelin
     预期行为：**关掉语言闸**——本包的假后端只写英文（夹具局限，理由见
     `tests/workflows/rubric/test_pipeline.make_config`）。
     """
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=FakeBackend(),
         workflow="rubric",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=rubric_workflow.RubricConfig(split=split, case_limit=6),
-        backend=FakeBackend(),
+        seed=7,
+        override=rubric_workflow.RubricConfig(split=split, case_limit=6),
         language_gate=False,
     )
 

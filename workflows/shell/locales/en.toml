@@ -122,7 +122,7 @@ hint = "The command runs as the current user; no sudo / Administrator / RunAs wo
 
 [feature.elevation.elevated]
 brief = "elevated"
-hint = "The command must run as an administrator (sudo, Run as administrator, RunAs)"
+hint = "The command must run as an administrator, and the elevation wording must appear **literally in the command** (bash: sudo / doas; PowerShell: Start-Process -Verb RunAs or -RunAsAdministrator); when it acts on a remote host, put it inside the remote script block — a -Credential argument alone does not count"
 
 [fam.verdict]
 q = [
@@ -174,16 +174,16 @@ remote = "A remote host"
 
 [fam.blast_radius]
 q = [
-  "How large is the blast radius of this command?",
-  "From low to high impact, what level is this command?",
-  "If it runs, how far does the damage reach?",
+  "Scored as read-only 0, write 1, destructive 2 to start; +1 more if it lands on system, production, container or remote targets; +1 more if elevated; capped at 4: what is the blast radius level of this command?",
+  "Add up the score (read-only 0, write 1, destructive 2; system / production / container / remote +1; elevated +1; capped at 4): what level is this command?",
+  "If it runs, how far does the damage reach? Score: read-only 0, write 1, destructive 2 to start; +1 for system / production / container / remote targets; +1 for elevation; capped at 4.",
 ]
 levels = [
-  "Level 0: read-only, nothing changes",
-  "Level 1: writes only your own things; mistakes stay local",
-  "Level 2: destroys something, but confined to your working directory",
-  "Level 3: destroys something on system, production, container or remote targets",
-  "Level 4: destroys production or system data, and runs elevated on top of that",
+  "Level 0: total 0 — read-only, and not on system, production, container or remote targets, and not elevated",
+  "Level 1: total 1",
+  "Level 2: total 2",
+  "Level 3: total 3",
+  "Level 4: total 4 (capped)",
 ]
 
 [verify]

@@ -125,6 +125,19 @@ def test_a_family_below_the_minimum_sample_size_is_not_judged() -> None:
     assert item["ok"] is True
 
 
+def test_a_family_exactly_at_the_minimum_sample_size_is_judged() -> None:
+    """输入：样本量**恰好等于** `BALANCE_MIN_TOTAL` 的族。输出：无。
+
+    预期行为：`judged=True`——判据是 `total >= min_total`，「刚好够」算可判；改成 `>`
+    会把刚好够的族降级成「没判」，于是它既不算通过也不算失衡，从报告里静默消失。
+    上面那条只钉了「差一条」的那一侧，这一条钉住等号本身。
+    """
+    exact = pipeline.BALANCE_MIN_TOTAL
+    stats = _stats({"choice:x": {"0": exact}}, {"choice:x": 2}, {"choice:x": {"2": exact}})
+    item = _one(stats, "choice:x")
+    assert item["judged"] is True
+
+
 def test_the_report_is_sorted_by_deviation_descending() -> None:
     """输入：两个偏差不同的族。输出：无。预期行为：偏差大的排在前面（报告第一眼最刺眼）。"""
     stats = _stats(

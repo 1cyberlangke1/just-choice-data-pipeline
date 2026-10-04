@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import random
-from typing import Final
 
 import pytest
 
@@ -77,12 +76,3 @@ def test_sample_spec_is_pure() -> None:
     )
 
 
-def test_spec_to_dict_is_json_safe() -> None:
-    """输入：一条规格。输出：无。预期行为：摘要里键齐全、值都是可序列化的基础类型。"""
-    spec = sp.sample_spec(random.Random(0), _make_case(arc=2, topic="interview"), "train", 3, 1)
-    summary: Final[dict[str, object]] = sp.spec_to_dict(spec)
-    assert set(summary) == {"case", "split", "seq", "query_id", "tone", "pivot", "drop", "rebound"}
-    assert summary["case"] == {"arc": 2, "topic": "interview"}
-    assert summary["split"] == "train" and summary["seq"] == 3
-    assert summary["query_id"] == spec.query_id
-    assert isinstance(summary["rebound"], bool)

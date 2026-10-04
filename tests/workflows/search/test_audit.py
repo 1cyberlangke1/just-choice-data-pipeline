@@ -8,6 +8,7 @@ from pathlib import Path
 from jc import pipeline
 from workflows.search import audit as audit_mod, features
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.search.conftest import FakeBackend
 
 
@@ -15,16 +16,13 @@ def make_config(tmp_path: Path, run_id: str, backend: object) -> pipeline.RunCon
     """构造一个小 case 集合的试跑配置。"""
     from workflows.search import workflow as search_workflow
 
-    return pipeline.RunConfig(
-        workflow="search",
-        split="train",
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=search_workflow.SearchConfig(split="train", case_limit=4),
+    return run_config(
+        tmp_path,
+        run_id,
         backend=backend,
+        workflow="search",
+        seed=7,
+        override=search_workflow.SearchConfig(split="train", case_limit=4),
     )
 
 

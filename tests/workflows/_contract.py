@@ -13,18 +13,18 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Final
 
 from jc import jsonio, validate
 from jc import workflow as workflow_mod
 
-#: 走 LLM 但**没有**「模型写的自然语言正文」的 workflow：模型写的是代码 / 命令行。
+#: 走 LLM 但**没有**「模型写的自然语言正文」的 workflow：模型写的东西整段就是代码 / diff。
 #: 它们必须报空表——报了正文就会把「以代码为主的 state」当坏数据（真机 zh 侧汉字占比低到 0.099）。
 LLM_WITHOUT_PROSE: Final[dict[str, str]] = {
     "lint": "模型写的是那段源码（state = 一行中文抬头 + 源码）",
     "review": "模型写的是那段代码改动（body 就是 diff 本身）",
-    "shell": "模型写的是命令行（PowerShell / bash 的调用本身）",
 }
 
 #: 假后端**按声明的语言**造正文的那几家——只有它们能在端到端里把语言闸（`jc.pipeline` 的
@@ -39,6 +39,7 @@ LOCALE_FAITHFUL_FAKES: Final[dict[str, str]] = {
     "findtriage": "「发现」「修法」两行按语言现造",
     "hirecheck": "「候选人备注」那一行按语言现造",
     "receiptcat": "「收据行」按语言现造",
+    "shell": "「用户目标」「备注」两行按语言现造（命令那一行**仍不报**：命令 / 路径 / 标识符按约定保持 ASCII）",
     "testimpact": "「提交标题」那一行按语言现造",
 }
 
@@ -89,6 +90,91 @@ def assert_contract(run_dir: Path, split: str, label: str) -> None:
         f"{label} 的产物过不了通用格式契约：{report.code_counts()}；"
         f"头一条：{issues[0] if issues else ''}"
     )
+
+
+#: 题面 / 判据里不该出现的「槽位残留」：`{name}` / `{0}` / `{{`。
+#:
+#: 为什么值得单独钉：题面与判据是**代码渲染**的，而 8 家走的是 `str.replace("{name}", value)`
+#: 那条路（`bench` / `maze` / `autoformat` / `functions` / `skillpick` / `sim` / `elementpick`）——
+#: 漏传一个键**不会抛异常**，只会把 `{name}` 原样留在题面里。`jc.validate` 只管形状；
+#: `tmp/gen_health.py` 的残留扫描只扫**模型写的正文**、也不扫题面。所以这一档此前没有任何读数
+#: 抓得到。存量 119284 条样本上扫过一遍，命中 0——这条尺子是防回归，不是修数据。
+SLOT_RESIDUE: Final[re.Pattern[str]] = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}|\{\d+\}|\{\{|\}\}")
+
+
+def _question_texts(value: object) -> list[str]:
+    """输入：任意 JSON 值。输出：其中所有字符串。预期行为：递归取，保持顺序。"""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [text for item in value for text in _question_texts(item)]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in _question_texts(item)]
+    return []
+
+
+def assert_no_unresolved_slots(run_dir: Path, split: str, label: str) -> None:
+    """输入：run 目录、切分、标签。输出：无（断言）。
+
+    预期行为：每条样本的 `questions`（题面、判据，以及它们取值里的文本）都不许留下 `{name}`
+    这种槽位。报错时点名到样本 id 与题号，只报前三条。
+    """
+    bad: list[str] = []
+    for _, row in jsonio.iter_jsonl(run_dir / f"{split}.jsonl"):
+        if not isinstance(row, dict):
+            continue
+        questions = row.get("questions")
+        if not isinstance(questions, dict):
+            continue
+        for qid, question in questions.items():
+            for text in _question_texts(question):
+                if SLOT_RESIDUE.search(text):
+                    bad.append(f"{row.get('id')} [{qid}] {text[:80]}")
+                    break
+    assert not bad, f"{label} 的题面里有没替换掉的槽位：{bad[:3]}"
+
+
+def assert_manifest_and_stats(
+    run_dir: Path, split: str, wf: workflow_mod.Workflow, label: str, locale: str
+) -> None:
+    """输入：run 目录、切分、workflow、标签、这一跑用的语言。输出：无（断言）。
+
+    预期行为：`manifest-<split>.json` 记着这一家与这个切分；`stats-<split>.md` 存在且非空。
+    语言是 `zh` 时，**每条逐条报出来的维度**（`stats_dimensions(case)` 的键）的抬头都要真的
+    出现在报告里。
+
+    为什么值得单独钉：两份文件都由 `jc.pipeline` 写，但抬头是**各家自己声明的**
+    （`dimension_titles()`）——「声明了却没进报告」只有真跑一遍才看得见，`jc.validate`
+    只管产物、不读这两份报告。
+
+    抬头只在 `zh` 那一跑上查：`dimension_titles()` 给的是中文标题，而报告按**这一跑的
+    语言**渲染（en 跑出来的是英文抬头）。原来各家 `test_pipeline.py` 里的那条也只跑 zh。
+    另外只查 `stats_dimensions(case)` 报出来的那几维——`dimension_titles()` 里还可能有
+    **派生**维度（`alertrisk` 的 `level` 由另外两维算出来，不逐条统计），那不是报告该有的行。
+    """
+    manifest_path = run_dir / f"manifest-{split}.json"
+    assert manifest_path.exists(), f"{label} 没写 manifest-{split}.json"
+    manifest = jsonio.loads(manifest_path.read_text(encoding="utf-8"))
+    assert isinstance(manifest, dict), f"{label} 的 manifest 不是对象：{manifest!r}"
+    assert manifest.get("workflow") == wf.name, (
+        f"{label} 的 manifest 记的是 {manifest.get('workflow')!r}"
+    )
+    assert manifest.get("split") == split, (
+        f"{label} 的 manifest 记的是 {manifest.get('split')!r}"
+    )
+    stats_path = run_dir / f"stats-{split}.md"
+    assert stats_path.exists(), f"{label} 没写 stats-{split}.md"
+    stats = stats_path.read_text(encoding="utf-8")
+    assert stats.strip(), f"{label} 的 stats-{split}.md 是空的"
+    if locale != "zh":
+        return
+    titles = wf.dimension_titles()
+    cases = wf.build_cases(wf.config_for(split))
+    assert cases, f"{label} 一条 case 都没有，这条尺子量不到东西"
+    for dim in sorted(wf.stats_dimensions(cases[0])):
+        title = titles.get(dim)
+        assert title is not None, f"{label} 的维度 {dim} 在 dimension_titles() 里没有抬头"
+        assert str(title) in stats, f"{label} 的统计报告里没有维度 {dim} 的抬头 {title!r}"
 
 
 def assert_audit_ignores_the_callers_locale(

@@ -28,7 +28,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket, restrictor
+from jc.cover import cover_pick, hash_bucket, slice_by_bucket, restrictor
 from jc.jsontypes import JsonValue
 
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
@@ -151,23 +151,7 @@ def _cover_pick(cases: list[CauseCase], limit: int) -> list[CauseCase]:
     均衡闸与审计都会报出来。
     """
     names = ("graph", "root", "probe")
-    chosen: list[CauseCase] = []
-    seen: dict[str, set[str]] = {name: set() for name in names}
-    remaining = list(cases)
-    while remaining and len(chosen) < limit:
-        keys = [
-            (
-                sum(1 for name in names if case.as_dict()[name] not in seen[name]),
-                -index,
-            )
-            for index, case in enumerate(remaining)
-        ]
-        best = max(range(len(remaining)), key=lambda index: keys[index])
-        case = remaining.pop(best)
-        chosen.append(case)
-        for name in names:
-            seen[name].add(str(case.as_dict()[name]))
-    return chosen
+    return cover_pick(cases, limit, names, lambda case: case.as_dict())
 
 
 def cases_for(config: CauseConfig) -> list[CauseCase]:

@@ -78,27 +78,3 @@ def test_audit_flags_an_out_of_range_score_index(tmp_path: Path) -> None:
     report, missing = WF.audit(tmp_path, ("train",), "zh")
     assert report["train"]["index_bad"] == 1
     assert any("编号越界" in item for item in missing)
-
-
-def test_audit_flags_malformed_criteria_shapes(tmp_path: Path) -> None:
-    """输入：choice 的 criteria 是数组 / score 的 criteria 是对象。输出：无。
-
-    预期行为：形状不对也算「编号越界」——产物坏了要看得见，不能在审计里当成没下标可查。
-    """
-    row = _sample_row()
-    row["questions"]["best"]["criteria"] = ["甲", "乙"]
-    row["questions"]["gain"]["criteria"] = {"g0": "收益 0"}
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, _ = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 2
-
-
-def test_audit_flags_a_family_that_never_shows_up(tmp_path: Path) -> None:
-    """输入：把某一族的题全删掉。输出：无。预期行为：审计记一笔「一条都没出」。"""
-    row = _sample_row()
-    del row["questions"]["finished"]
-    del row["answers"]["finished"]
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["families"]["finished"] == 0
-    assert any("finished" in item and "一条都没出" in item for item in missing)

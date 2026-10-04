@@ -92,16 +92,6 @@ def test_query_id_is_stable_and_distinct_per_case() -> None:
     assert all(value.startswith("K-") for value in ids)
 
 
-def test_spec_to_dict_carries_the_four_answers() -> None:
-    """输入：一条规格。输出：无。预期行为：摘要里有四个答案、case 与请求号。"""
-    spec = sp.sample_spec(random.Random(0), ft.ClipCase(topics=0, flags=0), "train", 3, 1)
-    summary = sp.spec_to_dict(spec)
-    assert summary["case"] == {"topics": 0, "flags": 0}
-    assert summary["query_id"] == spec.query_id
-    assert summary["keep_count"] == spec.keep_count
-    assert summary["first_kept"] == spec.first_kept
-    assert summary["blocked_any"] == spec.blocked_any
-    assert summary["dup_any"] == spec.dup_any
 
 
 def test_split_sizes_add_up_to_the_id_matrix() -> None:

@@ -8,15 +8,6 @@ from tests.workflows.guardrail.conftest import text_of
 from workflows.guardrail import features
 
 
-def test_hit_sets_are_all_sixteen_combinations() -> None:
-    """输入：无。输出：无。预期行为：16 组、空串在前、全命中在最后、顺序稳定。"""
-    assert len(features.HIT_SETS) == 16
-    assert features.HIT_SETS[0] == ""
-    assert features.HIT_SETS[1] == "P1"
-    assert features.HIT_SETS[-1] == "P1+P2+P3+P4"
-    assert len(set(features.HIT_SETS)) == 16
-
-
 def test_every_clause_appears_eight_times() -> None:
     """输入：无。输出：无。
 
@@ -27,9 +18,13 @@ def test_every_clause_appears_eight_times() -> None:
         assert hits == 8, clause
 
 
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一段正文。输出：无。预期行为：命中组合按 `CLAUSE_IDS` 顺序、只看字面。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("联系电话 13812345678", ("P1",)),
         ("见 http://shop.example.com/order", ("P2",)),
         ("见 www.example.com 上的说明", ("P2",)),
@@ -40,24 +35,67 @@ def test_every_clause_appears_eight_times() -> None:
         ("2026-09-29 开会", ()),  # 日期也不该被当成命中
         ("13812345678 和 http://a.example.com", ("P1", "P2")),
         ("打 13812345678 或来信 liu.wei@example.com ！！！", ("P1", "P3", "P4")),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一段正文。输出：无。预期行为：命中组合按 `CLAUSE_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
-    assert features.parse_hits(features.hits_of(text)) == expect
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+            assert features.parse_hits(features.hits_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
+
+
+def test_clause_boundaries_are_pinned() -> None:
+    """输入：贴着判据边界的写法。输出：无。
+
+    预期行为：「差一点」与「刚好够」判成不同结果。变异测试改宽一位（把 P1 的 `{7,}` 改成
+    `{8,}`）时这里必须变红——只跑 `13812345678` 这种宽裕样例，边界改了也不会有人发现。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
+        ("编号 123456", ()),  # P1：6 位，差一位不算命中
+        ("编号 1234567", ("P1",)),  # P1：7 位就是边界，算命中
+        ("见 http:/shop.example.com", ()),  # P2：少一个斜杠不算
+        ("见 shop.example.com 的说明", ()),  # P2：没有 www. 不算
+        ("发 liu.wei.example.com", ()),  # P3：没有 @ 不算
+        ("太棒了！！", ()),  # P4：两个感叹号不算
+        ("太棒了！！！", ("P4",)),  # P4：三个就是边界，算命中
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_decoy_example_is_a_decoy_and_not_a_hit() -> None:
     """输入：无。输出：无。
 
-    预期行为：提示词里逐字给出的那个号码既匹配诱饵形状，又**不**触发 P1——这两件事缺一条，
-    `decoy=dashed` 那一档就废了（要么不算诱饵，要么直接变成真命中）。
+    预期行为：提示词里逐字给出的**每一个**号码都既匹配诱饵形状，又**不**触发任何条款——这两件事
+    缺一条，`decoy=dashed` 那一档就废了（要么不算诱饵，要么直接变成真命中）。池子里的值是要逐个
+    发出去的，只验第一个等于没验。
     """
-    assert features.DECOY_PATTERN.search(features.DECOY_EXAMPLE)
-    assert features.has_decoy(features.DECOY_EXAMPLE)
-    assert features.hit_set(features.DECOY_EXAMPLE) == ()
+    assert features.DECOY_EXAMPLE == features.DECOY_POOL[0]
+    assert len(set(features.DECOY_POOL)) == len(features.DECOY_POOL)
+    for decoy in features.DECOY_POOL:
+        assert features.DECOY_PATTERN.search(decoy), decoy
+        assert features.has_decoy(decoy), decoy
+        assert features.hit_set(decoy) == (), decoy
+
+
+def test_pick_is_stable_and_uses_the_whole_pool() -> None:
+    """输入：一组种子文本。输出：无。
+
+    预期行为：`pick` 是纯函数（同种子同结果，换个种子换结果），而且**池子会被用满**——只抽到
+    第一项的「池子」等于没换，复读问题原样回来。
+    """
+    pool = ("a", "b", "c", "d", "e")
+    first = [features.pick(pool, f"seed-{index}", "P1") for index in range(50)]
+    assert all(features.pick(pool, f"seed-{index}", "P1") == first[index] for index in range(50))
+    assert set(first) == set(pool)
+    assert features.decoy_for("seed-0") == features.pick(features.DECOY_POOL, "seed-0", "decoy")
 
 
 @pytest.mark.parametrize("text", ["2026-09-29", "版本 1-2", "12-345", "138 1234 5678"])

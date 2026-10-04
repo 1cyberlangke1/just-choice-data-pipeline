@@ -369,22 +369,6 @@ def sample_spec(
     )
 
 
-def spec_to_dict(spec: MatchSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.describe(),
-        "unseen_dims": list(spec.case.unseen_dims()),
-        "split": spec.split,
-        "seq": spec.seq,
-        "query_id": spec.query_id,
-        "same": list(spec.same),
-        "agree": spec.agree,
-        "band": spec.band,
-        "verdict": spec.verdict,
-        "variant_count": spec.variant_count,
-    }
-
-
 # ---------- 值留出（训练侧见过哪些取值） ----------
 
 #: 训练侧见过的商品：最后一个留出（OOD 侧才出现那个商品）。

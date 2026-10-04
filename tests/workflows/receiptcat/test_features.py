@@ -23,17 +23,24 @@ def test_amounts_cover_every_pair() -> None:
     assert len(features.AMOUNT_VALUES) == len(set(features.AMOUNT_VALUES))
 
 
-@pytest.mark.parametrize("cid", features.CATEGORY_IDS)
-@pytest.mark.parametrize("band", features.BANDS)
-def test_amount_really_lands_in_its_band(cid: str, band: str) -> None:
+def test_amount_really_lands_in_its_band() -> None:
     """输入：一个 (类别, 档位)。输出：无。
 
     预期行为：那条手写金额按 `band_of` 算出来必须正好是它标的那一档——手写金额最怕的就是
     「看着像超限、其实没超」，而这种错在产物里完全看不出来。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    cents = features.cents_of(features.AMOUNTS[(cid, band)])
-    assert cents is not None
-    assert features.band_of(cents, features.CAPS_CENTS[cid]) == band
+    bad: list[str] = []
+    for cid in features.CATEGORY_IDS:
+        for band in features.BANDS:
+            try:
+                cents = features.cents_of(features.AMOUNTS[(cid, band)])
+                assert cents is not None
+                assert features.band_of(cents, features.CAPS_CENTS[cid]) == band
+            except AssertionError as exc:
+                bad.append(f"{(cid, band)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_no_amount_is_a_substring_of_another() -> None:
@@ -48,9 +55,13 @@ def test_no_amount_is_a_substring_of_another() -> None:
                 assert left not in right, f"{left} 是 {right} 的子串"
 
 
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+def test_cents_of_only_accepts_two_decimals() -> None:
+    """输入：几种金额写法。输出：无。预期行为：只认「整数 + 两位小数」，别的给 None。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("168.00", 16800),
         ("0.05", 5),
         ("96.50", 9650),
@@ -59,11 +70,12 @@ def test_no_amount_is_a_substring_of_another() -> None:
         ("168.001", None),
         ("a168.00", None),
         ("-168.00", None),
-    ],
-)
-def test_cents_of_only_accepts_two_decimals(text: str, expect: int | None) -> None:
-    """输入：几种金额写法。输出：无。预期行为：只认「整数 + 两位小数」，别的给 None。"""
-    assert features.cents_of(text) == expect
+    ]:
+        try:
+            assert features.cents_of(text) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize(
@@ -85,9 +97,16 @@ def test_band_boundaries(amount: int, cap: int, expect: str) -> None:
     assert features.band_of(amount, cap) == expect
 
 
-@pytest.mark.parametrize(
-    ("band", "category", "expect"),
-    [
+def test_tier_rules() -> None:
+    """输入：档位与类别。输出：无。
+
+    预期行为：只有**软件订阅 + 两倍以上**走财务复核，其余三档与类别无关——这一格交互是
+    `tier` 那一族不跟 `over` 重复的原因，所以它得被钉死。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for band, category, expect in [
         ("under", "C1", "auto"),
         ("under", "C4", "auto"),
         ("mild", "C1", "receipt"),
@@ -96,15 +115,12 @@ def test_band_boundaries(amount: int, cap: int, expect: str) -> None:
         ("heavy", "C2", "manager"),
         ("heavy", "C3", "manager"),
         ("heavy", "C4", "finance"),
-    ],
-)
-def test_tier_rules(band: str, category: str, expect: str) -> None:
-    """输入：档位与类别。输出：无。
-
-    预期行为：只有**软件订阅 + 两倍以上**走财务复核，其余三档与类别无关——这一格交互是
-    `tier` 那一族不跟 `over` 重复的原因，所以它得被钉死。
-    """
-    assert features.tier_of(band, category) == expect
+    ]:
+        try:
+            assert features.tier_of(band, category) == expect
+        except AssertionError as exc:
+            bad.append(f"{(band, category, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", LANGS)

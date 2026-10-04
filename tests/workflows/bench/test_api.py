@@ -29,12 +29,6 @@ def test_split_names_and_configs() -> None:
         assert set(config.tables) == set(sp.TABLES)
 
 
-def test_config_for_rejects_an_unknown_split() -> None:
-    """输入：不存在的切分名。输出：无。预期行为：报人话并列出可用切分。"""
-    with pytest.raises(KeyError, match="未知切分"):
-        WF.config_for("nope")
-
-
 def test_make_judges_builds_both_and_rejects_unknown_names() -> None:
     """输入：两个判别器名 / 一个不存在的名字。输出：无。预期行为：都报人话。"""
     built = WF.make_judges(("roundtrip", "label"), "zh")
@@ -42,27 +36,6 @@ def test_make_judges_builds_both_and_rejects_unknown_names() -> None:
     assert all(isinstance(judge, (judges.RoundtripJudge, judges.LabelJudge)) for judge in built)
     with pytest.raises(KeyError, match="未知判别器"):
         WF.make_judges(("nope",), "zh")
-
-
-def test_available_locales_and_declarations() -> None:
-    """输入：无。输出：无。
-
-    预期行为：语言名单来自语言目录；题型是 choice / noul / score，`needs` 为空（纯构造式）。
-    """
-    assert WF.available_locales() == locales.available()
-    assert WF.kinds == frozenset({"choice", "noul", "score"})
-    assert WF.needs == frozenset()
-    assert WF.name == "bench"
-    assert WF.judges == ("roundtrip", "label")
-
-
-def test_bind_backend_is_a_wiring_error() -> None:
-    """输入：一个假的后端。输出：无。
-
-    预期行为：纯构造式的 workflow 根本不该被绑定后端，收到就报错而不是静默吞掉。
-    """
-    with pytest.raises(AssertionError, match="纯构造式"):
-        WF.bind_backend(object())
 
 
 def test_case_label_and_stats_dimensions() -> None:

@@ -27,53 +27,67 @@ def test_family_order_matches_the_declared_families() -> None:
     assert tuple(dict.fromkeys(item.family for item in built)) == questions.FAMILIES
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("touch", features.TOUCH_SETS)
-def test_flag_questions_follow_the_suites_and_the_labels(lang: str, touch: str) -> None:
+def test_flag_questions_follow_the_suites_and_the_labels() -> None:
     """输入：16 组触及组合 × 两种语言。输出：无。
 
     预期行为：逐套件那一族按 `SUITES` 顺序出题，答案与 `label_for` 算出来的「需不需要跑」逐条
     一致；noul 的判据两句都在、且不许打乱。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    loc = locales.load(lang)
-    case = ImpactCase(touch=touch, flavor="fix")
-    plan = features.plan_for(case, 0)
-    labels = features.label_for(plan)
-    flags = [item for item in questions.build(plan, loc, 0) if item.family == "flag"]
-    assert len(flags) == len(features.SUITES)
-    for suite, item in zip(features.SUITES, flags, strict=True):
-        assert item.question["type"] == "noul"
-        assert item.answer is labels.needs(suite)
-        assert set(item.question["criteria"]) == {"true", "false"}
-        assert item.shuffle is False
-        assert loc["suite"][suite]["name"] in str(item.question["instructions"])
+    bad: list[str] = []
+    for lang in LANGS:
+        for touch in features.TOUCH_SETS:
+            try:
+                loc = locales.load(lang)
+                case = ImpactCase(touch=touch, flavor="fix")
+                plan = features.plan_for(case, 0)
+                labels = features.label_for(plan)
+                flags = [item for item in questions.build(plan, loc, 0) if item.family == "flag"]
+                assert len(flags) == len(features.SUITES)
+                for suite, item in zip(features.SUITES, flags, strict=True):
+                    assert item.question["type"] == "noul"
+                    assert item.answer is labels.needs(suite)
+                    assert set(item.question["criteria"]) == {"true", "false"}
+                    assert item.shuffle is False
+                    assert loc["suite"][suite]["name"] in str(item.question["instructions"])
+            except AssertionError as exc:
+                bad.append(f"{(lang, touch)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("touch", features.TOUCH_SETS)
-def test_count_which_and_route_options(lang: str, touch: str) -> None:
+def test_count_which_and_route_options() -> None:
     """输入：16 组触及组合 × 两种语言。输出：无。
 
     预期行为：`count` 四档全出、答案是需要的套数；`which` 是四选一（真值排第一，四个描述两两
     不同）；`route` 四档全出、答案与档位一致。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    loc = locales.load(lang)
-    plan = features.plan_for(ImpactCase(touch=touch, flavor="fix"), 1)
-    labels = features.label_for(plan)
-    by_family = {item.family: item for item in questions.build(plan, loc, 1)}
-    count = by_family["count"]
-    assert list(count.question["criteria"]) == ["c0", "c1", "c2", "c3"]
-    assert count.answer == f"c{len(labels.need)}"
-    assert questions.count_text(loc, len(labels.need)) in count.question["criteria"].values()
-    which = by_family["which"]
-    criteria = which.question["criteria"]
-    assert list(criteria) == ["k0", "k1", "k2", "k3"]
-    assert which.answer == "k0"
-    assert criteria["k0"] == questions.need_text(loc, plan.need)
-    assert len(set(criteria.values())) == 4
-    route = by_family["route"]
-    assert list(route.question["criteria"]) == list(features.LEVELS)
-    assert route.answer == labels.level
+    bad: list[str] = []
+    for lang in LANGS:
+        for touch in features.TOUCH_SETS:
+            try:
+                loc = locales.load(lang)
+                plan = features.plan_for(ImpactCase(touch=touch, flavor="fix"), 1)
+                labels = features.label_for(plan)
+                by_family = {item.family: item for item in questions.build(plan, loc, 1)}
+                count = by_family["count"]
+                assert list(count.question["criteria"]) == ["c0", "c1", "c2", "c3"]
+                assert count.answer == f"c{len(labels.need)}"
+                assert questions.count_text(loc, len(labels.need)) in count.question["criteria"].values()
+                which = by_family["which"]
+                criteria = which.question["criteria"]
+                assert list(criteria) == ["k0", "k1", "k2", "k3"]
+                assert which.answer == "k0"
+                assert criteria["k0"] == questions.need_text(loc, plan.need)
+                assert len(set(criteria.values())) == 4
+                route = by_family["route"]
+                assert list(route.question["criteria"]) == list(features.LEVELS)
+                assert route.answer == labels.level
+            except AssertionError as exc:
+                bad.append(f"{(lang, touch)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_need_text_covers_all_eight_sets_distinctly() -> None:

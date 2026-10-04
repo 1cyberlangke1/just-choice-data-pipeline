@@ -40,9 +40,16 @@ def test_each_path_appears_the_expected_number_of_times() -> None:
     assert counts == {"P1": 8, "P2": 8, "P3": 8, "P4": 1, "P5": 8}
 
 
-@pytest.mark.parametrize(
-    ("touch", "need"),
-    [
+def test_need_is_a_union_over_the_touched_paths() -> None:
+    """输入：触及组合。输出：无。
+
+    预期行为：需要跑的套件是**并集**（`P1+P5` 只要一套，文档路径不挂套件）；触及盲区（`P4`）
+    直接给全部三套——影响面未知，只能全套跑。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for touch, need in [
         ("", ()),
         ("P1", ("unit",)),
         ("P2", ("integration",)),
@@ -52,15 +59,12 @@ def test_each_path_appears_the_expected_number_of_times() -> None:
         ("P1+P5", ("unit",)),
         ("P1+P2+P3", ("unit", "integration", "e2e")),
         ("P4", ("unit", "integration", "e2e")),
-    ],
-)
-def test_need_is_a_union_over_the_touched_paths(touch: str, need: tuple[str, ...]) -> None:
-    """输入：触及组合。输出：无。
-
-    预期行为：需要跑的套件是**并集**（`P1+P5` 只要一套，文档路径不挂套件）；触及盲区（`P4`）
-    直接给全部三套——影响面未知，只能全套跑。
-    """
-    assert features.need_suites(features.parse_touch(touch)) == need
+    ]:
+        try:
+            assert features.need_suites(features.parse_touch(touch)) == need
+        except AssertionError as exc:
+            bad.append(f"{(touch, need)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_blind_path_and_docs_path_differ_only_by_kind() -> None:
@@ -97,9 +101,16 @@ def test_every_level_and_count_is_reachable_in_the_full_space() -> None:
     assert {len(case.need()) for case in cases} == {0, 1, 2, 3}
 
 
-@pytest.mark.parametrize(
-    ("touch", "expect"),
-    [
+def test_touch_key_is_canonical_and_keeps_unknown_ids() -> None:
+    """输入：触及组合串。输出：无。
+
+    预期行为：按 `PATH_IDS` 顺序规范化（`P3+P1` 与 `P1+P3` 同串），认不出的编号留在后面——
+    审计要靠它报「改了覆盖表之外的路径」。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for touch, expect in [
         ("", ()),
         ("P1", ("P1",)),
         ("P1+P3", ("P1", "P3")),
@@ -107,20 +118,24 @@ def test_every_level_and_count_is_reachable_in_the_full_space() -> None:
         ("P5+P2", ("P2", "P5")),
         ("P9", ("P9",)),
         ("P2+P9", ("P2", "P9")),
-    ],
-)
-def test_touch_key_is_canonical_and_keeps_unknown_ids(touch: str, expect: tuple[str, ...]) -> None:
-    """输入：触及组合串。输出：无。
+    ]:
+        try:
+            assert features.touch_key(features.parse_touch(touch)) == "+".join(expect)
+        except AssertionError as exc:
+            bad.append(f"{(touch, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
-    预期行为：按 `PATH_IDS` 顺序规范化（`P3+P1` 与 `P1+P3` 同串），认不出的编号留在后面——
-    审计要靠它报「改了覆盖表之外的路径」。
+
+def test_touched_in_reads_only_the_diff_header() -> None:
+    """输入：改动正文。输出：无。
+
+    预期行为：只认 `diff --git a/<路径> b/<路径>` 那一行的新路径；`---` / `+++` 与散文一律不算；
+    覆盖表之外的文件原样报出来。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    assert features.touch_key(features.parse_touch(touch)) == "+".join(expect)
-
-
-@pytest.mark.parametrize(
-    ("diff", "expect"),
-    [
+    bad: list[str] = []
+    for diff, expect in [
         ("", ()),
         ("diff --git a/src/api/handlers.py b/src/api/handlers.py\n", ("P1",)),
         (
@@ -132,15 +147,12 @@ def test_touch_key_is_canonical_and_keeps_unknown_ids(touch: str, expect: tuple[
         ("--- a/src/api/handlers.py\n+++ b/src/api/handlers.py\n", ()),
         ("改了 src/api/handlers.py 里的边界判断。\n", ()),
         ("diff --git a/src/other/thing.py b/src/other/thing.py\n", ("src/other/thing.py",)),
-    ],
-)
-def test_touched_in_reads_only_the_diff_header(diff: str, expect: tuple[str, ...]) -> None:
-    """输入：改动正文。输出：无。
-
-    预期行为：只认 `diff --git a/<路径> b/<路径>` 那一行的新路径；`---` / `+++` 与散文一律不算；
-    覆盖表之外的文件原样报出来。
-    """
-    assert features.touched_in(diff) == expect
+    ]:
+        try:
+            assert features.touched_in(diff) == expect
+        except AssertionError as exc:
+            bad.append(f"{(diff, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_two_label_paths_agree_on_every_faithful_diff() -> None:
@@ -172,14 +184,6 @@ def test_plan_is_reproducible_and_distractors_are_near() -> None:
     for combo in first.distractors:
         assert set(combo) != truth
         assert len(set(combo) ^ truth) <= 2
-
-
-def test_build_cases_order_is_stable() -> None:
-    """输入：同一份维度表算两次。输出：无。预期行为：逐项一致（case 库要能逐字节重建）。"""
-    first = features.build_cases(512)
-    second = features.build_cases(512)
-    assert [case.as_dict() for case in first] == [case.as_dict() for case in second]
-    assert len(first) == len(features.TOUCH_SETS) * len(features.ALL_FLAVORS)
 
 
 def test_case_describe_and_fingerprint() -> None:

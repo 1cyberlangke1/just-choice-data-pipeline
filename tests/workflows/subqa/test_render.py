@@ -84,14 +84,22 @@ def test_prompt_says_none_may_be_tripped_when_the_plan_is_empty() -> None:
     assert str(loc["prompt"]["hits_header"]) not in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-@pytest.mark.parametrize("track", ["movie", "series", "lecture"])
-def test_prompt_states_the_track_shape(lang: str, track: str) -> None:
-    """输入：一种语言 × 一种素材。输出：无。预期行为：提示词里点明这对字幕来自哪种素材。"""
-    loc = locales.load(lang)
-    case = SubQaCase("S2", track)
-    prompt = render.build_prompt(loc, case, TIMECODE)
-    assert render.track_copy(loc, track) in prompt
+def test_prompt_states_the_track_shape() -> None:
+    """输入：一种语言 × 一种素材。输出：无。预期行为：提示词里点明这对字幕来自哪种素材。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in ["en", "zh"]:
+        for track in ["movie", "series", "lecture"]:
+            try:
+                loc = locales.load(lang)
+                case = SubQaCase("S2", track)
+                prompt = render.build_prompt(loc, case, TIMECODE)
+                assert render.track_copy(loc, track) in prompt
+            except AssertionError as exc:
+                bad.append(f"{(lang, track)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_prompt_has_no_unfilled_slots() -> None:
@@ -233,31 +241,6 @@ def test_pasted_rules_only_flags_verbatim_text() -> None:
     assert render.pasted_rules(rule, loc) == [rule]
     assert render.pasted_rules(rule[:-2], loc) == []
     assert render.pasted_rules(cue_of(()), loc) == []
-
-
-def test_build_task_carries_the_injected_features() -> None:
-    """输入：真值规格。输出：无。
-
-    预期行为：任务 id 可重算、`spec` 里带上注入特征（假后端与真后端都能照着它答）、响应模型是
-    草稿模型。
-    """
-    spec = spec_for(CASE)
-    task = render.build_task(spec, locales.load("zh"))
-    assert task.task_id == "subqa-train-0000001-render"
-    assert task.domain == "subqa"
-    assert task.response_model is render.ContentDraft
-    assert task.spec["case"] == {"hits": "S1+S3", "track": "movie"}
-    assert task.spec["hits"] == ["S1", "S3"]
-    assert task.spec["track"] == "movie"
-
-
-def test_tag_copy_reports_missing_fields() -> None:
-    """输入：缺字段的语言字典。输出：无。预期行为：抛 ValueError，点名缺了哪个字段。"""
-    with pytest.raises(ValueError, match="缺判据 S1"):
-        render.tag_copy({"tag": {}}, "S1")
-    broken: dict[str, JsonValue] = {"tag": {"S1": {"name": "原文是音效或占位符"}}}
-    with pytest.raises(ValueError, match="缺字段 rule"):
-        render.tag_copy(broken, "S1")
 
 
 def test_track_copy_reports_a_missing_shape() -> None:

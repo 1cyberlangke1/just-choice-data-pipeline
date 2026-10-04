@@ -6,8 +6,6 @@ from jc.jsontypes import JsonValue
 import random
 from pathlib import Path
 
-import pytest
-
 from jc import assemble, jsonio
 from tests.workflows.siftrank.conftest import tiny_config
 from workflows.siftrank import locales, parse, questions
@@ -57,19 +55,6 @@ def test_audit_flags_tampered_answers_and_unknown_families(tmp_path: Path) -> No
     assert any("编号异常" in item for item in missing)
     assert any("未知题族" in item for item in missing)
     assert any("stable 一条都没出" in item for item in missing)
-
-
-def test_audit_flags_an_unparsable_state(tmp_path: Path) -> None:
-    """输入：state 认不出的那条产物。输出：无。预期行为：报「反解不出来」并计入不一致。"""
-    config = tiny_config("train")
-    rows = [build_row(config, case, index) for index, case in enumerate(WORKFLOW.build_cases(config))]
-    rows[0]["state"] = "乱七八糟\n"
-    run_dir = tmp_path / "run2"
-    run_dir.mkdir()
-    jsonio.write_jsonl(run_dir / "train.jsonl", rows)
-    report, missing = WORKFLOW.audit(run_dir, ("train",), "zh")
-    assert any("反解不出来" in item for item in missing)
-    assert report["train"]["label_mismatch"] >= 1
 
 
 def test_audit_counts_the_answer_shapes(tmp_path: Path) -> None:
@@ -134,12 +119,6 @@ def test_language_texts_is_empty() -> None:
     assert WORKFLOW.language_texts(rows[0]) == {}
 
 
-def test_config_for_rejects_an_unknown_split() -> None:
-    """输入：不存在的切分名。输出：无。预期行为：报 KeyError 并列出可用切分。"""
-    with pytest.raises(KeyError, match="未知切分"):
-        WORKFLOW.config_for("nowhere")
-
-
 def test_config_for_returns_a_fresh_split_for_the_id_side() -> None:
     """输入：三个同分布切分的配置。输出：无。
 
@@ -150,22 +129,6 @@ def test_config_for_returns_a_fresh_split_for_the_id_side() -> None:
         assert WORKFLOW.config_for(split).split == split
     assert WORKFLOW.config_for("test_ood").split == "test_ood"
     assert WORKFLOW.config_for("test_ood").ood_only is True
-
-
-def test_make_judges_rejects_an_unknown_name() -> None:
-    """输入：不存在的判别器名。输出：无。预期行为：报错，不静默少给一个判别器。"""
-    assert [judge.name for judge in WORKFLOW.make_judges(("roundtrip", "label"), "zh")] == [
-        "roundtrip",
-        "label",
-    ]
-    with pytest.raises(KeyError, match="未知判别器"):
-        WORKFLOW.make_judges(("mystery",), "zh")
-
-
-def test_bind_backend_is_rejected() -> None:
-    """输入：一个假后端。输出：无。预期行为：直接报错（构造式 workflow 不该被绑后端）。"""
-    with pytest.raises(AssertionError, match="纯构造式"):
-        WORKFLOW.bind_backend(object())
 
 
 def test_dimension_titles_cover_every_dimension() -> None:

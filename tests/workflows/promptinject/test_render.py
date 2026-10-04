@@ -56,19 +56,26 @@ def test_prompt_says_none_may_be_hit_when_the_plan_is_empty() -> None:
     assert str(loc["prompt"]["role_line"]) not in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-@pytest.mark.parametrize("source", features.SOURCES)
-def test_prompt_states_the_source_shape(lang: str, source: str) -> None:
+def test_prompt_states_the_source_shape() -> None:
     """输入：两种语言 × 三种素材来源。输出：无。
 
     预期行为：这一段内容该长成什么样（网页正文 / 工具返回值 / 文件内容）在提示词里说清楚——
     不点明形态，模型写出来的东西四不像；点明之后这一维才是**只影响渲染、不影响标签**的。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    loc = locales.load(lang)
-    desc = render.source_copy(loc, source)
-    prompt = render.build_prompt(loc, features.PromptInjectCase("T1", source))
-    assert desc in prompt
-    assert str(loc["prompt"]["source_line"]).format(source=desc) in prompt
+    bad: list[str] = []
+    for lang in ["en", "zh"]:
+        for source in features.SOURCES:
+            try:
+                loc = locales.load(lang)
+                desc = render.source_copy(loc, source)
+                prompt = render.build_prompt(loc, features.PromptInjectCase("T1", source))
+                assert desc in prompt
+                assert str(loc["prompt"]["source_line"]).format(source=desc) in prompt
+            except AssertionError as exc:
+                bad.append(f"{(lang, source)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])

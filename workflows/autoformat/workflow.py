@@ -25,10 +25,17 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket
+from jc.cover import cover_pick, hash_bucket, slice_by_bucket
 from jc.judge import BACKEND, LOCALE
 from jc.jsontypes import JsonValue
-from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
+from jc.workflow import (
+    BackendHolder,
+    DraftError,
+    LabeledQuestion,
+    SplitSpec,
+    plan_with_phrasing,
+    register,
+)
 
 from . import audit as audit_mod, features, judges as judges_mod, locales, questions, render
 from .features import DocCase, DocConfig
@@ -100,20 +107,7 @@ def _cover_pick(cases: list[DocCase], limit: int) -> list[DocCase]:
     或 `callout` 形状都出不来，`callout_kind` 那一族当场「一条都没出」，审计会报出来。
     """
     names = ("shape", "variant", "code_family", "topic", "wrap", "blocks")
-    chosen: list[DocCase] = []
-    seen: dict[str, set[str]] = {name: set() for name in names}
-    remaining = list(cases)
-    while remaining and len(chosen) < limit:
-        keys = [
-            (sum(1 for name in names if _dims_of(case)[name] not in seen[name]), -index)
-            for index, case in enumerate(remaining)
-        ]
-        best = max(range(len(remaining)), key=lambda index: keys[index])
-        case = remaining.pop(best)
-        chosen.append(case)
-        for name in names:
-            seen[name].add(_dims_of(case)[name])
-    return chosen
+    return cover_pick(cases, limit, names, _dims_of)
 
 
 def cases_for(config: AutoformatConfig) -> list[DocCase]:
@@ -183,23 +177,40 @@ class AutoformatWorkflow(BackendHolder):
     def render(self, spec: DocSpec, rng: random.Random, locale: str) -> str:
         """输入：规格、RNG、语言。输出：契约允许的 state（字符串）。
 
-        预期行为：向后端要每一块的文字，先按块计划校验（不合格抛错，管线据此重渲染），再排成
-        「丢掉了标记、硬换行折过」的纯文本。校验通过后把文字**回填**进 spec——「并段」那一族的
-        题面要引用行号，而行号由折行结果决定。后端没注入就报错：`needs` 非空时管线一定会注入，
-        这里没有后端说明接线错了，绝不能悄悄降级成模板（那会让「文本由模型写」这个前提失效）。
+        预期行为：向后端要每一块的文字，先按块计划校验，再排成「丢掉了标记、硬换行折过」的
+        纯文本。**校验失败时带着失败理由原地重写一次**，仍不合格才抛错（管线那层会再重渲染）。
+        校验通过后把文字**回填**进 spec——「并段」那一族的题面要引用行号，而行号由折行结果决定。
+
+        为什么在 workflow 里再重写一次：`check_draft` 拦下来的大多是**字数**（真机
+        `af-cnt-b-zh` 那 5 条 `E_ASSEMBLE` 全是「长度 58 / 55 / 73 不在 74~240」），而
+        「至少 74 个字」对模型是**计数任务**——管线那层重渲染用的是**同一份提示词**，等于把骰子
+        再掷一次；把「第 10 块只有 58 个字」这个确定性信号回灌，才修得掉。
         """
         del rng
+        loc = locales.load(locale)
+        texts = self._draft(spec, loc, None)
+        try:
+            render.check_draft(spec.plan, texts, loc)
+        except DraftError as exc:
+            texts = self._draft(spec, loc, str(exc))
+            render.check_draft(spec.plan, texts, loc)
+        spec.texts = texts
+        return render.render_state(spec.plan, texts, loc)
+
+    def _draft(self, spec: DocSpec, loc: dict[str, JsonValue], feedback: str | None) -> list[str]:
+        """输入：规格、语言字典、可选的上一次失败理由。输出：各块文字。
+
+        预期行为：后端没注入就报错：`needs` 非空时管线一定会注入，这里没有后端说明接线错了，
+        绝不能悄悄降级成模板（那会让「文本由模型写」这个前提失效）；`texts` 不是数组也报错，
+        不猜。
+        """
         if self.backend is None:
             raise RuntimeError("autoformat workflow 需要生成后端，但还没被 bind_backend 注入")
-        loc = locales.load(locale)
-        draft = self.backend.generate(render.build_task(spec, loc))
+        draft = self.backend.generate(render.build_task(spec, loc, feedback))
         raw = draft.data.get("texts")
         if not isinstance(raw, list):
             raise ValueError(f"渲染草稿缺 texts 字段：{draft.data!r}")
-        texts = [str(item) for item in raw]
-        render.check_draft(spec.plan, texts, loc)
-        spec.texts = texts
-        return render.render_state(spec.plan, texts, loc)
+        return [str(item) for item in raw]
 
     def ask(self, spec: DocSpec, rng: random.Random, locale: str) -> list[LabeledQuestion]:
         """输入：规格、RNG、语言。输出：题目 + 金答案（纯代码推导，不碰模型）。"""

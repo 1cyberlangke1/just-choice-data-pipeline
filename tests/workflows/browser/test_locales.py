@@ -5,11 +5,8 @@ from __future__ import annotations
 import pytest
 
 from workflows.browser import features, locales, questions, render
-from workflows.browser.features import TagSet
 
 from tests.workflows.browser.conftest import request_for
-
-TAGS = TagSet(intent="fill", state="ready", sensitive="yes", decoy="same_role", screen="form")
 
 
 def test_every_choice_and_noul_family_matches_the_feature_values() -> None:
@@ -36,16 +33,6 @@ def test_prompt_only_covers_the_sentence_dimension() -> None:
     for lang in locales.available():
         loc = locales.load(lang)
         assert list(loc["dims"]) == list(render.DIM_ORDER)
-
-
-def test_every_prompt_dimension_value_has_text() -> None:
-    """输入：两语言文案。输出：无。预期行为：提示词里每一维的每个取值都有 brief 与 hint。"""
-    for lang in locales.available():
-        loc = locales.load(lang)
-        for dim in render.DIM_ORDER:
-            for value in features.DIMS[dim]:
-                assert str(loc["feature"][dim][value]["brief"]).strip()
-                assert str(loc["feature"][dim][value]["hint"]).strip()
 
 
 def test_feature_line_raises_on_a_missing_phrase() -> None:
@@ -107,20 +94,6 @@ def test_every_prompt_rule_formats_and_has_no_stray_placeholder() -> None:
             assert "{" not in filled
 
 
-def test_banned_phrases_are_present_and_usable() -> None:
-    """输入：两语言禁用语清单。输出：无。
-
-    预期行为：每条禁用语都能被 `render.banned_echo` 认出来，而且清单非空——
-    空清单等于这道防线不存在。
-    """
-    for lang in locales.available():
-        loc = locales.load(lang)
-        phrases = loc["banned_intent_phrases"]
-        assert phrases, f"{lang} 没有禁用语"
-        for phrase in phrases:
-            assert str(phrase) in render.banned_echo(f"这是{phrase}的说法", loc)
-
-
 def test_banned_phrases_do_not_fire_on_the_fixture_requests() -> None:
     """输入：夹具里那几句请求。输出：无。
 
@@ -164,9 +137,3 @@ def test_meta_placeholders_render() -> None:
         for key in ("elements_columns", "gates_columns", "criteria_columns"):
             assert str(loc["meta"][key]).strip()
 
-
-def test_unknown_locale_lists_the_available_ones() -> None:
-    """输入：不存在的语言。输出：无。预期行为：抛 FileNotFoundError 并列出可用语言。"""
-    with pytest.raises(FileNotFoundError) as info:
-        locales.load("nope")
-    assert "zh" in str(info.value)

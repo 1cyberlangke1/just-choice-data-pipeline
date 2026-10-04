@@ -27,22 +27,29 @@ CASES: Final[tuple[ReceiptCase, ...]] = (
 )
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_state_round_trips(case: ReceiptCase, lang: str) -> None:
+def test_state_round_trips() -> None:
     """输入：一个 case、一种语言。输出：无。
 
     预期行为：三张表与收据行原样读回来——归类表 / 上限表按 `CATEGORY_IDS` 顺序、档位表四行、
     收据行一字不差。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    text = text_of(case, lang)
-    state = render.to_state(render.ContentDraft(text=text), locales.load(lang))
-    parsed = render.parse_state(state)
-    assert parsed.categories == features.CATEGORY_IDS
-    assert parsed.caps == features.CATEGORY_IDS
-    assert parsed.tiers == len(features.TIERS)
-    assert parsed.text == text
-    assert parsed.found
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                text = text_of(case, lang)
+                state = render.to_state(render.ContentDraft(text=text), locales.load(lang))
+                parsed = render.parse_state(state)
+                assert parsed.categories == features.CATEGORY_IDS
+                assert parsed.caps == features.CATEGORY_IDS
+                assert parsed.tiers == len(features.TIERS)
+                assert parsed.text == text
+                assert parsed.found
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", LANGS)
@@ -87,11 +94,19 @@ def test_decoy_word_comes_from_another_category(lang: str) -> None:
         assert word not in features.keyword_table(loc)[cid]
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_faithful_draft_passes(case: ReceiptCase, lang: str) -> None:
-    """输入：一条完全兑现计划的收据行。输出：无。预期行为：`check_draft` 不报错。"""
-    render.check_draft(render.ContentDraft(text=text_of(case, lang)), case, locales.load(lang))
+def test_faithful_draft_passes() -> None:
+    """输入：一条完全兑现计划的收据行。输出：无。预期行为：`check_draft` 不报错。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                render.check_draft(render.ContentDraft(text=text_of(case, lang)), case, locales.load(lang))
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize(
@@ -132,28 +147,35 @@ def test_broken_draft_is_retryable_for_the_case() -> None:
     assert type(info.value).retryable_for_case is True
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_prompt_slots_are_all_filled(case: ReceiptCase, lang: str) -> None:
+def test_prompt_slots_are_all_filled() -> None:
     """输入：一个 case、一种语言。输出：无。
 
     预期行为：提示词里没有残留的占位符（花括号一个都不剩），关键词与金额都原样出现，而且
     **明说了语言约束**——提示词通篇是目标语言并不足以让模型不换语言（范式 §9.32）。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    loc = locales.load(lang)
-    prompt = render.build_prompt(loc, case)
-    assert "{" not in prompt and "}" not in prompt
-    assert case.amount in prompt
-    assert features.keyword_table(loc)[case.category][0] in prompt
-    assert str(loc["language_name"]) in prompt
-    if case.decoy == features.DECOY_NEAR:
-        assert render.decoy_word_for(case, loc) in prompt
-    else:
-        assert all(
-            word not in prompt
-            for cid in features.CATEGORY_IDS
-            for word in features.decoy_table(loc)[cid]
-        )
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                loc = locales.load(lang)
+                prompt = render.build_prompt(loc, case)
+                assert "{" not in prompt and "}" not in prompt
+                assert case.amount in prompt
+                assert features.keyword_table(loc)[case.category][0] in prompt
+                assert str(loc["language_name"]) in prompt
+                if case.decoy == features.DECOY_NEAR:
+                    assert render.decoy_word_for(case, loc) in prompt
+                else:
+                    assert all(
+                        word not in prompt
+                        for cid in features.CATEGORY_IDS
+                        for word in features.decoy_table(loc)[cid]
+                    )
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", LANGS)

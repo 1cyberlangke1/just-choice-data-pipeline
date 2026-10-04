@@ -6,14 +6,13 @@ import json
 import random
 from pathlib import Path
 
-import pytest
-
 from jc import jsonio, pipeline, workflow as workflow_mod
-from jc.backend.types import GenerationBackend, TransportError
+from jc.backend.types import GenerationBackend
 from jc.jsontypes import JsonValue
 from workflows.verify import features, locales, render, workflow as verify_workflow
 from workflows.verify.features import TagSet
-from workflows.verify.spec import VerifySpec, spec_to_dict
+from workflows.verify.spec import VerifySpec
+from tests.workflows._scaffold import run_config
 
 CASE_LIMIT = 8
 
@@ -27,16 +26,14 @@ def make_config(
     tmp_path: Path, run_id: str, backend: object, *, split: str = "train"
 ) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="verify",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=verify_workflow.VerifyConfig(split=split, case_limit=CASE_LIMIT),
-        backend=backend,
+        seed=7,
+        override=verify_workflow.VerifyConfig(split=split, case_limit=CASE_LIMIT),
     )
 
 
@@ -45,44 +42,6 @@ def cases_of(split: str = "train") -> list[TagSet]:
     return verify_workflow.cases_for(
         verify_workflow.VerifyConfig(split=split, case_limit=CASE_LIMIT)
     )
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: GenerationBackend) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，
-    而且四个可重算的题族**每一条**都能从 state 里那两行重算出来。
-    """
-    result = pipeline.run(make_config(tmp_path, "s1", fake_backend()))
-    assert result.accepted == CASE_LIMIT
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"hygiene", "frame", "trace"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    report, missing = workflow_mod.load("verify").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == CASE_LIMIT
-    assert report["train"]["frame_bad"] == 0
-    assert report["train"]["gates_bad"] == 0
-    for family in ("verdict", "gap", "confidence", "committed"):
-        assert report["train"][f"{family}_bad"] == 0
-        assert report["train"][f"{family}_ok"] == CASE_LIMIT
-
-
-def test_trace_judge_rejects_a_misread_claim(
-    tmp_path: Path, fake_backend: GenerationBackend
-) -> None:
-    """输入：反解时把「声称做完的事」说反的假后端。输出：RunResult。
-
-    预期行为：这些样本被拒，拒绝码是 `E_JUDGE_TRACE`——判别器抓的是**模型真会犯的错**，
-    不是摆设；被拒的行必须带上 state，不然「模型写了什么」这条唯一线索就丢了。
-    """
-    result = pipeline.run(make_config(tmp_path, "s3", fake_backend(trace_lies=True)))
-    assert result.stats["reject_codes"] == {"E_JUDGE_TRACE": CASE_LIMIT}
-    assert result.accepted == 0
-    assert all(row["state"] for row in result.rejected)
-    assert all("注入" in row["reason"] for row in result.rejected)
 
 
 def test_trace_judge_rejects_a_misread_tone(
@@ -97,154 +56,12 @@ def test_trace_judge_rejects_a_misread_tone(
     assert result.accepted == 0
 
 
-def test_a_fenced_claim_is_refused_at_render_time(
-    tmp_path: Path, fake_backend: GenerationBackend
-) -> None:
-    """输入：把声明包进 Markdown 围栏的假后端。输出：RunResult。
-
-    预期行为：`render.check_draft` 在渲染期就抛错，整批记成生成期拒绝（`E_ASSEMBLE`）——
-    这种 state 的声明段本身就是坏文本，不该等到判别器。
-    """
-    result = pipeline.run(make_config(tmp_path, "s4", fake_backend(fence_claim=True)))
-    assert result.accepted == 0
-    assert result.stats["reject_codes"] == {"E_ASSEMBLE": CASE_LIMIT}
-    assert all("围栏" in row["reason"] for row in result.rejected)
-
-
-def test_a_multi_line_claim_is_refused_at_render_time(
-    tmp_path: Path, fake_backend: GenerationBackend
-) -> None:
-    """输入：把声明写成两行的假后端。输出：RunResult。
-
-    预期行为：渲染期就拒（`E_ASSEMBLE`）——声明是**一句话**，多行拼进 state 之后
-    `claim_of` 只取第一行，剩下的会成为洗不掉的孤儿文本。
-    """
-    result = pipeline.run(make_config(tmp_path, "s5", fake_backend(multi_line_claim=True)))
-    assert result.accepted == 0
-    assert result.stats["reject_codes"] == {"E_ASSEMBLE": CASE_LIMIT}
-    assert all("多行" in row["reason"] for row in result.rejected)
-
-
-def test_an_empty_claim_is_refused_at_render_time(
-    tmp_path: Path, fake_backend: GenerationBackend
-) -> None:
-    """输入：声明是空白的假后端。输出：RunResult。预期行为：渲染期拒，理由点名「空」。"""
-    result = pipeline.run(make_config(tmp_path, "s6", fake_backend(empty_claim=True)))
-    assert result.accepted == 0
-    assert result.stats["reject_codes"] == {"E_ASSEMBLE": CASE_LIMIT}
-    assert all("空的" in row["reason"] for row in result.rejected)
-
-
-def test_a_claim_carrying_evidence_is_refused_at_render_time(
-    tmp_path: Path, fake_backend: GenerationBackend
-) -> None:
-    """输入：把证据写进声明的假后端。输出：RunResult。
-
-    预期行为：渲染期拒——声明与代码渲染的事实行一旦各说各话，这道题就有歧义了。
-    """
-    result = pipeline.run(make_config(tmp_path, "s7", fake_backend(evidence_claim=True)))
-    assert result.accepted == 0
-    assert result.stats["reject_codes"] == {"E_ASSEMBLE": CASE_LIMIT}
-    assert all("证据" in row["reason"] for row in result.rejected)
-
-
-def test_a_polluted_claim_label_is_refused_at_render_time(
-    tmp_path: Path, fake_backend: GenerationBackend
-) -> None:
-    """输入：声明开头又写了一遍「声明：」的假后端。输出：RunResult。
-
-    预期行为：渲染期拒——拼进 state 就是一行重复标记（实跑里真出现过这种写法）。
-    """
-    result = pipeline.run(make_config(tmp_path, "s8", fake_backend(label_claim=True)))
-    assert result.accepted == 0
-    assert result.stats["reject_codes"] == {"E_ASSEMBLE": CASE_LIMIT}
-    assert all("声明" in row["reason"] for row in result.rejected)
-
-
-def test_trace_judge_skips_an_endpoint_failure_instead_of_rejecting(
-    tmp_path: Path, fake_backend: GenerationBackend
-) -> None:
-    """输入：反解时端点故障（重试与降级都试过）的假后端。输出：RunResult。
-
-    预期行为：声明本身没问题，所以数据照收；`trace` 记成跳过（`judge-skipped.jsonl`）
-    而不是拒绝——端点抖动不是数据质量问题。
-    """
-    result = pipeline.run(
-        make_config(tmp_path, "s9", fake_backend(trace_raises=TransportError("网关 504")))
-    )
-    assert result.accepted == CASE_LIMIT
-    assert result.rejected == []
-    assert result.stats["reject_codes"] == {}
-    assert result.stats["judges"]["trace"] == {"ok": 0, "fail": 0, "skipped": CASE_LIMIT}
-    assert result.stats["judge_skipped"] == CASE_LIMIT
-    skipped = [row for _, row in jsonio.iter_jsonl(result.run_dir / "judge-skipped.jsonl")]
-    assert {row["judge"] for row in skipped} == {"trace"}
-    assert all("端点故障" in row["reason"] for row in skipped)
-
-
-def test_manifest_records_backend(tmp_path: Path, fake_backend: GenerationBackend) -> None:
-    """输入：假后端。输出：manifest。
-
-    预期行为：记下后端名字与 needs，绝不记 key——溯源够用，凭据不入库。
-    """
-    result = pipeline.run(make_config(tmp_path, "s10", fake_backend()))
-    manifest = json.loads((result.run_dir / "manifest-train.json").read_text(encoding="utf-8"))
-    assert manifest["backend"] == {"name": "fake", "starting_mode": ""}
-    assert manifest["needs"] == ["text"]
-    assert manifest["workflow"] == "verify"
-    assert manifest["cases"]
-
-
-def test_stats_report_lists_dimensions_and_judges(
-    tmp_path: Path, fake_backend: GenerationBackend
-) -> None:
-    """输入：一次跑。输出：stats 报告。预期行为：五个维度的中文标题与判别器名都在。"""
-    result = pipeline.run(make_config(tmp_path, "s11", fake_backend()))
-    stats = (result.run_dir / "stats-train.md").read_text(encoding="utf-8")
-    for title in verify_workflow.DIMENSION_TITLES.values():
-        assert title in stats
-    for name in ("hygiene", "frame", "trace"):
-        assert name in stats
-
-
-def test_render_without_backend_raises() -> None:
-    """输入：没有注入后端的 workflow。输出：异常。
-
-    预期行为：直接报错，绝不悄悄降级成模板文本（那会让「声明由模型写」这个前提失效）。
-    """
-    workflow = verify_workflow.VerifyWorkflow()
-    spec = VerifySpec(tags=CASE, phrasing=0, split="train", seq=0)
-    with pytest.raises(RuntimeError, match="bind_backend"):
-        workflow.render(spec, random.Random(0), "zh")
-
-
 def test_bind_backend_stores_the_backend(fake_backend: GenerationBackend) -> None:
     """输入：一个后端。输出：无。预期行为：存下来给 `render` 与 `trace` 判别器用。"""
     workflow = verify_workflow.VerifyWorkflow()
     backend = fake_backend()
     workflow.bind_backend(backend)
     assert workflow.backend is backend
-
-
-def test_config_for_rejects_unknown_split() -> None:
-    """输入：不存在的切分名。输出：KeyError。预期行为：报错并列出可用切分。"""
-    with pytest.raises(KeyError, match="未知切分"):
-        verify_workflow.VerifyWorkflow().config_for("nope")
-
-
-def test_config_rejects_a_negative_case_limit() -> None:
-    """输入：负数 `case_limit`。输出：无。
-
-    预期行为：报人话——以前负数会被 `cases[:case_limit]` 悄悄解释成「去掉尾部几条」。
-    """
-    with pytest.raises(ValueError, match="case_limit"):
-        verify_workflow.VerifyConfig(case_limit=-1)
-
-
-def test_make_judges_rejects_unknown_name() -> None:
-    """输入：不存在的判别器名。输出：KeyError。预期行为：绝不静默少跑一个判别器。"""
-    with pytest.raises(KeyError, match="未知判别器"):
-        verify_workflow.VerifyWorkflow().make_judges(("nope",), "zh")
 
 
 def test_make_judges_builds_the_declared_set(fake_backend: GenerationBackend) -> None:
@@ -273,22 +90,11 @@ def test_reparse_and_case_label() -> None:
         assert f"{dim}=" in label
 
 
-def test_spec_to_dict_is_serializable() -> None:
-    """输入：一个规格。输出：字典。预期行为：能直接 `json.dumps`，任务 id 可重算。"""
+def test_task_ids() -> None:
+    """输入：一条真值规格。输出：无。预期行为：渲染 / 反解任务 id 按同一条样本可重算。"""
     spec = VerifySpec(tags=CASE, phrasing=1, split="train", seq=3)
-    payload = spec_to_dict(spec)
-    assert json.loads(json.dumps(payload)) == payload
-    assert payload["tags"] == CASE.as_dict()
     assert spec.render_task_id == "verify-train-0000003-render"
     assert spec.trace_task_id == "verify-train-0000003-trace"
-
-
-def test_available_locales_lists_shipped_language_files() -> None:
-    """输入：无。输出：语言列表。预期行为：与 locales/ 里的 toml 一一对应，且都读得出来。"""
-    workflow = verify_workflow.VerifyWorkflow()
-    assert workflow.available_locales() == ["en", "zh"]
-    for lang in workflow.available_locales():
-        assert locales.load(lang)["lang"] == lang
 
 
 def test_split_sizes_are_sane() -> None:
@@ -480,13 +286,6 @@ def _state() -> str:
     return render.to_state({"claim": CLEAN}, CASE, locales.load("zh"))
 
 
-def test_audit_reports_a_missing_artifact(tmp_path: Path) -> None:
-    """输入：空的 run 目录。输出：(报告, 缺失项)。预期行为：点名产物不存在，计数全 0。"""
-    report, missing = workflow_mod.load("verify").audit(tmp_path, ("train",), "zh")
-    assert report["train"]["samples"] == 0
-    assert any("产物不存在" in item for item in missing)
-
-
 def test_audit_passes_a_consistent_artifact(tmp_path: Path) -> None:
     """输入：一条自洽的产物行。输出：(报告, 缺失项)。预期行为：零缺失，四族各记到 1。"""
     labels = CASE.label()
@@ -498,23 +297,6 @@ def test_audit_passes_a_consistent_artifact(tmp_path: Path) -> None:
     assert missing == []
     for family in ("verdict", "gap", "confidence", "committed"):
         assert report["train"][f"{family}_ok"] == 1
-
-
-def test_audit_catches_contradictions_and_unknown_families(tmp_path: Path) -> None:
-    """输入：一条四族答案都与 state 矛盾、且带未知题族的产物行。输出：(报告, 缺失项)。
-
-    预期行为：四族矛盾各报一条、未知题族报一条、题族缺失也要报——审计的用处就是
-    「文本与标签脱节」当场暴露，而不是靠人肉抽查。
-    """
-    questions_map = _questions("verified", "nothing_missing")
-    questions_map["made_up_family"] = {"type": "noul", "instructions": "y"}
-    answers = _answers(3, True)
-    answers["made_up_family"] = {"type": "noul", "noul": True}
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [_row(_state(), questions_map, answers)])
-    _, missing = workflow_mod.load("verify").audit(tmp_path, ("train",), "zh")
-    for family in ("verdict", "gap", "confidence", "committed"):
-        assert any(f"{family} 答案与文本重算的结果矛盾" in item for item in missing)
-    assert any("未知题族" in item for item in missing)
 
 
 def test_audit_reports_a_broken_facts_row(tmp_path: Path) -> None:

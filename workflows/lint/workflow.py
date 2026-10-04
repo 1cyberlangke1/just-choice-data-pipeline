@@ -21,7 +21,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, restrictor, slice_by_bucket
+from jc.cover import cover_pick, hash_bucket, restrictor, slice_by_bucket
 from jc.jsontypes import JsonValue
 
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
@@ -112,20 +112,7 @@ def _cover_pick(cases: list[LintCase], limit: int) -> list[LintCase]:
     仍是桶算的，没变）。
     """
     names = ("hits", "rule", "genre")
-    chosen: list[LintCase] = []
-    seen: dict[str, set[JsonValue]] = {name: set() for name in names}
-    remaining = list(cases)
-    while remaining and len(chosen) < limit:
-        keys = [
-            (sum(1 for name in names if case.as_dict()[name] not in seen[name]), -index)
-            for index, case in enumerate(remaining)
-        ]
-        best = max(range(len(remaining)), key=lambda index: keys[index])
-        case = remaining.pop(best)
-        chosen.append(case)
-        for name in names:
-            seen[name].add(case.as_dict()[name])
-    return chosen
+    return cover_pick(cases, limit, names, lambda case: case.as_dict())
 
 
 def cases_for(config: LintConfig) -> list[LintCase]:

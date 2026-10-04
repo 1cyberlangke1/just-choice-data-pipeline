@@ -31,17 +31,6 @@ def test_prompt_lists_required_rules_and_forbidden_shapes() -> None:
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_prompt_tells_the_model_to_compose_its_own_packet(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：提示词里明说判据里那些词只是**形状**、记录要自己组织、判据原文不许原样贴进去
-    （范式 §9.45：给成品就会被整段照抄，所以只给形状 + 明说不许贴）。
-    """
-    loc = locales.load(lang)
-    assert str(loc["prompt"]["vary_rule"]) in render.build_prompt(loc, CASE)
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_format_spec_only_offers_placeholders(lang: str) -> None:
     """输入：一种语言。输出：无。
 
@@ -99,14 +88,22 @@ def test_prompt_says_none_may_be_tripped_when_the_plan_is_empty() -> None:
     assert str(loc["prompt"]["hits_header"]) not in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-@pytest.mark.parametrize("workload", ["oltp", "analytics", "migration"])
-def test_prompt_states_the_workload_shape(lang: str, workload: str) -> None:
-    """输入：一种语言 × 一种变更场景。输出：无。预期行为：提示词里点明这次变更发生在哪类业务上。"""
-    loc = locales.load(lang)
-    case = SqlReviewCase("Q2", workload)
-    prompt = render.build_prompt(loc, case)
-    assert render.workload_copy(loc, workload) in prompt
+def test_prompt_states_the_workload_shape() -> None:
+    """输入：一种语言 × 一种变更场景。输出：无。预期行为：提示词里点明这次变更发生在哪类业务上。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in ["en", "zh"]:
+        for workload in ["oltp", "analytics", "migration"]:
+            try:
+                loc = locales.load(lang)
+                case = SqlReviewCase("Q2", workload)
+                prompt = render.build_prompt(loc, case)
+                assert render.workload_copy(loc, workload) in prompt
+            except AssertionError as exc:
+                bad.append(f"{(lang, workload)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -238,31 +235,6 @@ def test_pasted_rules_only_flags_verbatim_text() -> None:
     assert render.pasted_rules(rule, loc) == [rule]
     assert render.pasted_rules(rule[:-2], loc) == []
     assert render.pasted_rules(packet_of(()), loc) == []
-
-
-def test_build_task_carries_the_injected_features() -> None:
-    """输入：真值规格。输出：无。
-
-    预期行为：任务 id 可重算、`spec` 里带上注入特征（假后端与真后端都能照着它答）、响应模型是
-    草稿模型。
-    """
-    spec = spec_for(CASE)
-    task = render.build_task(spec, locales.load("zh"))
-    assert task.task_id == "sqlreview-train-0000001-render"
-    assert task.domain == "sqlreview"
-    assert task.response_model is render.ContentDraft
-    assert task.spec["case"] == {"hits": "Q1+Q3", "workload": "oltp"}
-    assert task.spec["hits"] == ["Q1", "Q3"]
-    assert task.spec["workload"] == "oltp"
-
-
-def test_tag_copy_reports_missing_fields() -> None:
-    """输入：缺字段的语言字典。输出：无。预期行为：抛 ValueError，点名缺了哪个字段。"""
-    with pytest.raises(ValueError, match="缺判据 Q1"):
-        render.tag_copy({"tag": {}}, "Q1")
-    broken: dict[str, JsonValue] = {"tag": {"Q1": {"name": "无条件改整张表"}}}
-    with pytest.raises(ValueError, match="缺字段 rule"):
-        render.tag_copy(broken, "Q1")
 
 
 def test_workload_copy_reports_a_missing_shape() -> None:

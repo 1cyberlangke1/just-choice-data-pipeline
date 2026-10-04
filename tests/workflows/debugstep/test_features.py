@@ -8,18 +8,13 @@ from tests.workflows.debugstep.conftest import session_of
 from workflows.debugstep import features
 
 
-def test_tag_ids_and_hit_sets_are_complete() -> None:
-    """输入：无。输出：无。预期行为：四条判据、16 组命中组合、顺序稳定。"""
-    assert features.TAG_IDS == ("D1", "D2", "D3", "D4")
-    assert len(features.HIT_SETS) == 16
-    assert features.HIT_SETS[0] == ""
-    assert features.HIT_SETS[-1] == "D1+D2+D3+D4"
-    assert len(set(features.HIT_SETS)) == 16
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一屏会话里的一行。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
 
-
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("Stopped: uncaught TypeError raised while loading config (app/config.py:17)", ("D1",)),
         ("Stopped: Fatal error while opening the socket (net.go:88, in dial)", ("D1",)),
         ("Stopped: panic: runtime error (main.go:12, in main)", ("D1",)),
@@ -39,13 +34,14 @@ def test_tag_ids_and_hit_sets_are_complete() -> None:
         ("Locals: limit=undefinedness, name=alpha", ()),
         ("Breakpoints: app/main.py:42, app/config.py:17", ()),
         ("Note: 手动暂停，先看看当前这一帧里的取值喵", ()),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一屏会话里的一行。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
-    assert features.parse_hits(features.hits_of(text)) == expect
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+            assert features.parse_hits(features.hits_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_key_lines_are_the_five_structure_keys() -> None:

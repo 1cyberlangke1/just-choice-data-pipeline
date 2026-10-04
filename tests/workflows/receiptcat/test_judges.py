@@ -28,13 +28,21 @@ CASES: Final[tuple[ReceiptCase, ...]] = (
 )
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_hygiene_passes_a_faithful_sample(case: ReceiptCase, lang: str) -> None:
-    """输入：一条兑现计划的收据行。输出：无。预期行为：`hygiene` 通过。"""
-    spec, sample = faithful(case, lang)
-    verdict = judges.HygieneJudge(lang).judge(sample, spec)
-    assert verdict.ok and not verdict.skipped
+def test_hygiene_passes_a_faithful_sample() -> None:
+    """输入：一条兑现计划的收据行。输出：无。预期行为：`hygiene` 通过。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                spec, sample = faithful(case, lang)
+                verdict = judges.HygieneJudge(lang).judge(sample, spec)
+                assert verdict.ok and not verdict.skipped
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_hygiene_without_a_spec_is_skipped() -> None:
@@ -84,13 +92,21 @@ def test_hygiene_rejects_a_state_without_a_receipt_line() -> None:
     assert not verdict.ok
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_frame_passes_a_faithful_sample(case: ReceiptCase, lang: str) -> None:
-    """输入：一条规范渲染的 state。输出：无。预期行为：`frame` 通过。"""
-    _spec, sample = faithful(case, lang)
-    verdict = judges.FrameJudge(lang).judge(sample, None)
-    assert verdict.ok and not verdict.skipped
+def test_frame_passes_a_faithful_sample() -> None:
+    """输入：一条规范渲染的 state。输出：无。预期行为：`frame` 通过。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                _spec, sample = faithful(case, lang)
+                verdict = judges.FrameJudge(lang).judge(sample, None)
+                assert verdict.ok and not verdict.skipped
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize(
@@ -117,17 +133,24 @@ def test_frame_rejects_a_tampered_cap_table() -> None:
     assert "上限表" in verdict.reason
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_trace_passes_a_faithful_sample(case: ReceiptCase, lang: str) -> None:
+def test_trace_passes_a_faithful_sample() -> None:
     """输入：假后端的忠实反解。输出：无。预期行为：`trace` 通过。
 
     假后端按 `task.spec` 里的注入特征答，等于「照着计划答」——它验的是接线（提示词、期望值、
     语言选取），不是模型能力。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    spec, sample = faithful(case, lang)
-    verdict = judges.TraceJudge(FakeBackend(locale=lang), lang).judge(sample, spec)
-    assert verdict.ok and not verdict.skipped
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                spec, sample = faithful(case, lang)
+                verdict = judges.TraceJudge(FakeBackend(locale=lang), lang).judge(sample, spec)
+                assert verdict.ok and not verdict.skipped
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_trace_catches_a_wrong_answer() -> None:

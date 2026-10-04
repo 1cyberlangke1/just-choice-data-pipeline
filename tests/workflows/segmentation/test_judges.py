@@ -205,9 +205,13 @@ def test_read_judge_skips_without_a_spec() -> None:
     assert backend.tasks == []
 
 
-@pytest.mark.parametrize(
-    ("cls", "quote", "ok"),
-    [
+def test_quote_holds() -> None:
+    """输入：种类、引文、正文。输出：无。预期行为：原样出现 **且** 引文合判据才算站得住。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for cls, quote, ok in [
         ("form", MARKERS["form"], True),
         # 空白重排不算抄错（模型复述时常常把空格换成换行）。
         ("form", MARKERS["form"].replace(" ", "\n"), True),
@@ -217,12 +221,13 @@ def test_read_judge_skips_without_a_spec() -> None:
         ("form", "正文里没有这句话", False),
         ("form", MARKERS["receipt"], False),
         ("form", "", False),
-    ],
-)
-def test_quote_holds(cls: str, quote: str, ok: bool) -> None:
-    """输入：种类、引文、正文。输出：无。预期行为：原样出现 **且** 引文合判据才算站得住。"""
-    body = page_text("form", features.SOURCE_SCAN)
-    assert judges.quote_holds(cls, quote, body) is ok
+    ]:
+        try:
+            body = page_text("form", features.SOURCE_SCAN)
+            assert judges.quote_holds(cls, quote, body) is ok
+        except AssertionError as exc:
+            bad.append(f"{(cls, quote, ok)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_read_prompt_carries_the_whole_state() -> None:

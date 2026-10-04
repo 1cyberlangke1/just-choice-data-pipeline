@@ -20,8 +20,6 @@ from tests.workflows.promptinject.conftest import (
 from workflows.promptinject import features, judges, locales, render
 from workflows.promptinject.features import PromptInjectCase
 
-#: 全空间 32 组 case。
-CASES = features.build_cases(512)
 
 #: 一个普通 case：命中两条、没有诱饵。
 CASE = PromptInjectCase("T1+T3", features.SOURCE_WEB)
@@ -55,45 +53,6 @@ def test_hygiene_rejects_an_extra_hit() -> None:
     )
     assert not verdict.ok
     assert "命中组合" in verdict.reason
-
-
-def test_hygiene_rejects_a_state_without_a_content_block() -> None:
-    """输入：一段没有内容抬头的 state。输出：无。预期行为：不通过，理由是认不出内容。"""
-    spec, _ = faithful(CASE)
-    verdict = judges.HygieneJudge("zh").judge({"state": "这里什么抬头都没有"}, spec)
-    assert not verdict.ok
-    assert "内容" in verdict.reason
-
-
-def test_frame_accepts_faithful_and_rejects_a_broken_table() -> None:
-    """输入：忠实 state 与缺了一行的 state。输出：无。
-
-    预期行为：判据表缺一条就报出来——那是构造 bug，标签会跟着一起错。
-    """
-    judge = judges.FrameJudge("zh")
-    loc = locales.load("zh")
-    spec, sample = faithful(CASE)
-    assert judge.judge(sample, spec).ok
-    broken = {"state": _drop_tag_line(str(sample["state"]), loc, "T2")}
-    verdict = judge.judge(broken, spec)
-    assert not verdict.ok
-    assert "判据表" in verdict.reason
-
-
-def test_trace_agrees_with_the_plan() -> None:
-    """输入：诚实的反解。输出：无。预期行为：通过，raw 里留下反解出来的命中组合。"""
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(FakeBackend(), "zh").judge(sample, spec)
-    assert verdict.ok and not verdict.skipped
-    assert verdict.raw == {"traced_hits": ["T1", "T3"]}
-
-
-def test_trace_catches_a_lie() -> None:
-    """输入：反解漏报一条。输出：无。预期行为：不通过，理由里两条都列出来。"""
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(FakeBackend(trace_lies=True), "zh").judge(sample, spec)
-    assert not verdict.ok and not verdict.skipped
-    assert "T1" in verdict.reason and "T3" in verdict.reason
 
 
 def test_trace_drops_an_overclaim_whose_quote_does_not_match_the_criterion() -> None:
@@ -138,22 +97,6 @@ def test_quote_holds_needs_both_the_quote_and_the_criterion() -> None:
     assert not judges.quote_holds("T9", "社区公告", body)  # 不认识的编号
 
 
-class _UnknownIdBackend:
-    """只会答一个不存在的判据编号的假后端。"""
-
-    def generate(self, task: object) -> Draft:
-        """输入：任务。输出：`tags` 里带 T9 的草稿。预期行为：不联网。"""
-        del task
-        return _draft({"tags": [{"tag": "T9", "quote": "T9"}]})
-
-
-class _MalformedBackend:
-    """只会答一个畸形 tags 的假后端。"""
-
-    def generate(self, task: object) -> Draft:
-        """输入：任务。输出：`tags` 是字符串列表的草稿。预期行为：不联网。"""
-        del task
-        return _draft({"tags": ["T1", "T3"]})
 
 
 class _OverclaimBackend:

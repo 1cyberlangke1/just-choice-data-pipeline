@@ -1,4 +1,4 @@
-"""语言文件的三条跨 workflow 不变量（零 token 尺子）。
+"""语言文件的四条跨 workflow 不变量（零 token 尺子）。
 
 为什么值得做成尺子：
 
@@ -12,6 +12,10 @@
    产物里 3/3、4/6、1/4 把查询与候选写成了英文（汉字占比 0.081~0.120），en 侧反过来有
    2/9 写成中文。提示词通篇是目标语言**不足以**让模型不换语言；而这一条一旦漏掉，产物
    照样过契约校验、照样过判别器，只在事后审计里才现形。
+4. 题族之外的键（图例 / 词表 / 提示词 / 维度标题…）只在一种语言里定义时，另一种语言跑到
+   那个分支才会 KeyError。第 2 条那把尺子只看 `fam` / `ask` 两张表，够不到它们——2026-10-04
+   拿 `tmp/probe_locale_parity.py` 把 52 个语言目录的**全键集**对了一遍，当时一处不差；
+   这一条就是把它从「碰巧对」变成「钉住」。
 
 输入：`workflows/*/locales/*.toml`。
 输出：无（断言）。
@@ -106,6 +110,52 @@ def test_every_workflow_defines_the_same_families_in_all_languages() -> None:
             if missing or extra:
                 problems.append(f"{workflow_dir}: {name} 缺 {missing}、多 {extra}")
     assert not problems, "各语言题族不一致（另一种语言会缺题或渲染 KeyError）：\n" + "\n".join(problems)
+
+
+def _key_paths(data: dict[str, object], prefix: str = "") -> set[str]:
+    """输入：解析出来的 TOML 字典。输出：摊平后的点分键路径集合。
+
+    预期行为：只展开**表**（`[a.b]`），不展开数组——数组里的表（`[[x]]`）按它自己的键名
+    算一格就够了，这里比的是「两边有没有这一格」，不是内容。
+    """
+    keys: set[str] = set()
+    for key, value in data.items():
+        path = f"{prefix}{key}"
+        keys.add(path)
+        if isinstance(value, dict):
+            keys |= _key_paths(value, prefix=f"{path}.")
+    return keys
+
+
+def test_every_workflow_defines_the_same_keys_in_all_languages() -> None:
+    """同一 workflow 的各语言文件必须有**同一套键**（不只是题族）。
+
+    输入：所有语言文件。输出：无（断言）。
+    预期行为：摊平成点分键路径再比。图例 / 词表 / 提示词 / 维度标题这些表里少一个键，
+    另一种语言跑到那个分支就是 KeyError（或者悄悄回落到默认值），而「只跑一种语言」的
+    测试看不见——与上面那条题族尺子是同一个盲区，只是深一层。
+    """
+    grouped: dict[str, list[Path]] = {}
+    for path in locale_files():
+        grouped.setdefault(path.parent.parent.as_posix(), []).append(path)
+    problems: list[str] = []
+    for workflow_dir, paths in sorted(grouped.items()):
+        if len(paths) < 2:
+            continue
+        shapes = {
+            path.stem: _key_paths(tomllib.loads(path.read_text(encoding="utf-8")))
+            for path in paths
+        }
+        base_name = sorted(shapes)[0]
+        base = shapes[base_name]
+        for name in sorted(shapes):
+            if name == base_name:
+                continue
+            missing = sorted(base - shapes[name])
+            extra = sorted(shapes[name] - base)
+            if missing or extra:
+                problems.append(f"{workflow_dir}: {name} 缺 {missing}、多 {extra}")
+    assert not problems, "各语言键集不一致（另一种语言会 KeyError）：\n" + "\n".join(problems)
 
 
 def _strings(node: object) -> list[str]:

@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from typing import Final
 
-import pytest
-
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
 from tests.workflows import _fakes
@@ -113,10 +111,6 @@ def trace_report(
     }
 
 
-def sample_of(packet: str, lang: str = "zh") -> dict[str, JsonValue]:
-    """输入：一屏候选人材料、语言。输出：契约样本（只有 state，判别器只需要它）。"""
-    return {"state": render.to_state(render.ContentDraft(packet=packet), render.locales.load(lang))}
-
 
 class FakeBackend(_fakes.ScriptedBackend):
     """脚本化假后端：草稿由 `task.spec` 推出，不联网。
@@ -213,13 +207,7 @@ class FakeBackend(_fakes.ScriptedBackend):
         return _draft({"packet": packet}, packet)
 
 
-@pytest.fixture
-def backend() -> FakeBackend:
-    """输入：无。输出：一个完全兑现计划的假后端。"""
-    return FakeBackend()
+backend = _fakes.instance_fixture(FakeBackend)
 
 
-@pytest.fixture
-def fake_backend() -> type[FakeBackend]:
-    """工厂夹具：`fake_backend(trace_lies=True)` 造一个假后端。"""
-    return FakeBackend
+fake_backend = _fakes.factory_fixture(FakeBackend)

@@ -366,23 +366,6 @@ def sample_spec(
     )
 
 
-def spec_to_dict(spec: ReuseSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.as_dict(),
-        "unseen_dims": list(spec.case.unseen_dims()),
-        "split": spec.split,
-        "seq": spec.seq,
-        "query_id": spec.query_id,
-        "prefix": spec.prefix,
-        "equivalent_total": spec.equivalent_total,
-        "first_diff": spec.first_diff,
-        "diverge": spec.diverge,
-        "diff_kind": spec.diff_kind,
-        "reuse_half": spec.reuse_half,
-    }
-
-
 # ---------- 值留出（训练侧见过哪些取值） ----------
 
 #: 训练侧见过的缓存来源：最后一个（`kiosk`）只在 OOD 侧出现。

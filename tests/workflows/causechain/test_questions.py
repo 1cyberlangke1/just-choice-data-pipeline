@@ -5,10 +5,7 @@ from __future__ import annotations
 import pytest
 
 from workflows.causechain import features, locales, questions
-from workflows.causechain.features import CauseCase
 
-#: 一个普通 case：链式图上根因在末端，五个探针全都可行。
-CASE = CauseCase(graph="G1", root="S6", probe="h2")
 
 #: 跳数档位 ↔ 探针末位数字的对应（`h0` 问 0 跳、`h1` 问 1 跳、`h2` 问 2 跳以上）。
 HOP_DIGITS = {features.HOP_ZERO: "0", features.HOP_ONE: "1", features.HOP_MORE: "2"}

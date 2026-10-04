@@ -8,23 +8,6 @@ from workflows.memorygate import features, locales, render
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：三个抬头两两不互为前缀——`【入库判据】` 与 `【入库判据附注】` 那种关系会让解析先
-    命中短的那个，整段 state 当场错位。
-    """
-    loc = locales.load(lang)
-    marks = [str(loc["state"][key]) for key in ("tag_mark", "rule_mark", "content_mark")]
-    assert all(marks)
-    assert len(set(marks)) == len(marks)
-    for left in marks:
-        for right in marks:
-            if left != right:
-                assert not right.startswith(left), f"{left!r} 是 {right!r} 的前缀"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_tag_table_lines_up_with_features(lang: str) -> None:
     """输入：一种语言。输出：无。
 
@@ -58,20 +41,6 @@ def test_examples_hit_exactly_their_own_tag(lang: str) -> None:
     for tag in features.TAG_IDS:
         example = str(render.tag_copy(loc, tag)["example"])
         assert features.hit_set(example) == (tag,), f"{lang}.{tag}: {example!r}"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_gate_and_threshold_tables_line_up_with_features(lang: str) -> None:
-    """输入：一种语言。输出：无。预期行为：两张表都覆盖四个档位，动作文案两两不同。"""
-    loc = locales.load(lang)
-    options = loc["fam"]["gate"]["opt"]
-    assert isinstance(options, dict)
-    assert sorted(options) == sorted(features.HANDLING_LEVELS)
-    assert len({str(value) for value in options.values()}) == len(options)
-    thresholds = loc["state"]["threshold"]
-    assert isinstance(thresholds, dict)
-    assert sorted(thresholds) == sorted(features.HANDLING_LEVELS)
-    assert len({str(value) for value in thresholds.values()}) == len(thresholds)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])

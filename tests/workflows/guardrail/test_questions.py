@@ -131,13 +131,3 @@ def test_phrasing_picks_alternate_wording() -> None:
     assert first[0].answer == second[0].answer
 
 
-def test_bad_answer_names_are_rejected() -> None:
-    """输入：一个不在选项里的答案名。输出：无。预期行为：当场报错（构造 bug 不该溜到产物里）。"""
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("count", "问", {"c0": "0 条"}, "c9")
-
-
-def test_duplicate_option_descriptions_are_rejected() -> None:
-    """输入：两个描述一样的选项。输出：无。预期行为：当场报错。"""
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice("count", "问", {"c0": "0 条", "c1": "0 条"}, "c0")

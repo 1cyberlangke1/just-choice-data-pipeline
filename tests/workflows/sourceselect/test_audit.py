@@ -8,21 +8,19 @@ from pathlib import Path
 from jc import pipeline
 from workflows.sourceselect import audit as audit_mod, features, workflow as ss_workflow
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.sourceselect.conftest import FakeBackend
 
 
 def make_config(tmp_path: Path, run_id: str, backend: object) -> pipeline.RunConfig:
     """构造一个小 case 集合的试跑配置。"""
-    return pipeline.RunConfig(
-        workflow="sourceselect",
-        split="train",
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=ss_workflow.SourceSelectConfig(split="train", case_limit=4),
+    return run_config(
+        tmp_path,
+        run_id,
         backend=backend,
+        workflow="sourceselect",
+        seed=7,
+        override=ss_workflow.SourceSelectConfig(split="train", case_limit=4),
     )
 
 

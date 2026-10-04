@@ -6,6 +6,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+from typing import TypeVar
+
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
 
@@ -32,3 +36,34 @@ def draft(data: dict[str, JsonValue], raw_text: str = "<fake>") -> Draft:
         model="fake",
         mode="fake",
     )
+
+
+BackendT = TypeVar("BackendT")
+
+
+def instance_fixture(cls: type[BackendT]) -> object:
+    """输入：某个包自己的假后端类。输出：一个 pytest 夹具（叫 `backend`，调用即返回**实例**）。
+
+    预期行为：`backend` 就是「一个完全兑现计划的假后端」——23 家原来各抄一份那三行，
+    只有类名不同，收在这里只留一份。
+    """
+
+    @pytest.fixture
+    def backend() -> BackendT:
+        return cls()
+
+    return backend
+
+
+def factory_fixture(cls: type[BackendT]) -> object:
+    """输入：某个包自己的假后端类。输出：一个 pytest 夹具（叫 `fake_backend`，返回**那个类**）。
+
+    预期行为：测试拿它按开关现造后端，例如 `fake_backend(trace_lies=True)`——开关名各家不同，
+    看各家 `FakeBackend.__init__`。37 家原来各抄一份那三行，只有类名不同，收在这里只留一份。
+    """
+
+    @pytest.fixture
+    def fake_backend() -> type[BackendT]:
+        return cls
+
+    return fake_backend

@@ -8,18 +8,13 @@ from tests.workflows.turntake.conftest import text_of
 from workflows.turntake import features
 
 
-def test_tag_ids_and_hit_sets_are_complete() -> None:
-    """输入：无。输出：无。预期行为：四条判据、16 组命中组合、顺序稳定。"""
-    assert features.TAG_IDS == ("T1", "T2", "T3", "T4")
-    assert len(features.HIT_SETS) == 16
-    assert features.HIT_SETS[0] == ""
-    assert features.HIT_SETS[-1] == "T1+T2+T3+T4"
-    assert len(set(features.HIT_SETS)) == 16
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一段用户输入。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
 
-
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("我今天去超市买了点东西，然后", ("T1",)),
         ("i went to the store and bought stuff, then", ("T1",)),
         ("我想问一下，", ("T2",)),
@@ -35,13 +30,14 @@ def test_tag_ids_and_hit_sets_are_complete() -> None:
         ("the plan is fine (i think so)", ()),
         # 两条同时成立：连接词后面再跟一个逗号。
         ("我想说的是，然后，", ("T1", "T2")),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一段用户输入。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
-    assert features.parse_hits(features.hits_of(text)) == expect
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+            assert features.parse_hits(features.hits_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_channels_are_three_distinct_shapes() -> None:

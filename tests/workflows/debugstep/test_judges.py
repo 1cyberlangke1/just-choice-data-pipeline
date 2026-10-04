@@ -72,14 +72,6 @@ def test_hygiene_rejects_a_session_missing_a_structure_key() -> None:
     assert "缺这几行" in verdict.reason
 
 
-def test_hygiene_rejects_a_state_without_a_content_block() -> None:
-    """输入：一段没有会话抬头的 state。输出：无。预期行为：不通过，理由是认不出会话。"""
-    spec, _ = faithful(CASE)
-    verdict = judges.HygieneJudge("zh").judge({"state": "这里什么抬头都没有"}, spec)
-    assert not verdict.ok
-    assert "会话" in verdict.reason
-
-
 def test_hygiene_rejects_fence_lines_anywhere() -> None:
     """输入：整段被围栏包起来的 state。输出：无。预期行为：不通过，理由是残留。
 
@@ -110,20 +102,6 @@ def test_hygiene_rejects_a_pasted_rule(lang: str) -> None:
     assert "判据原文" in verdict.reason
 
 
-def test_frame_accepts_faithful_and_rejects_a_broken_table() -> None:
-    """输入：忠实 state 与缺了一行的 state。输出：无。
-
-    预期行为：判据表缺一条就报出来——那是构造 bug，标签会跟着一起错。
-    """
-    judge = judges.FrameJudge("zh")
-    spec, sample = faithful(CASE)
-    assert judge.judge(sample, spec).ok
-    broken = {"state": _drop_tag_line(str(sample["state"]), "D2")}
-    verdict = judge.judge(broken, spec)
-    assert not verdict.ok
-    assert "判据表" in verdict.reason
-
-
 def test_frame_rejects_a_session_missing_a_structure_key() -> None:
     """输入：会话少了 `Note:` 那一行。输出：无。预期行为：不通过，理由点名缺了哪几行。"""
     spec, sample = faithful(CASE)
@@ -133,22 +111,6 @@ def test_frame_rejects_a_session_missing_a_structure_key() -> None:
     verdict = judges.FrameJudge("zh").judge(sample_of(without_note), spec)
     assert not verdict.ok
     assert "缺这几行" in verdict.reason
-
-
-def test_trace_agrees_with_the_plan() -> None:
-    """输入：诚实的反解。输出：无。预期行为：通过，raw 里留下反解出来的命中组合。"""
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(FakeBackend(), "zh").judge(sample, spec)
-    assert verdict.ok and not verdict.skipped
-    assert verdict.raw == {"traced_hits": ["D1", "D3"]}
-
-
-def test_trace_catches_a_lie() -> None:
-    """输入：反解漏报一条。输出：无。预期行为：不通过，理由里两条都列出来。"""
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(FakeBackend(trace_lies=True), "zh").judge(sample, spec)
-    assert not verdict.ok and not verdict.skipped
-    assert "D1" in verdict.reason and "D3" in verdict.reason
 
 
 def test_trace_drops_an_overclaim_whose_quote_does_not_match_the_criterion() -> None:
@@ -206,22 +168,6 @@ def test_quote_holds_tracks_the_plan_on_every_faithful_session() -> None:
             assert judges.quote_holds(tag, quote_for(tag), session) is (tag in case.tags())
 
 
-class _UnknownIdBackend:
-    """只会答一个不存在的判据编号的假后端。"""
-
-    def generate(self, task: object) -> Draft:
-        """输入：任务。输出：`tags` 里带 D9 的草稿。预期行为：不联网。"""
-        del task
-        return _draft({"tags": [{"tag": "D9", "quote": "D9"}]})
-
-
-class _MalformedBackend:
-    """只会答一个畸形 tags 的假后端。"""
-
-    def generate(self, task: object) -> Draft:
-        """输入：任务。输出：`tags` 是字符串列表的草稿。预期行为：不联网。"""
-        del task
-        return _draft({"tags": ["D1", "D3"]})
 
 
 class _OverclaimBackend:

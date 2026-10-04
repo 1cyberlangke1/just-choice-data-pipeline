@@ -184,8 +184,3 @@ def test_category_names_and_keyword_lists_are_unique(lang: str) -> None:
     lists = [questions.category_text(loc, cid) for cid in features.CATEGORY_IDS]
     assert len(set(lists)) == len(lists)
 
-
-def test_missing_language_reports_available_ones() -> None:
-    """输入：一个不存在的语言。输出：无。预期行为：报人话并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="可用"):
-        locales.load("fr")

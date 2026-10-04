@@ -116,10 +116,3 @@ def test_trace_catches_a_misread_spam_flag(fake_backend: type[FakeBackend]) -> N
         sample(state_of()), spec()
     )
     assert not verdict.ok
-
-
-def test_trace_marks_a_broken_draft_as_skipped(fake_backend: type[FakeBackend]) -> None:
-    """输入：反解草稿缺字段。输出：无。预期行为：记成跳过。"""
-    backend = fake_backend(trace_data={"query_kind": "informational"})
-    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
-    assert verdict.ok and verdict.skipped

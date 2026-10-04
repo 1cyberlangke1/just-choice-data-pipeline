@@ -77,18 +77,6 @@ def test_priority_depends_only_on_urgency_and_tier() -> None:
     assert left["queue"].answer != right["queue"].answer  # 队列那一族确实变了
 
 
-def test_noul_and_score_criteria_shapes() -> None:
-    """输入：一组特征。输出：无。
-
-    预期行为：noul 的选项是 `true` / `false`；score 的选项是有序阶梯（档数 == `PRIORITY_LEVELS`）。
-    """
-    loc = locales.load("zh")
-    families = by_family()
-    assert list(families["needs_human"].question["criteria"]) == ["true", "false"]
-    assert list(families["priority"].question["criteria"]) == list(loc["fam"]["priority"]["levels"])
-    assert len(families["priority"].question["criteria"]) == features.PRIORITY_LEVELS
-
-
 def test_families_for_returns_the_full_table() -> None:
     """输入：任意特征。输出：无。预期行为：六个题族对任何组合都问得出来。"""
     for tags in features.build_cases(2048):

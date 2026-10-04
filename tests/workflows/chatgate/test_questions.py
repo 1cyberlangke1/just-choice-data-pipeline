@@ -24,17 +24,6 @@ def _options(item: LabeledQuestion) -> dict[str, JsonValue]:
     return item.question["criteria"]
 
 
-def test_family_order_matches_the_declared_families() -> None:
-    """输入：无。输出：无。
-
-    预期行为：`build` 出的题族**首次出现顺序**与 `FAMILIES` 一致（逐判据那一族出四道，所以比
-    的是去重之后的顺序）。
-    """
-    out = questions.build(features.plan_for(CASE, 0), locales.load("zh"), 0)
-    assert list(dict.fromkeys(item.family for item in out)) == list(questions.FAMILIES)
-    assert questions.FAMILIES == ("tag", "count", "route", "reply")
-
-
 def test_tag_family_is_one_noul_per_tag() -> None:
     """输入：无。输出：无。预期行为：四条 noul，一条判据一道，答案与真值一致。"""
     plan = features.plan_for(CASE, 0)

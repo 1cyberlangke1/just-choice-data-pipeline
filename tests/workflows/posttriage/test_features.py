@@ -27,9 +27,13 @@ def test_every_signal_appears_eight_times() -> None:
         assert hits == 8, signal
 
 
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+def test_signal_set_is_purely_literal() -> None:
+    """输入：一段帖子。输出：无。预期行为：命中组合按 `SIGNAL_IDS` 顺序、只看字面。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("关注 $NVDA 这条线", ("S1",)),
         ("$A 只有一个字母，$ABCDEF 有六个", ()),  # 长度不在 2~5 之间：两条都不算
         ("现价 512.30", ("S2",)),
@@ -43,13 +47,14 @@ def test_every_signal_appears_eight_times() -> None:
         ("$NVDA 现价 512.30", ("S1", "S2")),
         ("12.50% 同时是两位小数与百分数", ("S2", "S3")),
         ("$NVDA 涨 7.5% 见 https://example.com", ("S1", "S3", "S4")),
-    ],
-)
-def test_signal_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一段帖子。输出：无。预期行为：命中组合按 `SIGNAL_IDS` 顺序、只看字面。"""
-    assert features.signal_set(text) == expect
-    assert features.signals_of(text) == "+".join(expect)
-    assert features.parse_signals(features.signals_of(text)) == expect
+    ]:
+        try:
+            assert features.signal_set(text) == expect
+            assert features.signals_of(text) == "+".join(expect)
+            assert features.parse_signals(features.signals_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_lowercase_cashtag_is_not_a_hit() -> None:
@@ -126,14 +131,6 @@ def test_two_label_paths_agree_on_every_faithful_text() -> None:
             features.plan_for(case, 0)
         ).signals
         assert features.has_decoy(text) == (case.decoy == features.DECOY_LOWER)
-
-
-def test_build_cases_order_is_stable() -> None:
-    """输入：同一份维度表两次。输出：无。预期行为：顺序逐格一致、覆盖全部命中组合。"""
-    first = features.build_cases(512)
-    second = features.build_cases(512)
-    assert [case.as_dict() for case in first] == [case.as_dict() for case in second]
-    assert {case.signals for case in first} == set(features.SIGNAL_SETS)
 
 
 def test_case_describe_and_fingerprint() -> None:

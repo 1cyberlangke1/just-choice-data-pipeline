@@ -22,12 +22,3 @@ def test_task_ids_are_unique_and_recomputable() -> None:
     assert one.render_task_id != one.trace_task_id
 
 
-def test_spec_to_dict_is_serialisable() -> None:
-    """输入：一条规格。输出：无。预期行为：字段齐全、可直接 JSON 序列化。"""
-    import json
-
-    payload = spec_mod.spec_to_dict(make())
-    assert payload["split"] == "train"
-    assert payload["seq"] == 3
-    assert payload["case"] == CASE.as_dict()
-    json.dumps(payload, ensure_ascii=False)

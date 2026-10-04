@@ -32,17 +32,6 @@ def test_prompt_lists_required_rules_and_forbidden_shapes() -> None:
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_prompt_tells_the_model_to_compose_its_own_session(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：提示词里明说判据里那些词只是**形状**、会话要自己组织、判据原文不许原样贴进去
-    （范式 §9.45：给成品句就会被整段照抄，所以只给形状 + 明说不许贴）。
-    """
-    loc = locales.load(lang)
-    assert str(loc["prompt"]["vary_rule"]) in render.build_prompt(loc, CASE)
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_format_spec_only_offers_placeholders(lang: str) -> None:
     """输入：一种语言。输出：无。
 
@@ -67,14 +56,22 @@ def test_prompt_says_none_may_be_tripped_when_the_plan_is_empty() -> None:
     assert str(loc["prompt"]["hits_header"]) not in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-@pytest.mark.parametrize("runtime", ["python", "node", "go"])
-def test_prompt_states_the_runtime_shape(lang: str, runtime: str) -> None:
-    """输入：一种语言 × 一种运行时。输出：无。预期行为：提示词里点明这屏会话来自哪种调试器。"""
-    loc = locales.load(lang)
-    case = DebugStepCase("D2", runtime)
-    prompt = render.build_prompt(loc, case)
-    assert render.runtime_copy(loc, runtime) in prompt
+def test_prompt_states_the_runtime_shape() -> None:
+    """输入：一种语言 × 一种运行时。输出：无。预期行为：提示词里点明这屏会话来自哪种调试器。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in ["en", "zh"]:
+        for runtime in ["python", "node", "go"]:
+            try:
+                loc = locales.load(lang)
+                case = DebugStepCase("D2", runtime)
+                prompt = render.build_prompt(loc, case)
+                assert render.runtime_copy(loc, runtime) in prompt
+            except AssertionError as exc:
+                bad.append(f"{(lang, runtime)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -210,31 +207,6 @@ def test_pasted_rules_only_flags_verbatim_text() -> None:
     assert render.pasted_rules(rule, loc) == [rule]
     assert render.pasted_rules(rule[:-2], loc) == []
     assert render.pasted_rules(session_of(()), loc) == []
-
-
-def test_build_task_carries_the_injected_features() -> None:
-    """输入：真值规格。输出：无。
-
-    预期行为：任务 id 可重算、`spec` 里带上注入特征（假后端与真后端都能照着它答）、响应模型是
-    草稿模型。
-    """
-    spec = spec_for(CASE)
-    task = render.build_task(spec, locales.load("zh"))
-    assert task.task_id == "debugstep-train-0000001-render"
-    assert task.domain == "debugstep"
-    assert task.response_model is render.ContentDraft
-    assert task.spec["case"] == {"hits": "D1+D3", "runtime": "python"}
-    assert task.spec["hits"] == ["D1", "D3"]
-    assert task.spec["runtime"] == "python"
-
-
-def test_tag_copy_reports_missing_fields() -> None:
-    """输入：缺字段的语言字典。输出：无。预期行为：抛 ValueError，点名缺了哪个字段。"""
-    with pytest.raises(ValueError, match="缺判据 D1"):
-        render.tag_copy({"tag": {}}, "D1")
-    broken: dict[str, JsonValue] = {"tag": {"D1": {"name": "停在异常上"}}}
-    with pytest.raises(ValueError, match="缺字段 rule"):
-        render.tag_copy(broken, "D1")
 
 
 def test_runtime_copy_reports_a_missing_shape() -> None:

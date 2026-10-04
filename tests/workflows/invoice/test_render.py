@@ -12,16 +12,23 @@ LOCALES = locales.available()
 SHAPES = [(layout, style) for layout in sp.LAYOUTS for style in sp.LABEL_STYLES]
 
 
-@pytest.mark.parametrize("lang", LOCALES)
-@pytest.mark.parametrize("fmt", sp.DATE_FORMATS)
-def test_format_date_puts_the_year_first(lang: str, fmt: str) -> None:
+def test_format_date_puts_the_year_first() -> None:
     """输入：日期、格式名、语言。输出：文本。
 
     预期行为：年在前（反解按「四位年 + 月 + 日」读），且能原样反解回原日期。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    text = render.format_date((2026, 3, 7), fmt, locales.load(lang))
-    assert text.startswith("2026")
-    assert parse.as_date(text) == (2026, 3, 7)
+    bad: list[str] = []
+    for lang in LOCALES:
+        for fmt in sp.DATE_FORMATS:
+            try:
+                text = render.format_date((2026, 3, 7), fmt, locales.load(lang))
+                assert text.startswith("2026")
+                assert parse.as_date(text) == (2026, 3, 7)
+            except AssertionError as exc:
+                bad.append(f"{(lang, fmt)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", LOCALES)

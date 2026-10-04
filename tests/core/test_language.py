@@ -115,15 +115,22 @@ def test_zh_and_en_are_judged_in_opposite_directions(text: str, locale: str, fla
     assert (language.language_mismatch(text, locale) is not None) is flagged
 
 
-@pytest.mark.parametrize("text", ["", "m1", "yes", "3", "【查询】", "alpha bravo"])
-def test_short_text_is_not_judged(text: str) -> None:
+def test_short_text_is_not_judged() -> None:
     """输入：几段短文本。输出：无。
 
     预期行为：有书写系统的字符不到 `MIN_SCRIPTED` 就一律放行——选项名、编号、布尔值这些短标签
     本来就推不出语言，判它只会误伤（`m1` 这种槽名混在正常样本里是常态）。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    assert language.language_mismatch(text, "zh") is None
-    assert language.language_mismatch(text, "en") is None
+    bad: list[str] = []
+    for text in ["", "m1", "yes", "3", "【查询】", "alpha bravo"]:
+        try:
+            assert language.language_mismatch(text, "zh") is None
+            assert language.language_mismatch(text, "en") is None
+        except AssertionError as exc:
+            bad.append(f"{(text,)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_unknown_locale_has_no_opinion() -> None:
@@ -134,6 +141,18 @@ def test_unknown_locale_has_no_opinion() -> None:
     """
     assert language.language_mismatch("这是一段中文正文，够长了。", "ja") is None
     assert language.language_mismatch("this is english text, long enough", "fr") is None
+
+
+def test_han_share_exactly_at_the_floor_passes() -> None:
+    """输入：汉字占比**恰好等于** `ZH_FLOOR` 的 zh 文本。输出：无。
+
+    预期行为：这是「下限」，等于下限算过——`share >= ZH_FLOOR` 里那个等号把「刚好够格」
+    和「差一点」分开；改成 `>` 会把刚好够格的样本拒掉。真机上的占比是连续量，阈值附近
+    每一分都有人踩，边界不能按「反正不会正好相等」跳过。
+    """
+    text = "甲 abcd efgh ijkl mnop"  # 1 个汉字 + 4 个拉丁词 = 0.20，恰好压在下限上
+    assert language.han_share(text) == pytest.approx(language.ZH_FLOOR)
+    assert language.language_mismatch(text, "zh") is None
 
 
 def test_code_heavy_text_is_flagged_so_callers_must_not_feed_it() -> None:

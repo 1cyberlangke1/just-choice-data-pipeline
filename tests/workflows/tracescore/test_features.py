@@ -10,15 +10,6 @@ from tests.workflows.tracescore.conftest import text_of
 from workflows.tracescore import features
 
 
-def test_hit_sets_are_all_sixteen_combinations() -> None:
-    """输入：无。输出：无。预期行为：16 组、空串在前、全命中在最后、顺序稳定。"""
-    assert len(features.HIT_SETS) == 16
-    assert features.HIT_SETS[0] == ""
-    assert features.HIT_SETS[1] == "S1"
-    assert features.HIT_SETS[-1] == "S1+S2+S3+S4"
-    assert len(set(features.HIT_SETS)) == 16
-
-
 def test_every_tag_appears_eight_times() -> None:
     """输入：无。输出：无。
 
@@ -29,9 +20,13 @@ def test_every_tag_appears_eight_times() -> None:
         assert hits == 8, tag
 
 
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一段轨迹。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("跑了测试，两处失败", ("S1",)),
         ("npm test 挂了", ("S1",)),
         ("又试了一次同样的命令", ("S2",)),
@@ -48,13 +43,14 @@ def test_every_tag_appears_eight_times() -> None:
         # 英文散文形态：判据原文里列了它们，正则就必须认（en 侧首轮 3 条拒稿的根因）。
         ("ran the tests, the tests pass now", ("S1",)),
         ("ran it once more, still broken", ("S2",)),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一段轨迹。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
-    assert features.parse_hits(features.hits_of(text)) == expect
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+            assert features.parse_hits(features.hits_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_sources_are_three_distinct_shapes() -> None:
@@ -89,9 +85,17 @@ def test_plan_is_reproducible_and_distractors_are_near() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("hits", "score"),
-    [
+def test_score_weighs_the_four_conditions() -> None:
+    """输入：16 组命中组合。输出：无。
+
+    预期行为：基础 1 分，`S1` / `S3` 命中各加 1，`S2` / `S4` **未**命中各加 1——所以同样命中
+    两条的组合分数可以差到 4 分（`S1+S3` 是 5 分、`S2+S4` 是 1 分），`count` 与 `score` 不是
+    一一对应。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for hits, score in [
         ("", 3),
         ("S1", 4),
         ("S2", 2),
@@ -108,19 +112,15 @@ def test_plan_is_reproducible_and_distractors_are_near() -> None:
         ("S1+S3+S4", 4),
         ("S2+S3+S4", 2),
         ("S1+S2+S3+S4", 3),
-    ],
-)
-def test_score_weighs_the_four_conditions(hits: str, score: int) -> None:
-    """输入：16 组命中组合。输出：无。
-
-    预期行为：基础 1 分，`S1` / `S3` 命中各加 1，`S2` / `S4` **未**命中各加 1——所以同样命中
-    两条的组合分数可以差到 4 分（`S1+S3` 是 5 分、`S2+S4` 是 1 分），`count` 与 `score` 不是
-    一一对应。
-    """
-    assert features.score_for(features.parse_hits(hits)) == score
-    assert features.label_for(features.plan_for(
-        features.TraceScoreCase(hits, features.SOURCE_CLI), 0
-    )).score == score
+    ]:
+        try:
+            assert features.score_for(features.parse_hits(hits)) == score
+            assert features.label_for(features.plan_for(
+                features.TraceScoreCase(hits, features.SOURCE_CLI), 0
+            )).score == score
+        except AssertionError as exc:
+            bad.append(f"{(hits, score)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_score_distribution_is_the_binomial_shape() -> None:

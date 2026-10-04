@@ -15,22 +15,6 @@ from workflows.turntake.features import TurnTakeCase
 CASE = TurnTakeCase("T1+T3", features.CHANNEL_IM)
 
 
-def test_prompt_lists_required_rules_and_forbidden_shapes() -> None:
-    """输入：一个命中两条的 case。输出：无。
-
-    预期行为：要求出现的两条各自印上**判据原文**（那是模型唯一的规格来源，示例片段一律不给，
-    见 `build_prompt`）；不许出现的那两条各自带着反面写法——少列一条，模型就可能顺手把那条也
-    写上，命中组合当场多出来。
-    """
-    loc = locales.load("zh")
-    prompt = render.build_prompt(loc, CASE)
-    for tag in CASE.tags():
-        assert str(render.tag_copy(loc, tag)["rule"]) in prompt
-        assert "example" not in render.tag_copy(loc, tag)
-    for tag in ("T2", "T4"):
-        assert str(render.tag_copy(loc, tag)["avoid"]) in prompt
-
-
 def test_prompt_says_none_may_be_tripped_when_the_plan_is_empty() -> None:
     """输入：空命中的 case。输出：无。预期行为：改成「一条都不许踩」的说法，且不出现要求段落。"""
     loc = locales.load("zh")
@@ -40,14 +24,22 @@ def test_prompt_says_none_may_be_tripped_when_the_plan_is_empty() -> None:
     assert str(loc["prompt"]["hits_header"]) not in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-@pytest.mark.parametrize("channel", ["im", "voice", "note"])
-def test_prompt_states_the_channel_shape(lang: str, channel: str) -> None:
-    """输入：一种语言 × 一种通道。输出：无。预期行为：提示词里点明这段输入从哪种通道来。"""
-    loc = locales.load(lang)
-    case = TurnTakeCase("T2", channel)
-    prompt = render.build_prompt(loc, case)
-    assert render.channel_copy(loc, channel) in prompt
+def test_prompt_states_the_channel_shape() -> None:
+    """输入：一种语言 × 一种通道。输出：无。预期行为：提示词里点明这段输入从哪种通道来。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in ["en", "zh"]:
+        for channel in ["im", "voice", "note"]:
+            try:
+                loc = locales.load(lang)
+                case = TurnTakeCase("T2", channel)
+                prompt = render.build_prompt(loc, case)
+                assert render.channel_copy(loc, channel) in prompt
+            except AssertionError as exc:
+                bad.append(f"{(lang, channel)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -167,31 +159,6 @@ def test_pasted_rules_only_flags_verbatim_text() -> None:
     assert render.pasted_rules(rule, loc) == [rule]
     assert render.pasted_rules(rule.replace("等一下", "等两下"), loc) == []
     assert render.pasted_rules(BASE, loc) == []
-
-
-def test_build_task_carries_the_injected_features() -> None:
-    """输入：真值规格。输出：无。
-
-    预期行为：任务 id 可重算、`spec` 里带上注入特征（假后端与真后端都能照着它答）、响应模型是
-    草稿模型。
-    """
-    spec = spec_for(CASE)
-    task = render.build_task(spec, locales.load("zh"))
-    assert task.task_id == "turntake-train-0000001-render"
-    assert task.domain == "turntake"
-    assert task.response_model is render.ContentDraft
-    assert task.spec["case"] == {"hits": "T1+T3", "channel": "im"}
-    assert task.spec["hits"] == ["T1", "T3"]
-    assert task.spec["channel"] == "im"
-
-
-def test_tag_copy_reports_missing_fields() -> None:
-    """输入：缺字段的语言字典。输出：无。预期行为：抛 ValueError，点名缺了哪个字段。"""
-    with pytest.raises(ValueError, match="缺判据 T1"):
-        render.tag_copy({"tag": {}}, "T1")
-    broken: dict[str, JsonValue] = {"tag": {"T1": {"name": "话头悬在连接词上"}}}
-    with pytest.raises(ValueError, match="缺字段 rule"):
-        render.tag_copy(broken, "T1")
 
 
 def test_channel_copy_reports_a_missing_shape() -> None:

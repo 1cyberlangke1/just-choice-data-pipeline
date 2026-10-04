@@ -246,26 +246,30 @@ def test_trace_accepts_a_hit_whose_quote_is_real() -> None:
     assert verdict.ok
 
 
-@pytest.mark.parametrize(
-    "data",
-    [
+def test_trace_treats_malformed_drafts_as_not_judged() -> None:
+    """输入：缺字段 / 类型不对 / 越界 / 不认识编号的反解草稿。输出：无。
+
+    预期行为：一律记「没判成」（`skipped=True`）——那是反解格式没对齐，不是数据本身错。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for data in [
         {"level": 2},
         {"tags": [], "level": "2"},
         {"tags": [], "level": True},
         {"tags": [], "level": 9},
         {"tags": [1], "level": 2},
         {"tags": [{"tag": "H9", "quote": "x"}], "level": 2},
-    ],
-)
-def test_trace_treats_malformed_drafts_as_not_judged(data: dict[str, JsonValue]) -> None:
-    """输入：缺字段 / 类型不对 / 越界 / 不认识编号的反解草稿。输出：无。
-
-    预期行为：一律记「没判成」（`skipped=True`）——那是反解格式没对齐，不是数据本身错。
-    """
-    verdict = judges.TraceJudge(StubBackend(data=data), "zh").judge(
-        {"state": state_of(())}, spec_for(())
-    )
-    assert verdict.skipped
+    ]:
+        try:
+            verdict = judges.TraceJudge(StubBackend(data=data), "zh").judge(
+                {"state": state_of(())}, spec_for(())
+            )
+            assert verdict.skipped
+        except AssertionError as exc:
+            bad.append(f"{(data,)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_trace_skips_without_spec() -> None:

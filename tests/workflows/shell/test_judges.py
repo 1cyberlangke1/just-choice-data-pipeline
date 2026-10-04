@@ -84,9 +84,15 @@ def test_dialect_judge_skips_without_spec() -> None:
 # ---------- 破坏性 ----------
 
 
-@pytest.mark.parametrize(
-    ("command", "expected"),
-    [
+def test_destructive_in_matches_whole_words() -> None:
+    """输入：一条命令。输出：无。
+
+    预期行为：只认破坏性写法，且**按词边界**——`firm` 里的 `rm` 不算破坏性。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for command, expected in [
         ("rm /home/dev/old.txt", True),
         ("firm handshake --help", False),
         ("git reset --hard HEAD~1", True),
@@ -97,19 +103,25 @@ def test_dialect_judge_skips_without_spec() -> None:
         # `>> file` 是追加，不毁数据，不算破坏性
         (">> /home/dev/logs/app.log", False),
         ("ls -la /home/dev", False),
-    ],
-)
-def test_destructive_in_matches_whole_words(command: str, expected: bool) -> None:
-    """输入：一条命令。输出：无。
+    ]:
+        try:
+            assert judges_mod.destructive_in(command) is expected
+        except AssertionError as exc:
+            bad.append(f"{(command, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
-    预期行为：只认破坏性写法，且**按词边界**——`firm` 里的 `rm` 不算破坏性。
+
+def test_destructive_judge_reads_the_command() -> None:
+    """零 token：命令里有没有破坏性写法 → 这一族的真值。
+
+    输入：注入的动作、命令、期望的判别结果。输出：无。
+    预期行为：判别器比的是「命令读出来的破坏性」与「动作应当有的破坏性」是否**一致**，
+    所以矛盾的那两行（只读动作却删东西 / 删除动作却只是列目录）才该被判不通过。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    assert judges_mod.destructive_in(command) is expected
-
-
-@pytest.mark.parametrize(
-    ("goal", "command", "ok"),
-    [
+    bad: list[str] = []
+    for goal, command, ok in [
         # 命令与注入的破坏性一致 → 通过
         ("remove_file", "rm /home/dev/old.txt", True),
         ("remove_tree", "rm -rf /home/dev/build", True),
@@ -119,18 +131,14 @@ def test_destructive_in_matches_whole_words(command: str, expected: bool) -> Non
         # 命令与注入的破坏性矛盾 → 不通过
         ("list_dir", "rm -rf /tmp/x", False),
         ("remove_file", "ls -la /home/dev", False),
-    ],
-)
-def test_destructive_judge_reads_the_command(goal: str, command: str, ok: bool) -> None:
-    """零 token：命令里有没有破坏性写法 → 这一族的真值。
-
-    输入：注入的动作、命令、期望的判别结果。输出：无。
-    预期行为：判别器比的是「命令读出来的破坏性」与「动作应当有的破坏性」是否**一致**，
-    所以矛盾的那两行（只读动作却删东西 / 删除动作却只是列目录）才该被判不通过。
-    """
-    tags = TagSet("bash", goal, "workdir", "none")
-    verdict = judges_mod.DestructiveJudge().judge({"state": state_for(command)}, spec_for(tags))
-    assert verdict.ok is ok, verdict.reason
+    ]:
+        try:
+            tags = TagSet("bash", goal, "workdir", "none")
+            verdict = judges_mod.DestructiveJudge().judge({"state": state_for(command)}, spec_for(tags))
+            assert verdict.ok is ok, verdict.reason
+        except AssertionError as exc:
+            bad.append(f"{(goal, command, ok)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_destructive_judge_flags_a_mismatch_and_keeps_the_command() -> None:

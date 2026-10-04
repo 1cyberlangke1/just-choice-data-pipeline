@@ -85,7 +85,7 @@ rules = [
   "The body must be **single line** (one line or one paragraph, but no line breaks); no Markdown fences, no comments",
   "Never state where this block sits in the conversation, whether it is pinned, or how much budget is left — those three belong to the \"block position\" row, and repeating them makes the two rows fight",
   "Concretely: do not write \"this turn / a few turns ago / long ago / pinned / remaining budget\", and do not use the words pinned or unpinned",
-  "Write the way a real conversation reads: \"bump the timeout in config.yaml to 30 seconds\" is fine, a field name like \"type: user\" is not",
+  "Write the way a real conversation reads: a plain-spoken request is fine, a field name like \"type: user\" is not",
   "What this block is must be **unmistakable**, but **do not write that label into the body** -- no \"Assistant:\" or \"Tool output:\" prefix, no field names",
   "Whether it carries a durable fact must be **unmistakable**: a decision, config value or conclusion worth remembering long-term, or just small talk / a transition / a one-off process record (a log, an error, a retry, a scan result)",
   "Do not name real companies, products, or code repositories: invent a concrete brand-like or code name of your own — never write placeholder wording such as \"fictional company\"",

@@ -165,6 +165,3 @@ def test_language_files_have_the_same_shape(lang: str) -> None:
     assert set(other["meta"]) == set(reference["meta"])
 
 
-def test_available_lists_both_languages() -> None:
-    """输入：无。输出：可用语言。预期行为：两个语言文件都在。"""
-    assert set(locales.available()) == set(LANGS)

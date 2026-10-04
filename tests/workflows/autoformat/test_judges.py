@@ -309,6 +309,30 @@ def test_trace_prompt_carries_the_whole_state() -> None:
 
 
 @pytest.mark.parametrize("lang", ("zh", "en"))
+def test_trace_prompt_carries_the_splitting_rules(lang: str) -> None:
+    """输入：一段 state、两种语言。输出：无。
+
+    预期行为：反解提示词必须带上**切块规则**，而且与考生题面是**同一份**
+    （`render.split_rules_block`）。渲染规则里有两处「不空行也算两块」——标题紧贴着它后面那段
+    正文、同一个列表里相邻的列表项；只写「块与块之间用空行隔开」会让读者把标题并进正文：
+    2026-10-04 真机 36 条被拒 17 条（47%），拒稿理由全是「读出来的块类型少一块」，而确定性
+    读法 `parse.parse_state` 读同一份文本是对的——错的是读者手里的规则少了两条。
+    """
+    loc = locales.load(lang)
+    _, sample = sample_of(MIXED)
+    prompt = judges.build_trace_prompt(str(sample["state"]), loc)
+    rules = render.split_rules_block(loc)
+    assert rules in prompt
+    for rule in loc["doc"]["split_rules"]:
+        assert str(rule) in prompt
+    asked = [
+        item
+        for item in questions.build(cf.filled(MIXED, lang), loc, 0)
+        if item.family == "block_type"
+    ]
+    assert asked
+    assert rules in str(asked[0].question["instructions"])
+@pytest.mark.parametrize("lang", ("zh", "en"))
 def test_trace_prompt_carries_the_same_criteria_as_the_examinee(lang: str) -> None:
     """输入：一段 state、两种语言。输出：无。
 

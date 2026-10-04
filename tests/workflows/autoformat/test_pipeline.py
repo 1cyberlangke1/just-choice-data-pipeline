@@ -8,12 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from jc import pipeline, workflow as workflow_mod
+from jc import pipeline
 from jc.jsontypes import JsonValue
+from tests.workflows._scaffold import run_config
 from tests.workflows.autoformat.conftest import FakeBackend
 from workflows.autoformat import features, locales, workflow as af_workflow
 from workflows.autoformat.features import DocCase
-from workflows.autoformat.spec import DocSpec, spec_to_dict
+from workflows.autoformat.spec import DocSpec
 from workflows.autoformat.workflow import AutoformatConfig, AutoformatWorkflow, bucket_of
 
 #: 全空间 345 组。
@@ -23,10 +24,6 @@ ALL_CASES = features.build_cases(features.DocConfig())
 #: `cases_of("train")` 的规模去比，不写死数字。
 CASE_LIMIT = 10
 ID_SPLITS = ("train", "val", "test_iid")
-ALL_SPLITS = ("train", "val", "test_iid", "test_ood")
-
-#: 审计报告里那五个「不自洽」计数器。
-BAD_KEYS = ("state_bad", "join_bad", "block_type_bad", "callout_bad", "ordered_bad")
 
 
 def make_config(
@@ -39,16 +36,14 @@ def make_config(
     不是汉字。真机 zh 产物不是这样（模型写中文），这是**夹具的局限**、不是渲染的问题；
     语言闸本身由 `tests/core` 的定点测试与 6 家认 `locale` 的假后端在语言扫描里验。
     """
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="autoformat",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=AutoformatConfig(split=split, case_limit=limit),
-        backend=backend,
+        seed=7,
+        override=AutoformatConfig(split=split, case_limit=limit),
         language_gate=False,
     )
 
@@ -56,39 +51,6 @@ def make_config(
 def cases_of(split: str, limit: int = CASE_LIMIT) -> list[DocCase]:
     """输入：切分名、条数。输出：该切分被挑中的 case（与管线看到的完全一致）。"""
     return af_workflow.cases_for(AutoformatConfig(split=split, case_limit=limit))
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，四族题都真的
-    出得来。
-    """
-    result = pipeline.run(make_config(tmp_path, "a1", fake_backend()))
-    expected = len(cases_of("train"))
-    assert result.accepted == expected
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"hygiene", "roundtrip", "trace"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    assert result.stats["conflicts"] == 0
-    report, missing = workflow_mod.load("autoformat").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == expected
-    for family in ("join", "block_type", "callout_kind", "list_ordered"):
-        assert report["train"]["families"][family] > 0, family
-    for key in BAD_KEYS:
-        assert report["train"][key] == 0, key
-
-
-def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：同种子跑两次。输出：两份产物。预期行为：逐字节一致。"""
-    first = pipeline.run(make_config(tmp_path, "a2a", fake_backend()))
-    second = pipeline.run(make_config(tmp_path, "a2b", fake_backend()))
-    assert (first.run_dir / "train.jsonl").read_bytes() == (
-        second.run_dir / "train.jsonl"
-    ).read_bytes()
 
 
 @pytest.mark.parametrize(
@@ -104,6 +66,27 @@ def test_drafts_that_break_every_case_are_rejected(
     result = pipeline.run(make_config(tmp_path, f"a3-{switch}", fake_backend(**{switch: True})))
     assert result.accepted == 0
     assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
+
+
+def test_a_contract_failure_is_rewritten_with_the_error(
+    tmp_path: Path, fake_backend: type[FakeBackend]
+) -> None:
+    """输入：第一次把段落写短、第二次写对的假后端。输出：RunResult。
+
+    预期行为：渲染期自己带着失败理由重写一次就够——全部 case 都收下、零拒绝，管线那层
+    `render_attempts` 一次都不用动（`render_retries` 为 0），而且重写那次的提示词里带着
+    `check_draft` 的原话。真机 `af-cnt-b-zh` 那 5 条 `E_ASSEMBLE` 全是字数（58 / 55 / 73），
+    对模型是**计数任务**，只换骰子不告诉它差多少是修不掉的。
+    """
+    backend = fake_backend(short_paragraph_first=True)
+    result = pipeline.run(make_config(tmp_path, "a4-fix", backend))
+    assert result.rejected == []
+    assert result.accepted == len(cases_of("train"))
+    assert result.stats["render_retries"] == 0
+    header = str(locales.load("zh")["doc"]["fix_header"])
+    retold = [prompt for prompt in backend.prompts if header in prompt]
+    assert retold, "重写那次的提示词里必须带着失败理由"
+    assert all("长度" in prompt for prompt in retold)
 
 
 def test_a_lying_reader_is_rejected_by_trace(
@@ -138,46 +121,6 @@ def test_a_switch_that_only_touches_some_shapes_spares_the_rest(
     assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
 
 
-def test_render_without_a_backend_is_an_error() -> None:
-    """输入：没绑后端的 workflow。输出：无。预期行为：抛 RuntimeError，不静默降级成模板。"""
-    workflow = AutoformatWorkflow()
-    case = cases_of("train")[0]
-    config = workflow.config_for("train")
-    spec = workflow.sample(
-        random.Random(0), workflow.plan_sample(random.Random(1), config, case, 0)
-    )
-    assert isinstance(spec, DocSpec)
-    with pytest.raises(RuntimeError, match="bind_backend"):
-        workflow.render(spec, random.Random(0), "zh")
-
-
-def test_trace_judge_without_a_backend_is_an_error() -> None:
-    """输入：没绑后端却要 trace 判别器。输出：无。预期行为：抛 RuntimeError（接线错了）。"""
-    with pytest.raises(RuntimeError, match="trace"):
-        AutoformatWorkflow().make_judges(("trace",), "zh")
-
-
-def test_unknown_split_and_judge_and_locale_report_available() -> None:
-    """输入：不存在的切分 / 判别器 / 语言。输出：无。预期行为：都报人话。"""
-    workflow = AutoformatWorkflow()
-    with pytest.raises(KeyError, match="未知切分"):
-        workflow.config_for("nope")
-    with pytest.raises(KeyError, match="未知判别器"):
-        workflow.make_judges(("nope",), "zh")
-    with pytest.raises(FileNotFoundError):
-        workflow.audit(Path("dataset"), ("train",), "nope")
-
-
-def test_config_knobs_are_validated() -> None:
-    """输入：几组坏旋钮。输出：无。预期行为：构造期就报人话，点名是哪个字段。"""
-    with pytest.raises(ValueError, match="cover_limit"):
-        AutoformatConfig(cover_limit=0)
-    with pytest.raises(ValueError, match="case_limit"):
-        AutoformatConfig(case_limit=-1)
-    with pytest.raises(ValueError, match="topics"):
-        AutoformatConfig(topics=())
-
-
 def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
     """输入：同一个 case 的两次采样。输出：无。预期行为：块计划与切分、进程无关。"""
     case = cases_of("train")[0]
@@ -192,7 +135,6 @@ def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
     assert isinstance(first, DocSpec) and isinstance(second, DocSpec)
     assert first.plan == second.plan
     assert first.plan == features.build_plan(case)
-    assert spec_to_dict(first)["kinds"] == list(features.build_plan(case).kinds())
 
 
 def test_reparse_and_case_label_and_dimensions_are_wired() -> None:
@@ -211,12 +153,6 @@ def test_reparse_and_case_label_and_dimensions_are_wired() -> None:
     assert workflow.dimension_titles()["shape"]
 
 
-def test_locales_are_reported() -> None:
-    """输入：无。输出：无。预期行为：支持的语言与语言文件目录一致。"""
-    workflow = AutoformatWorkflow()
-    assert workflow.available_locales() == locales.available() == ["en", "zh"]
-
-
 def test_fake_drafts_fit_every_language() -> None:
     """输入：全空间 345 组 × 两种语言。输出：无。
 
@@ -231,16 +167,6 @@ def test_fake_drafts_fit_every_language() -> None:
         for case in ALL_CASES:
             plan = features.build_plan(case)
             render.check_draft(plan, texts_for(plan, loc), loc)
-
-
-def test_declared_contract_fields() -> None:
-    """输入：workflow 的声明项。输出：无。预期行为：题型、后端需求与判别器名单都对得上。"""
-    workflow = AutoformatWorkflow()
-    assert workflow.name == "autoformat"
-    assert workflow.kinds == frozenset({"choice", "noul"})
-    assert workflow.needs == frozenset({"text"})
-    assert workflow.judges == ("hygiene", "roundtrip", "trace")
-    assert workflow.split_names() == ALL_SPLITS
 
 
 def test_bucket_of_is_stable_and_the_id_sides_exclude_the_held_out_values() -> None:

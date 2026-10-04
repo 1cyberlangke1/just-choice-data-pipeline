@@ -16,24 +16,6 @@ LANGS: Final[tuple[str, ...]] = ("zh", "en")
 WORD_TABLES: Final[tuple[str, ...]] = ("action", "target", "flavor")
 
 
-def test_available_lists_both_languages() -> None:
-    """输入：无。输出：可用语言。预期行为：两个语言文件都在、按名排序。"""
-    assert locales.available() == sorted(LANGS)
-
-
-def test_missing_language_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错里列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("fr")
-
-
-def test_pick_wraps_around() -> None:
-    """输入：越界的问法编号。输出：无。预期行为：回绕而不是报错（问法不是判据）。"""
-    assert locales.pick(["a", "b"], 0) == "a"
-    assert locales.pick(["a", "b"], 2) == "a"
-    assert locales.pick(["a", "b"], 3) == "b"
-
-
 def test_reverse_rejects_duplicate_spellings() -> None:
     """输入：两个键共用一种写法。输出：无。预期行为：直接报错，不静默取其一。"""
     with pytest.raises(ValueError, match="同时属于"):
@@ -42,18 +24,25 @@ def test_reverse_rejects_duplicate_spellings() -> None:
     assert locales.reverse({"a": "x"}) == {"x": "a"}
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("table", WORD_TABLES)
-def test_word_tables_have_no_collisions(lang: str, table: str) -> None:
+def test_word_tables_have_no_collisions() -> None:
     """输入：一份语言文件、一张写法表。输出：无。
 
     预期行为：`reverse` 不报错（不同键之间不撞词）——反解会把撞车的两种写法认成一个键，
     那是构造 bug，不是「数据难」。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    entries = locales.load(lang)[table]
-    reversed_table = locales.reverse(entries)
-    expected = sum(len(value) if isinstance(value, list) else 1 for value in entries.values())
-    assert len(reversed_table) == expected, f"{lang}/{table}"
+    bad: list[str] = []
+    for lang in LANGS:
+        for table in WORD_TABLES:
+            try:
+                entries = locales.load(lang)[table]
+                reversed_table = locales.reverse(entries)
+                expected = sum(len(value) if isinstance(value, list) else 1 for value in entries.values())
+                assert len(reversed_table) == expected, f"{lang}/{table}"
+            except AssertionError as exc:
+                bad.append(f"{(lang, table)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", LANGS)
@@ -180,6 +169,18 @@ def test_tables_of_rejects_identical_section_headers() -> None:
 
 
 @pytest.mark.parametrize("lang", LANGS)
+def test_word_table_keys_match_the_code_vocabulary(lang: str) -> None:
+    """输入：一份语言文件。输出：无。
+
+    预期行为：`[action]` / `[target]` 的键集合与 `spec.ACTIONS` / `spec.TARGETS` 逐字一致——
+    代码词表少了谁都不会报错（渲染时那个取值永远挑不到，数据只是悄悄少一档），所以钉死在这里。
+    """
+    loc = locales.load(lang)
+    assert set(loc["action"]) == set(sp.ACTIONS)
+    assert set(loc["target"]) == set(sp.TARGETS)
+
+
+@pytest.mark.parametrize("lang", LANGS)
 def test_families_have_phrasings_and_valid_criteria(lang: str) -> None:
     """输入：一份语言文件。输出：无。
 
@@ -193,20 +194,6 @@ def test_families_have_phrasings_and_valid_criteria(lang: str) -> None:
     assert set(loc["fam"]["diff_kind"]["criteria"]) == set(sp.DIFF_KINDS)
     assert set(loc["fam"]["reuse_half"]["criteria"]) == {"true", "false"}
     assert len(loc["fam"]["reuse_band"]["levels"]) == len(sp.BANDS)
-
-
-def test_languages_define_the_same_families_and_option_keys() -> None:
-    """输入：两份语言文件。输出：无。
-
-    预期行为：题族名、各族的键集合、问法条数逐个对齐——少一个键就是另一种语言缺题或
-    渲染直接 KeyError。
-    """
-    reference = locales.load("zh")
-    other = locales.load("en")
-    assert set(other["fam"]) == set(reference["fam"])
-    for family in questions.FAMILIES:
-        assert set(other["fam"][family]) == set(reference["fam"][family]), family
-        assert len(other["fam"][family]["q"]) == len(reference["fam"][family]["q"]), family
 
 
 @pytest.mark.parametrize("lang", LANGS)

@@ -70,8 +70,8 @@ levels = [
 
 [fam.stable]
 q = [
-  "Do any two batches disagree on the relative order of some pair of items?",
-  "Comparing the four batches pairwise, does any pair of items contradict itself?",
+  "Are these batches consistent - does every pair of items keep the same relative order in every batch it appears in?",
+  "Comparing the four batches pairwise, are they consistent with each other?",
   "Are these batches consistent - is there a pair of items ordered one way in one batch and the other way in another?",
 ]
 [fam.stable.criteria]

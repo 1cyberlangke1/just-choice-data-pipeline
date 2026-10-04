@@ -198,14 +198,19 @@ def test_success_eases_rpm_back_towards_the_cap(
 
 
 def test_retry_after_wins_over_computed_backoff(
-    fake_engine: object, provider_factory: object, result_factory: object, task_factory: object
+    fake_engine: object,
+    provider_factory: object,
+    result_factory: object,
+    task_factory: object,
+    fake_clock: object,
 ) -> None:
     """429 带 Retry-After 时以服务端要求为准，不跟服务端讨价还价。
 
-    输入：一个带 `Retry-After: 7` 的 429，然后一个成功结果。
+    输入：一个带 `Retry-After: 7` 的 429，然后一个成功结果；时钟冻结在 0。
     输出：无。预期行为：**两个地方**都按 7 秒来——这条请求自己的退避，和整家 provider
-    的退避窗口（并发下别的线程也得等）。测试里的 sleep 是假的、不推进时钟，
-    所以第二次正好也是 7 秒整。
+    的退避窗口（并发下别的线程也得等）。第二次等的是「窗口结束时刻 − 现在」，时钟冻住之后
+    正好是 7 秒整；用真钟就会少掉已经过去的那一丁点（满负载实测 15 毫秒），于是这条测试
+    变成「机器闲不闲」的测试。
     """
     sleeps: list[float] = []
     engine = fake_engine(script=[RateLimitError("429", retry_after_s=7.0), result_factory()])
@@ -213,6 +218,7 @@ def test_retry_after_wins_over_computed_backoff(
         engine,
         limits=limits(requests_per_minute=40, max_attempts=2, rate_limit_attempts=2),
         sleep=sleeps.append,
+        clock=fake_clock(),
     )
     provider.extract(task_factory(), "json_schema")
     assert sleeps == [7.0, 7.0]

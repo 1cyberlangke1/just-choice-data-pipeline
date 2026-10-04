@@ -146,7 +146,8 @@ workflow 靠「导入即注册」挂上来（`jc workflows` 列名单）。加�
 ## 怎么跑
 
 ```powershell
-# 通用层与纯构造 workflow 只用标准库；装 LLM 后端要带 [llm]
+# 通用层与纯构造 workflow（14 家）只用标准库：`pip install -e .` 就能跑 `jc workflows` /
+# `jc gen` / `jc audit`（走 LLM 的那 37 家会被按「缺可选依赖 [llm]」跳过并给出装法）。
 .venv\Scripts\python.exe -m pip install -e ".[llm,dev]"
 
 # 列 workflow / 语言
@@ -167,6 +168,19 @@ python -m jc audit --workflow maze --dir dataset/maze-train --split train
 `keys_env`（**从哪个变量名读 key**）。CLI 会从进程环境读那个变量；本仓库的小批量脚本走
 Python API，把 key 读进内存后 `build_backend(config, env=...)` 注入——**key 不落环境变量、
 不进仓库、不进日志**。配置文件里也支持多 key 轮转、限速、熔断、以及多家 provider 的降级链。
+
+**这份 TOML 的形状见仓库根的 `backends.example.toml`**：每一格都带注释，里面只有环境变量名、
+没有任何 key，所以它本身可以入库。最短的一条路：
+
+```powershell
+copy backends.example.toml tmp\backends.toml     # 改成你要连的端点（tmp/ 本来就不入库）
+python -m jc gen --workflow shell --backend-config tmp/backends.toml --env-file tmp/keys.env --run-id my-run
+```
+
+`tmp/keys.env` 是 dotenv 风格（`EXAMPLE_API_KEY=key1,key2`，多 key 用逗号分隔），**不入库**；
+不给 `--env-file` 时改读进程环境。链上某一家没有 key 会被**自动跳过**——撤下凭证不用改配置文件。
+`backends.example.toml` 本身由 `tests/core/backend/test_config.py` 盯着：示例里的键必须是
+当前 schema 认的键，改了 schema 忘了改示例，那条测试就红。
 
 `--render-attempts`（默认 2）是「判别器拒掉就重渲染」的次数；`--judges` 可挂 LLM 质检视角
 （`llm:solvable` / `llm:answer` / `llm:distractors` / `llm:levels` / `llm:wording`）。

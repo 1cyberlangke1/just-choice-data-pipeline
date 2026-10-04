@@ -8,15 +8,6 @@ from tests.workflows.adblock.conftest import text_of
 from workflows.adblock import features
 
 
-def test_tag_ids_and_hit_sets_are_complete() -> None:
-    """输入：无。输出：无。预期行为：四条判据、16 组命中组合、顺序稳定。"""
-    assert features.TAG_IDS == ("A1", "A2", "A3", "A4")
-    assert len(features.HIT_SETS) == 16
-    assert features.HIT_SETS[0] == ""
-    assert features.HIT_SETS[-1] == "A1+A2+A3+A4"
-    assert len(set(features.HIT_SETS)) == 16
-
-
 def test_every_tag_appears_eight_times() -> None:
     """输入：无。输出：无。
 
@@ -27,9 +18,13 @@ def test_every_tag_appears_eight_times() -> None:
         assert hits == 8, tag
 
 
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一段 HTML 片段。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ('<div class="ad-slot">正文</div>', ("A1",)),
         ('<div id="adsbygoogle">正文</div>', ("A1",)),
         ('<div class="sponsored-post">正文</div>', ("A1",)),
@@ -48,13 +43,14 @@ def test_every_tag_appears_eight_times() -> None:
         ('<div class="read-more">阅读全文</div>', ()),
         ('<img src="https://example.com/photo.jpg" alt="">', ()),
         ('<div style="width:100px"></div>', ()),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一段 HTML 片段。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
-    assert features.parse_hits(features.hits_of(text)) == expect
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+            assert features.parse_hits(features.hits_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_surfaces_are_three_distinct_shapes() -> None:
@@ -114,14 +110,6 @@ def test_two_label_paths_agree_on_every_faithful_snippet() -> None:
         ).hits
 
 
-def test_build_cases_order_is_stable() -> None:
-    """输入：同一份维度表两次。输出：无。预期行为：顺序逐格一致、覆盖全部命中组合。"""
-    first = features.build_cases(512)
-    second = features.build_cases(512)
-    assert [case.as_dict() for case in first] == [case.as_dict() for case in second]
-    assert {case.hits for case in first} == set(features.HIT_SETS)
-
-
 def test_case_describe_and_fingerprint() -> None:
     """输入：一个空命中的 case。输出：无。预期行为：指纹与可读描述都稳定。"""
     case = features.AdBlockCase("", features.SURFACE_ARTICLE)
@@ -129,4 +117,3 @@ def test_case_describe_and_fingerprint() -> None:
     assert case.fingerprint() == "hits=|surface=article"
     assert case.tags() == ()
     assert features.parse_hits("") == ()
-

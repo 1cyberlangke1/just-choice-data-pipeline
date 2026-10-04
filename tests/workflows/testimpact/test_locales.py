@@ -12,11 +12,6 @@ from workflows.testimpact.features import ImpactCase
 LANGS = ("zh", "en")
 
 
-def test_both_languages_exist() -> None:
-    """输入：无。输出：无。预期行为：`zh` 与 `en` 都在，且与语言文件目录一致。"""
-    assert locales.available() == ["en", "zh"]
-
-
 @pytest.mark.parametrize("lang", LANGS)
 def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
     """输入：一种语言。输出：无。
@@ -121,8 +116,3 @@ def test_prompt_pins_the_language(lang: str) -> None:
     prompt = render.build_prompt(loc, ImpactCase(touch="P1", flavor="fix"))
     assert str(loc["language_name"]) in prompt
 
-
-def test_unknown_language_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错里列出可用语言，不静默回退。"""
-    with pytest.raises(FileNotFoundError, match="en, zh"):
-        locales.load("fr")

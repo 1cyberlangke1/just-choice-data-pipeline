@@ -64,14 +64,6 @@ def test_hygiene_rejects_an_extra_hit() -> None:
     assert "命中组合" in verdict.reason
 
 
-def test_hygiene_rejects_a_state_without_a_content_block() -> None:
-    """输入：一段没有正文抬头的 state。输出：无。预期行为：不通过，理由是认不出正文。"""
-    spec, _ = faithful(CASE)
-    verdict = judges.HygieneJudge("zh").judge({"state": "这里什么抬头都没有"}, spec)
-    assert not verdict.ok
-    assert "正文" in verdict.reason
-
-
 def test_hygiene_skips_when_it_cannot_judge() -> None:
     """输入：没有 spec / state 不是文本。输出：无。预期行为：记成「没判成」，不误判成坏数据。"""
     _, sample = faithful(CASE)

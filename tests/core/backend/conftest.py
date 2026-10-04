@@ -102,12 +102,6 @@ def result_factory() -> object:
     return ok_result
 
 
-@pytest.fixture
-def no_sleep() -> object:
-    """退避用的空睡眠函数：测试里不真等。"""
-    return lambda _seconds: None
-
-
 class FakeClock:
     """可推进的假单调时钟：只有显式改 `now` 才走字，用来量退避窗口。"""
 

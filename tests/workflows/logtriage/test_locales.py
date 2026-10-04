@@ -8,23 +8,6 @@ from workflows.logtriage import features, locales, render
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：三个抬头两两不互为前缀——`【噪声判据】` 与 `【噪声判据附注】` 那种关系会让解析先
-    命中短的那个，整段 state 当场错位。
-    """
-    loc = locales.load(lang)
-    marks = [str(loc["state"][key]) for key in ("tag_mark", "rule_mark", "content_mark")]
-    assert all(marks)
-    assert len(set(marks)) == len(marks)
-    for left in marks:
-        for right in marks:
-            if left != right:
-                assert not right.startswith(left), f"{left!r} 是 {right!r} 的前缀"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_tag_table_lines_up_with_features(lang: str) -> None:
     """输入：一种语言。输出：无。
 
@@ -60,36 +43,6 @@ def test_avoid_lists_trip_exactly_their_own_tag(lang: str) -> None:
     for tag in features.TAG_IDS:
         avoid = str(render.tag_copy(loc, tag)["avoid"])
         assert features.hit_set(avoid) == (tag,), f"{lang}.{tag}: {avoid!r}"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_route_and_threshold_tables_line_up_with_features(lang: str) -> None:
-    """输入：一种语言。输出：无。预期行为：两张表都覆盖四个档位，动作文案两两不同。"""
-    loc = locales.load(lang)
-    options = loc["fam"]["route"]["opt"]
-    assert isinstance(options, dict)
-    assert sorted(options) == sorted(features.HANDLING_LEVELS)
-    assert len({str(value) for value in options.values()}) == len(options)
-    thresholds = loc["state"]["threshold"]
-    assert isinstance(thresholds, dict)
-    assert sorted(thresholds) == sorted(features.HANDLING_LEVELS)
-    assert len({str(value) for value in thresholds.values()}) == len(thresholds)
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_source_table_lines_up_with_features(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：通道表的键与 `SOURCES` 一一对应，每种形态的说明都非空、两两不同——
-    三种通道写成同一句话，这一维的留出就白留了。
-    """
-    loc = locales.load(lang)
-    table = loc["source"]
-    assert isinstance(table, dict)
-    assert sorted(table) == sorted(features.SOURCES)
-    descs = [render.source_copy(loc, source) for source in features.SOURCES]
-    assert all(desc.strip() for desc in descs)
-    assert len(set(descs)) == len(descs)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])

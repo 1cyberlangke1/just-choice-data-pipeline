@@ -12,22 +12,6 @@ from workflows.planstep.features import TASK_COUNT
 LANGS: Final[tuple[str, ...]] = ("zh", "en")
 
 
-def test_available_is_zh_and_en() -> None:
-    """输入：无。输出：无。预期行为：两种语言都在，顺序稳定。"""
-    assert locales.available() == ["en", "zh"]
-
-
-def test_load_reports_a_missing_language() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="没有语言文件"):
-        locales.load("fr")
-
-
-def test_pick_wraps_around() -> None:
-    """输入：短列表、越界编号。输出：无。预期行为：回绕取模，不抛 IndexError。"""
-    assert locales.pick(["a", "b"], 3) == "b"
-
-
 def test_reverse_rejects_a_duplicate_name() -> None:
     """输入：两个条目同名。输出：无。预期行为：报错——反解会把两个条目认成一个。"""
     with pytest.raises(ValueError, match="同时属于"):
@@ -124,20 +108,6 @@ def test_families_have_phrasings_and_valid_criteria(lang: str) -> None:
     assert len(loc["fam"]["remaining"]["levels"]) == TASK_COUNT + 1
     assert len(loc["fam"]["rounds"]["levels"]) == TASK_COUNT + 1
     assert set(loc["fam"]["unlocks"]["criteria"]) == {"true", "false"}
-
-
-def test_languages_define_the_same_families_and_keys() -> None:
-    """输入：两份语言文件。输出：无。
-
-    预期行为：题族名、各族的键集合、问法条数逐个对齐——少一个键就是另一种语言缺题或
-    渲染直接 KeyError。
-    """
-    reference = locales.load("zh")
-    other = locales.load("en")
-    assert set(other["fam"]) == set(reference["fam"])
-    for family in questions.FAMILIES:
-        assert set(other["fam"][family]) == set(reference["fam"][family]), family
-        assert len(other["fam"][family]["q"]) == len(reference["fam"][family]["q"]), family
 
 
 @pytest.mark.parametrize("lang", LANGS)

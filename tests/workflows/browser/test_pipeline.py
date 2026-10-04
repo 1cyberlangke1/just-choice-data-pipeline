@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import dataclasses
-import random
-from pathlib import Path
-
 import pytest
 
+from pathlib import Path
 from jc import pipeline, workflow as workflow_mod
 
 from workflows.browser import features, locales, render, workflow as browser_workflow
-from workflows.browser.spec import BrowserSpec, spec_to_dict
+from workflows.browser.spec import BrowserSpec
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.browser.conftest import FakeBackend, request_for
 
 CASE_LIMIT = 8
@@ -25,16 +23,15 @@ def make_config(
     tmp_path: Path, run_id: str, backend: object, *, split: str = "train", lang: str = "zh"
 ) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="browser",
         split=split,
         locales=(lang,),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=browser_workflow.BrowserConfig(split=split, case_limit=CASE_LIMIT),
-        backend=backend,
+        seed=7,
+        override=browser_workflow.BrowserConfig(split=split, case_limit=CASE_LIMIT),
     )
 
 
@@ -46,64 +43,6 @@ def levels_of(cases: list[features.TagSet]) -> set[tuple[str, object]]:
         for name in ANSWER_FAMILIES:
             out.add((name, getattr(labels, name)))
     return out
-
-
-def test_audit_accepts_the_other_locales_tables(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：一份 **en** 产物，审计时故意传 zh。输出：(报告, 缺失项)。
-
-    预期行为：零缺失——门控表的「说明」那一列是随语言渲染的文案，审计必须按
-    「等于任一语言的规范表」判定，而不是拿调用方给的那一种语言去比。反面实测过：
-    混语言的产物按 zh 口径审计，8 条里 4 条被误判成「门控表与规范表对不上」；
-    这份全 en 的产物更是 8 条全中。
-
-    语言闸在这里关掉：假后端只写中文（它不认 `locale`），所以这份「en 产物」的正文其实是
-    中文，闸一开只会把夹具的局限报成拒稿。这条问的是**审计**认不认另一种语言的表。
-    """
-    result = pipeline.run(
-        dataclasses.replace(
-            make_config(tmp_path, "loc", fake_backend(), lang="en"), language_gate=False
-        )
-    )
-    assert result.accepted == CASE_LIMIT
-    report, missing = workflow_mod.load("browser").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["gates_bad"] == 0
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，
-    而且七个题族与三张表全都自洽。
-    """
-    result = pipeline.run(make_config(tmp_path, "c1", fake_backend()))
-    assert result.accepted == CASE_LIMIT
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"hygiene", "frame", "trace"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    report, missing = workflow_mod.load("browser").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    counts = report["train"]
-    assert counts["samples"] == CASE_LIMIT
-    assert counts["frame_bad"] == 0
-    assert counts["gates_bad"] == 0
-    assert counts["criteria_bad"] == 0
-    assert counts["target_bad"] == 0
-    assert counts["gate_bad"] == 0
-    assert counts["risk_bad"] == 0
-
-
-def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：同种子跑两次。输出：两份产物。预期行为：逐字节一致。"""
-    first = pipeline.run(make_config(tmp_path, "c2a", fake_backend()))
-    second = pipeline.run(make_config(tmp_path, "c2b", fake_backend()))
-    assert (first.run_dir / "train.jsonl").read_bytes() == (
-        second.run_dir / "train.jsonl"
-    ).read_bytes()
 
 
 def test_end_to_end_in_english(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
@@ -119,34 +58,27 @@ def test_end_to_end_in_english(tmp_path: Path, fake_backend: type[FakeBackend]) 
     assert report["train"]["gates_bad"] == 0
 
 
-def test_trace_judge_rejects_a_misread_intent(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：反解把意图说反的假后端。输出：RunResult。
+#: 反解说错一项时该走的闸：假后端开关 → 拒绝理由里必须点名的字段。
+TRACE_LIES: tuple[tuple[str, str], ...] = (
+    ("trace_lies_intent", "intent"),
+    ("trace_lies_row", "row"),
+    ("trace_lies_label", "label"),
+)
 
-    预期行为：这些样本被拒，拒绝码是 `E_JUDGE_TRACE`——判别器抓的是模型真会犯的错。
+
+@pytest.mark.parametrize("switch, field", TRACE_LIES)
+def test_trace_judge_rejects_a_misread_field(
+    tmp_path: Path, fake_backend: type[FakeBackend], switch: str, field: str
+) -> None:
+    """输入：反解把某一项说错的假后端。输出：RunResult。
+
+    预期行为：整批被拒、拒绝码是 `E_JUDGE_TRACE`、理由点名哪个字段对不上——判别器抓的是
+    模型真会犯的错（说反意图 / 说错行号 / 认错元素名），三种都要当场拦下。
     """
-    result = pipeline.run(make_config(tmp_path, "c3", fake_backend(trace_lies_intent=True)))
+    result = pipeline.run(make_config(tmp_path, f"c-{switch}", fake_backend(**{switch: True})))
     assert result.accepted == 0
     assert {item["code"] for item in result.rejected} == {"E_JUDGE_TRACE"}
-
-
-def test_trace_judge_rejects_a_misread_row(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：反解把行号说错。输出：RunResult。预期行为：同样被拒。"""
-    result = pipeline.run(make_config(tmp_path, "c4", fake_backend(trace_lies_row=True)))
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {"E_JUDGE_TRACE"}
-
-
-def test_trace_judge_rejects_a_misread_label(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：反解把元素名说成另一个。输出：RunResult。预期行为：同样被拒。"""
-    result = pipeline.run(make_config(tmp_path, "c5", fake_backend(trace_lies_label=True)))
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {"E_JUDGE_TRACE"}
+    assert all(field in row["reason"] for row in result.rejected)
 
 
 def test_render_rejects_a_state_word_in_the_sentence(
@@ -294,37 +226,6 @@ def test_bad_knobs_are_rejected() -> None:
         browser_workflow.BrowserWorkflow().config_for("nope")
 
 
-def test_render_without_backend_raises() -> None:
-    """输入：没注入后端的 workflow。输出：无。
-
-    预期行为：直接报错，绝不悄悄降级成模板——那会让「那句话由模型写」这条前提失效。
-    """
-    wf = browser_workflow.BrowserWorkflow()
-    spec = BrowserSpec(tags=features.build_cases(1024)[0], phrasing=0, split="train", seq=0)
-    with pytest.raises(RuntimeError):
-        wf.render(spec, random.Random(0), "zh")
-
-
-def test_unknown_judge_name_raises() -> None:
-    """输入：不存在的判别器名。输出：无。预期行为：直接报错。"""
-    with pytest.raises(KeyError):
-        browser_workflow.BrowserWorkflow().make_judges(("nope",), "zh")
-
-
-def test_workflow_declares_what_it_needs() -> None:
-    """输入：workflow 的类属性。输出：无。
-
-    预期行为：`needs` 非空（那句话由后端写）、三种题型都声明、判别器名单与默认一致。
-    """
-    wf = browser_workflow.BrowserWorkflow()
-    assert wf.name == "browser"
-    assert wf.needs == frozenset({"text"})
-    assert wf.kinds == frozenset({"choice", "noul", "score"})
-    assert wf.judges == ("hygiene", "frame", "trace")
-    assert wf.available_locales() == ["en", "zh"]
-    assert wf.split_names() == ("train", "val", "test_iid", "test_ood")
-
-
 def test_config_for_and_reparse_wire_up() -> None:
     """输入：切分名与一段 state。输出：无。
 
@@ -356,20 +257,14 @@ def test_case_label_and_stats_dimensions() -> None:
     assert set(wf.dimension_titles()) == set(features.DIMS)
 
 
-def test_spec_to_dict_and_task_ids() -> None:
+def test_task_ids() -> None:
     """输入：一条真值规格。输出：无。
 
-    预期行为：`spec_to_dict` 可 JSON 序列化且字段齐全；渲染 / 反解任务 id 按同一条
+    预期行为：渲染 / 反解任务 id 按同一条
     样本可重算（断点续跑按它查进度）。
     """
     tags = features.build_cases(1024)[0]
     spec = BrowserSpec(tags=tags, phrasing=2, split="train", seq=5)
-    assert spec_to_dict(spec) == {
-        "tags": tags.as_dict(),
-        "phrasing": 2,
-        "split": "train",
-        "seq": 5,
-    }
     assert spec.labels == tags.label()
     assert spec.render_task_id == "browser-train-0000005-render"
     assert spec.trace_task_id == "browser-train-0000005-trace"

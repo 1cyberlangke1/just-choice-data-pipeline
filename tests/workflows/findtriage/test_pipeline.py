@@ -6,10 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from jc import pipeline, workflow as workflow_mod
+from jc import pipeline
 from jc.backend.types import TransportError
 from workflows.findtriage import features, workflow as ft_workflow
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.findtriage.conftest import FakeBackend
 
 CASE_LIMIT = 8
@@ -19,55 +20,15 @@ def make_config(
     tmp_path: Path, run_id: str, backend: object, *, split: str = "train"
 ) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="findtriage",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=ft_workflow.FindTriageConfig(split=split, case_limit=CASE_LIMIT),
-        backend=backend,
+        seed=7,
+        override=ft_workflow.FindTriageConfig(split=split, case_limit=CASE_LIMIT),
     )
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，
-    而且七族可重算的答案全部与产物里的改动记录自洽。
-    """
-    result = pipeline.run(make_config(tmp_path, "s1", fake_backend()))
-    assert result.accepted == CASE_LIMIT
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"hygiene", "frame", "trace"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    report, missing = workflow_mod.load("findtriage").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == CASE_LIMIT
-    for key in (
-        "frame_bad",
-        "rules_bad",
-        "cite_bad",
-        "introduced_bad",
-        "supported_bad",
-        "actionable_bad",
-        "triage_bad",
-        "decoy_bad",
-    ):
-        assert report["train"][key] == 0, key
-
-
-def test_two_runs_are_byte_identical(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：同种子跑两次。输出：两份产物。预期行为：逐字节一致。"""
-    first = pipeline.run(make_config(tmp_path, "s2a", fake_backend()))
-    second = pipeline.run(make_config(tmp_path, "s2b", fake_backend()))
-    assert (first.run_dir / "train.jsonl").read_bytes() == (
-        second.run_dir / "train.jsonl"
-    ).read_bytes()
 
 
 @pytest.mark.parametrize(

@@ -9,7 +9,15 @@ lang = "en"
 language_name = "English"
 
 [doc]
-context = "Below is a plain-text memo with its markup stripped: no hashes, no bullet characters, no quote markers, and the prose has been hard-wrapped. Every line starts with a line id such as L001. A \"content block\" means: a run of consecutive lines forms one block, blocks are separated by blank lines, and inside a list each item counts as its own block."
+context = "Below is a plain-text memo with its markup stripped: no hashes, no bullet characters, no quote markers, and the prose has been hard-wrapped. Every line starts with a line id such as L001."
+split_header = "How to split blocks (follow these, do not guess from habit):"
+split_rules = [
+  "Split on blank lines.",
+  "Two places where **no blank line still means two blocks**: a heading sits tight against the paragraph that follows it; adjacent items of the same list.",
+  "When every line of a stretch is short (very short, and not ending in sentence punctuation): two or more lines mean one list item per line, a single line means a heading.",
+  "When only the **first** line of a stretch is short and longer lines follow: the first line is a heading and the remaining lines join into one paragraph.",
+  "A stretch whose every line starts with a command tool name is a single code block.",
+]
 intro = "You write the prose for a plain-text memo. The topic is \"{topic}\". All markup will be stripped and the prose will be hard-wrapped to a fixed width, so the text must contain **no markup at all**."
 lang_rule = "Write every block of prose in {language}, not in any other language (commands inside command blocks stay as they are)."
 mark_rule = "Do not use: hash (#), asterisk (*), dash plus space (- ), greater-than (> ), backticks or underscores; do not write Markdown tables or code fences."
@@ -21,6 +29,7 @@ forbidden_header = "Also, the text must **not** contain any of these strings - t
 forbidden_line = "- {words}"
 self_check = "Before answering, check every block. Count the words of each title and each list item: if one has more than six words, cut words until it has six or fewer. Is every block inside its character range? Do the blocks that must end with punctuation end with it, and do the others avoid it? Is every forbidden string really absent?"
 output = "Output a single JSON object with the field texts: an array of strings, **in the order of the blocks above**, one string per block. No explanation, no fences."
+fix_header = "The previous draft failed validation, for the reason below. Fix exactly that and rewrite the whole thing: same JSON object, same block order as above, one string per block."
 
 [mark]
 attribution = ["--"]
@@ -126,7 +135,7 @@ true = "every entry carries a step word such as {steps}, so the entries are orde
 false = "no entry carries a step word, the entries are just parallel"
 
 [verify]
-ask = "Below is a plain-text memo with its markup stripped and its prose hard-wrapped; every line starts with a line id such as L001. Read **the text alone** and answer three things: (1) the sequence of content-block kinds, where the only allowed values are heading / paragraph / list_item / quote / code / callout; (2) if there is a callout, which kind it is (note / tip / warning), otherwise an empty string; (3) if there is a list, whether it is ordered - the test is **step words**: if every entry carries a word such as {steps} it is ordered, if no entry carries one it is not; if there is no list, false. Blocks are separated by blank lines, and inside a list each item counts as its own block."
+ask = "Below is a plain-text memo with its markup stripped and its prose hard-wrapped; every line starts with a line id such as L001. Read **the text alone** and answer three things: (1) the sequence of content-block kinds, where the only allowed values are heading / paragraph / list_item / quote / code / callout; (2) if there is a callout, which kind it is (note / tip / warning), otherwise an empty string; (3) if there is a list, whether it is ordered - the test is **step words**: if every entry carries a word such as {steps} it is ordered, if no entry carries one it is not; if there is no list, false."
 # The criteria for the six kinds, copied from the examinee's own question (`type_desc`).
 kinds_header = "Criteria (use these, do not guess from habit):"
 kinds_line = "- {kind} ({name}): {desc}"

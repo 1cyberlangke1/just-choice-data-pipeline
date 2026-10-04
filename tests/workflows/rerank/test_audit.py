@@ -11,6 +11,7 @@ from jc import pipeline
 from jc.jsontypes import JsonValue
 
 from workflows.rerank import audit as audit_mod, workflow as rerank_workflow
+from tests.workflows._scaffold import run_config
 from tests.workflows.rerank.conftest import FakeBackend
 
 CASE_LIMIT = 8
@@ -22,16 +23,13 @@ def make_config(tmp_path: Path, run_id: str, backend: object) -> pipeline.RunCon
     预期行为：**关掉语言闸**——本包的假后端只写英文（夹具局限，理由见
     `tests/workflows/rerank/test_pipeline.make_config`）。
     """
-    return pipeline.RunConfig(
-        workflow="rerank",
-        split="train",
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=rerank_workflow.RerankConfig(split="train", case_limit=CASE_LIMIT),
+    return run_config(
+        tmp_path,
+        run_id,
         backend=backend,
+        workflow="rerank",
+        seed=7,
+        override=rerank_workflow.RerankConfig(split="train", case_limit=CASE_LIMIT),
         language_gate=False,
     )
 

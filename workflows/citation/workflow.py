@@ -23,7 +23,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket, restrictor
+from jc.cover import cover_pick, hash_bucket, slice_by_bucket, restrictor
 from jc.jsontypes import JsonValue
 from jc.knobs import require_pool
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, register
@@ -128,23 +128,7 @@ def _cover_pick(cases: list[CitationCase], limit: int) -> list[CitationCase]:
     的坑填掉，代价只是 case 顺序不再等于桶序（切分归属仍是桶算的，没变）。
     """
     names = ("form", "where", "place")
-    chosen: list[CitationCase] = []
-    seen: dict[str, set[JsonValue]] = {name: set() for name in names}
-    remaining = list(cases)
-    while remaining and len(chosen) < limit:
-        keys = [
-            (
-                sum(1 for name in names if case.as_dict()[name] not in seen[name]),
-                -index,
-            )
-            for index, case in enumerate(remaining)
-        ]
-        best = max(range(len(remaining)), key=lambda index: keys[index])
-        case = remaining.pop(best)
-        chosen.append(case)
-        for name in names:
-            seen[name].add(case.as_dict()[name])
-    return chosen
+    return cover_pick(cases, limit, names, lambda case: case.as_dict())
 
 
 def cases_for(config: CitationConfig) -> list[CitationCase]:

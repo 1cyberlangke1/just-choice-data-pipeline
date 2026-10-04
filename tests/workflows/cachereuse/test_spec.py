@@ -18,18 +18,25 @@ def test_case_space_is_not_empty() -> None:
     assert len(FULL) >= 100, f"全空间只有 {len(FULL)} 个 case"
 
 
-@pytest.mark.parametrize("band", sp.BANDS)
-@pytest.mark.parametrize("length", sp.LENGTHS)
-def test_band_prefix_covers_the_step_range(band: str, length: int) -> None:
+def test_band_prefix_covers_the_step_range() -> None:
     """输入：档名、步数。输出：无。
 
     预期行为：四档的可复用步数落在 0~length 里，且**四档互不相同**（`half` 用上取整，
     所以 length ≥ 4 时它既不等于 `few` 也不等于 `most`）。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    prefix = sp.band_prefix(band, length)
-    assert 0 <= prefix <= length
-    others = {sp.band_prefix(name, length) for name in sp.BANDS}
-    assert len(others) == len(sp.BANDS), f"length={length} 时四档的可复用步数有重合：{others}"
+    bad: list[str] = []
+    for band in sp.BANDS:
+        for length in sp.LENGTHS:
+            try:
+                prefix = sp.band_prefix(band, length)
+                assert 0 <= prefix <= length
+                others = {sp.band_prefix(name, length) for name in sp.BANDS}
+                assert len(others) == len(sp.BANDS), f"length={length} 时四档的可复用步数有重合：{others}"
+            except AssertionError as exc:
+                bad.append(f"{(band, length)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_unknown_band_is_rejected() -> None:

@@ -30,7 +30,9 @@ llm = [
 # 把闸门焊死，还得先做一次跨上百个文件的重构。ruff 的 ANN/F821 只做 AST 层面的判断，
 # 没有这问题；「Any 及其等价物」（裸泛型 / `Callable[..., X]` / 空容器 / `noqa: ANN…` /
 # 生产代码的 `json.loads`）由 `tests/core/test_no_any.py` 的 AST 尺子管。
-dev = ["ruff>=0.16"]
+# 测试运行器也要在这里：README 的「零 token 的验证闸」那一节让你装 `.[llm,dev]` 之后跑
+# `python -m pytest -q`。2026-10-04 实测，只有 ruff 的时候那条命令是 `No module named pytest`。
+dev = ["pytest>=8", "ruff>=0.16"]
 
 [tool.setuptools]
 packages = [

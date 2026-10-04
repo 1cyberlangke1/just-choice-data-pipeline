@@ -387,21 +387,3 @@ def sample_spec(
         relation=case.relation(),
         top=case.top(),
     )
-
-
-def spec_to_dict(spec: RankSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.as_dict(),
-        "unseen_dims": list(spec.case.unseen_dims()),
-        "split": spec.split,
-        "seq": spec.seq,
-        "request_id": spec.request_id,
-        "batches": [list(batch) for batch in spec.batches],
-        "totals": dict(spec.totals),
-        "cut": spec.cut,
-        "stable": spec.stable,
-        "pair": list(spec.pair),
-        "relation": spec.relation,
-        "top": spec.top,
-    }

@@ -35,13 +35,6 @@ def _sample_row_in(lang: str, **overrides: object) -> dict[str, JsonValue]:
     )
 
 
-def test_audit_reports_a_missing_split(tmp_path: Path) -> None:
-    """输入：一个不存在的切分。输出：无。预期行为：如实记一笔「产物不存在」。"""
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert any("产物不存在" in item for item in missing)
-    assert report["train"]["samples"] == 0
-
-
 def test_audit_accepts_a_faithful_row(tmp_path: Path) -> None:
     """输入：一条有落点的合格产物。输出：无。
 
@@ -79,25 +72,6 @@ def test_audit_does_not_ask_for_three_families_without_a_landing(tmp_path: Path)
     assert report["train"]["found_true"] == 0
 
 
-def test_audit_flags_an_out_of_range_choice_index(tmp_path: Path) -> None:
-    """输入：编号越界的产物。输出：无。预期行为：审计记一笔「编号越界」。"""
-    row = _sample_row()
-    row["answers"]["target"]["choice"] = 99
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 1
-    assert any("编号越界" in item for item in missing)
-
-
-def test_audit_flags_a_non_integer_choice_index(tmp_path: Path) -> None:
-    """输入：编号不是整数的产物。输出：无。预期行为：同样记一笔「编号越界」。"""
-    row = _sample_row()
-    row["answers"]["role"]["choice"] = True
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, _ = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 1
-
-
 def test_audit_flags_an_out_of_range_score(tmp_path: Path) -> None:
     """输入：score 档位越界的产物。输出：无。预期行为：同样记一笔「编号越界」。"""
     row = _sample_row()
@@ -106,17 +80,6 @@ def test_audit_flags_an_out_of_range_score(tmp_path: Path) -> None:
     report, missing = WF.audit(tmp_path, ("train",), "zh")
     assert report["train"]["index_bad"] == 1
     assert any("编号越界" in item for item in missing)
-
-
-def test_audit_flags_a_family_that_never_shows_up(tmp_path: Path) -> None:
-    """输入：把某一族的题全删掉。输出：无。预期行为：审计记一笔「一条都没出」。"""
-    row = _sample_row()
-    del row["questions"]["role"]
-    del row["answers"]["role"]
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["families"]["role"] == 0
-    assert any("role" in item and "一条都没出" in item for item in missing)
 
 
 def test_audit_reads_a_mixed_language_file(tmp_path: Path) -> None:

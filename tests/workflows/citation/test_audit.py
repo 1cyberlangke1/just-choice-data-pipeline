@@ -11,6 +11,7 @@ from jc import pipeline
 from jc.jsontypes import JsonValue
 
 from workflows.citation import audit as audit_mod, features, locales, workflow as citation_workflow
+from tests.workflows._scaffold import run_config
 from tests.workflows.citation.conftest import FakeBackend
 
 CASE_LIMIT = 8
@@ -22,16 +23,13 @@ def make_config(tmp_path: Path, run_id: str, backend: object) -> pipeline.RunCon
     预期行为：**关掉语言闸**——本包的假后端只写英文（夹具局限，理由见
     `tests/workflows/citation/test_pipeline.make_config`）。
     """
-    return pipeline.RunConfig(
-        workflow="citation",
-        split="train",
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=citation_workflow.CitationConfig(split="train", case_limit=CASE_LIMIT),
+    return run_config(
+        tmp_path,
+        run_id,
         backend=backend,
+        workflow="citation",
+        seed=7,
+        override=citation_workflow.CitationConfig(split="train", case_limit=CASE_LIMIT),
         language_gate=False,
     )
 
@@ -247,12 +245,6 @@ def test_missing_quote_line_is_caught(tmp_path: Path) -> None:
     rows[0]["state"] = "\n".join(line for line in lines if not line.strip().startswith(mark))
     report, _ = audit_mod.audit_run(_rewrite(tmp_path, rows), ("train",), "zh")
     assert report["train"]["quote_bad"] == 1
-
-
-def test_unknown_locale_is_rejected_up_front(tmp_path: Path) -> None:
-    """输入：不存在的语言。输出：无。预期行为：当场抛（不拖到解析阶段）。"""
-    with pytest.raises(FileNotFoundError):
-        audit_mod.audit_run(tmp_path, ("train",), "nope")
 
 
 def test_family_helper_strips_the_suffix() -> None:

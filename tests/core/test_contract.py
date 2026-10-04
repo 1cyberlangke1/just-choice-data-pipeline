@@ -83,9 +83,10 @@ def test_write_jsonl_uses_lf_and_keeps_key_order(tmp_path: Path) -> None:
     assert raw.decode("utf-8").index('"b"') < raw.decode("utf-8").index('"a"')
 
 
-@pytest.mark.parametrize(
-    ("mutate", "expected"),
-    [
+def test_negative_cases_report_expected_code() -> None:
+    """本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。"""
+    bad: list[str] = []
+    for mutate, expected in [
         (lambda s: s.pop("answers"), contract.E_FIELD_MISSING),
         (lambda s: s.update(extra=1), contract.E_FIELD_UNKNOWN),
         (lambda s: s.update(id="bad-id"), contract.E_ID_INVALID),
@@ -112,14 +113,14 @@ def test_write_jsonl_uses_lf_and_keeps_key_order(tmp_path: Path) -> None:
         (lambda s: s["answers"]["size"].update(score=True), contract.E_INDEX_NOT_INT),
         (lambda s: s["answers"]["size"].update(score=3), contract.E_INDEX_RANGE),
         (lambda s: s["answers"]["is_far"].update(noul=1), contract.E_NOUL_NOT_BOOL),
-    ],
-)
-def test_negative_cases_report_expected_code(
-    mutate: Callable[[dict[str, JsonValue]], None], expected: str
-) -> None:
-    sample = good_sample()
-    mutate(sample)
-    assert expected in codes(validate.validate_sample(sample))
+    ]:
+        try:
+            sample = good_sample()
+            mutate(sample)
+            assert expected in codes(validate.validate_sample(sample))
+        except AssertionError as exc:
+            bad.append(f"{(mutate, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_option_names_reads_the_recorded_order() -> None:
@@ -183,6 +184,23 @@ def test_validate_file_records_parse_errors(tmp_path: Path) -> None:
     report = validate.validate_file(path)
     assert report.total == 2
     assert contract.E_JSON_PARSE in report.code_counts()
+
+
+def test_validate_file_stops_after_max_issues(tmp_path: Path) -> None:
+    """输入：4 行 id 都非法的文件，`max_issues=2`。输出：无。
+
+    预期行为：收到第 2 条就停——这个参数是给「快速预览」用的，代价要可预期；判据是
+    `len(issues) >= max_issues`，改成 `>` 就变成「收 N+1 条」，预览多读一行、多报一条。
+    """
+    path = tmp_path / "many.jsonl"
+    rows: list[dict[str, JsonValue]] = []
+    for index in range(4):
+        bad = good_sample()
+        bad["id"] = f"nope-{index}"
+        rows.append(bad)
+    jsonio.write_jsonl(path, rows)
+    report = validate.validate_file(path, max_issues=2)
+    assert len(report.issues) == 2
 
 
 def test_issue_text_carries_line_id_code_and_path(tmp_path: Path) -> None:

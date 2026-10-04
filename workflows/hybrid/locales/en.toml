@@ -83,7 +83,7 @@ q = ["Do the meetings overlap in time? Judge whether \"no two meetings overlap\"
 criteria = { "true" = "no overlap", "false" = "there is overlap" }
 
 [fam.room_free]
-q = ["Is every room used by at most one meeting at any moment? Judge whether \"there is no room conflict\" holds.", "Do two meetings occupy the same room at the same time?", "There is no room booking conflict, right?"]
+q = ["Is every room used by at most one meeting at any moment? Judge whether \"there is no room conflict\" holds.", "Do two meetings occupy the same room at the same time? Judge whether \"there is no room conflict\" holds.", "There is no room booking conflict, right?"]
 criteria = { "true" = "no conflict", "false" = "there is a conflict" }
 
 [fam.busy_level]

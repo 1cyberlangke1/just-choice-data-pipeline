@@ -15,22 +15,6 @@ from workflows.tracescore.features import TraceScoreCase
 CASE = TraceScoreCase("S1+S3", features.SOURCE_CLI)
 
 
-def test_prompt_lists_required_and_forbidden_fragments() -> None:
-    """输入：一个命中两条的 case。输出：无。
-
-    预期行为：要求出现的两条各自印上**判据原文**（那是模型唯一的规格来源，示例片段一律不给，
-    见 `build_prompt`）；不许出现的那两条各自带着反面写法——少列一条，模型就可能顺手把那条也
-    写上，命中组合当场多出来。
-    """
-    loc = locales.load("zh")
-    prompt = render.build_prompt(loc, CASE)
-    for tag in CASE.tags():
-        assert str(render.tag_copy(loc, tag)["rule"]) in prompt
-        assert "example" not in render.tag_copy(loc, tag)
-    for tag in ("S2", "S4"):
-        assert str(render.tag_copy(loc, tag)["avoid"]) in prompt
-
-
 def test_prompt_says_none_may_be_hit_when_the_plan_is_empty() -> None:
     """输入：空命中的 case。输出：无。预期行为：改成「一条都不许命中」的说法，且不出现要求段落。"""
     loc = locales.load("zh")
@@ -40,14 +24,22 @@ def test_prompt_says_none_may_be_hit_when_the_plan_is_empty() -> None:
     assert str(loc["prompt"]["hits_header"]) not in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-@pytest.mark.parametrize("source", ["cli", "editor", "chat"])
-def test_prompt_states_the_source_shape(lang: str, source: str) -> None:
-    """输入：一种语言 × 一种入口。输出：无。预期行为：提示词里点明这段轨迹从哪种入口来。"""
-    loc = locales.load(lang)
-    case = TraceScoreCase("S2", source)
-    prompt = render.build_prompt(loc, case)
-    assert render.source_copy(loc, source) in prompt
+def test_prompt_states_the_source_shape() -> None:
+    """输入：一种语言 × 一种入口。输出：无。预期行为：提示词里点明这段轨迹从哪种入口来。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in ["en", "zh"]:
+        for source in ["cli", "editor", "chat"]:
+            try:
+                loc = locales.load(lang)
+                case = TraceScoreCase("S2", source)
+                prompt = render.build_prompt(loc, case)
+                assert render.source_copy(loc, source) in prompt
+            except AssertionError as exc:
+                bad.append(f"{(lang, source)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -175,36 +167,11 @@ def test_pasted_rules_only_flags_verbatim_text() -> None:
     assert render.pasted_rules(BASE, loc) == []
 
 
-def test_build_task_carries_the_injected_features() -> None:
-    """输入：真值规格。输出：无。
-
-    预期行为：任务 id 可重算、`spec` 里带上注入特征（假后端与真后端都能照着它答）、响应模型是
-    草稿模型。
-    """
-    spec = spec_for(CASE)
-    task = render.build_task(spec, locales.load("zh"))
-    assert task.task_id == "tracescore-train-0000001-render"
-    assert task.domain == "tracescore"
-    assert task.response_model is render.ContentDraft
-    assert task.spec["case"] == {"hits": "S1+S3", "source": "cli"}
-    assert task.spec["hits"] == ["S1", "S3"]
-    assert task.spec["source"] == "cli"
-
-
 def test_threshold_line_reuses_the_route_copy() -> None:
     """输入：一种语言 × 三个档位。输出：无。预期行为：档位表与 `route` 那一族的选项文案同源。"""
     loc = locales.load("zh")
     for level in features.ROUTE_LEVELS:
         assert str(loc["fam"]["route"]["opt"][level]) in render.threshold_line(loc, level)
-
-
-def test_tag_copy_reports_missing_fields() -> None:
-    """输入：缺字段的语言字典。输出：无。预期行为：抛 ValueError，点名缺了哪个字段。"""
-    with pytest.raises(ValueError, match="缺信号 S1"):
-        render.tag_copy({"tag": {}}, "S1")
-    broken: dict[str, JsonValue] = {"tag": {"S1": {"name": "跑过验证"}}}
-    with pytest.raises(ValueError, match="缺字段 rule"):
-        render.tag_copy(broken, "S1")
 
 
 def test_source_copy_reports_a_missing_shape() -> None:

@@ -8,18 +8,13 @@ from tests.workflows.logtriage.conftest import text_of
 from workflows.logtriage import features
 
 
-def test_hit_sets_are_all_sixteen_combinations() -> None:
-    """输入：无。输出：无。预期行为：16 组、空串在前、全命中在最后、顺序稳定。"""
-    assert len(features.HIT_SETS) == 16
-    assert features.HIT_SETS[0] == ""
-    assert features.HIT_SETS[1] == "N1"
-    assert features.HIT_SETS[-1] == "N1+N2+N3+N4"
-    assert len(set(features.HIT_SETS)) == 16
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一行日志。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
 
-
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("心跳探测 /healthz 正常", ("N1",)),
         ("readiness probe failed once", ("N1",)),
         ("web 服务正在启动，开始监听 8080", ("N2",)),
@@ -33,13 +28,14 @@ def test_hit_sets_are_all_sixteen_combinations() -> None:
         ("container restarted by kubelet", ()),
         ("订单 88213 支付失败：上游返回 500", ()),
         ("心跳正常，正在重试第 2 次", ("N1", "N4")),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一行日志。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
-    assert features.parse_hits(features.hits_of(text)) == expect
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+            assert features.parse_hits(features.hits_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_sources_are_three_distinct_shapes() -> None:

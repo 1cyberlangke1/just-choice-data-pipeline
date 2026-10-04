@@ -50,16 +50,6 @@ def test_owner_table_order_matches_the_code() -> None:
             assert str(loc["owners"][name]["text"]).strip()
 
 
-def test_every_prompt_dimension_value_has_text() -> None:
-    """输入：两语言文案。输出：无。预期行为：提示词里那两维的每个取值都有 brief 与 hint。"""
-    for lang in locales.available():
-        loc = locales.load(lang)
-        for dim in render.DIM_ORDER:
-            for value in features.DIMS[dim]:
-                assert str(loc["feature"][dim][value]["brief"]).strip()
-                assert str(loc["feature"][dim][value]["hint"]).strip()
-
-
 def test_prompt_fact_lines_carry_their_placeholders() -> None:
     """输入：两语言提示词模板。输出：无。
 

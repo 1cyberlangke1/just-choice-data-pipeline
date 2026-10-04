@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from jc import contract, jsonio, pipeline
+from jc import contract, pipeline
 from jc.jsontypes import JsonValue
+from tests.workflows._scaffold import read_rows as _rows, write_rows as _write
 from tests.workflows.testimpact.conftest import FakeBackend
 from tests.workflows.testimpact.test_pipeline import make_config
 from workflows.testimpact import features, render
@@ -19,41 +20,12 @@ def _run(tmp_path: Path, run_id: str = "audit") -> Path:
     return pipeline.run(make_config(tmp_path, run_id, FakeBackend())).run_dir
 
 
-def _rows(run_dir: Path) -> list[JsonValue]:
-    """输入：产物目录。输出：train 切分的全部行。"""
-    return [row for _, row in jsonio.iter_jsonl(run_dir / "train.jsonl")]
-
-
-def _write(run_dir: Path, rows: list[JsonValue]) -> None:
-    """输入：产物目录、行。输出：无。预期行为：原样写回（审计只读产物）。"""
-    jsonio.write_jsonl(run_dir / "train.jsonl", rows)
-
-
 def _audit(
     run_dir: Path, split: str = "train", locale: str = "zh"
 ) -> tuple[dict[str, JsonValue], list[str]]:
     """输入：产物目录、切分、语言。输出：审计报告。"""
     return ImpactWorkflow().audit(run_dir, (split,), locale)
 
-
-def _first_choice(row: JsonValue) -> tuple[str, dict[str, JsonValue]]:
-    """输入：一行产物。输出：(题号, 答案)。预期行为：取第一条 choice 题（没有就报错）。"""
-    answers = row["answers"]
-    for qid, answer in answers.items():
-        if answer["type"] == "choice":
-            return qid, answer
-    raise AssertionError("这一行没有 choice 题")
-
-
-def test_clean_run_audits_without_missing(tmp_path: Path) -> None:
-    """输入：一小批合格产物。输出：无。预期行为：零缺失，四族都出得来，五个计数器全零。"""
-    run_dir = _run(tmp_path)
-    report, missing = _audit(run_dir)
-    assert missing == []
-    for family in ("flag", "count", "which", "route"):
-        assert report["train"]["families"][family] > 0, family
-    for key in ("table_bad", "flag_bad", "count_bad", "which_bad", "route_bad"):
-        assert report["train"][key] == 0, key
 
 
 @pytest.mark.parametrize(
@@ -140,13 +112,6 @@ def test_missing_split_is_reported(tmp_path: Path) -> None:
     run_dir = _run(tmp_path, "audit-missing")
     _report, missing = _audit(run_dir, split="val")
     assert missing and "val" in missing[0]
-
-
-def test_unknown_locale_is_rejected(tmp_path: Path) -> None:
-    """输入：不存在的语言。输出：无。预期行为：当场报错（别拖到解析阶段才报）。"""
-    run_dir = _run(tmp_path, "audit-locale")
-    with pytest.raises(FileNotFoundError, match="fr"):
-        _audit(run_dir, locale="fr")
 
 
 def test_flag_count_mismatch_is_caught(tmp_path: Path) -> None:

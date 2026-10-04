@@ -1,0 +1,65 @@
+# 后端配置示例（**里面只有环境变量名，没有任何 key**，所以可以入库）。
+#
+# 用法：
+#   copy backends.example.toml tmp\backends.toml      # 改成你要连的端点（tmp/ 本来就不入库）
+#   python -m jc gen --workflow shell --backend-config tmp/backends.toml --env-file tmp/keys.env --run-id my-run
+#
+# 三条规矩（`jc.backend.config.load_config` 在加载期逐条校验，写错立刻报人话）：
+#   1. key **只从环境变量读**：`keys_env` 里放的是**变量名**，不是 key 本身。CLI 不给
+#      `--env-file` 时读进程环境；给了就从那些 dotenv 文件读进内存，**进程环境一个变量都不加**。
+#   2. `[[provider]]` 的先后**就是降级链的顺序**：前面那家拿不到 key / 被熔断 / 打不通，
+#      就换下一家。某一家暂时没有 key 是**受支持**的配置（撤下凭证不用改这份文件）。
+#   3. 未知的键一律报错（防拼写错误被静默忽略），所以别往里加自己的字段。
+
+# 同一个 run 里允不允许混用多家 provider 的产物。默认 false：只用链上第一家能用的。
+# 打开后按 provider 依次轮转，每条样本的真实来源记在产物目录的 `calls-<切分>.jsonl`。
+allow_mixed_providers = false
+
+[[provider]]
+# 名字只用于记账（manifest 的 `providers`、`calls-*.jsonl` 的 provider 列），随便取，
+# 同一份配置里不许重名。
+name = "example-openai-compatible"
+# 任何 OpenAI 兼容端点：openai 客户端会打 `<base_url>/chat/completions`。
+base_url = "https://api.example.com/v1"
+model = "some-model-name"
+# 结构化输出档位。`auto`（默认）= 按 json_schema → tools → md_json 逐档降级，哪档端点
+# 认就用哪档；也可以直接钉一档（`json_schema` / `tools` / `md_json`），钉了就只试它。
+mode = "auto"
+# **环境变量名**。key 可以是多个、用逗号分隔（`EXAMPLE_API_KEY=key1,key2`）：
+# 按 key 轮转，每个 key 各自限速、各自熔断。
+keys_env = "EXAMPLE_API_KEY"
+timeout_s = 120.0
+# 单条请求在客户端这一层的重试次数（限速 / 网络抖动）；重试预算与退避见下面 limits。
+max_retries = 3
+
+  [provider.limits]
+  # 这家同时最多几个请求（含它的全部 key）。
+  max_concurrency = 4
+  # 单个 key 同时最多几个请求。
+  max_concurrency_per_key = 1
+  # 每分钟请求上限（0 = 不限）。服务端不回 `x-ratelimit-*` 时只能靠它 + 429 自适应降速。
+  requests_per_minute = 40
+  # 两次请求之间至少隔多少毫秒（免费档常用 6000，即每分钟 10 次）。
+  min_interval_ms = 0
+  # 连续故障到几次就熔断这家；熔断后冷却多少秒再半开试探。
+  fail_max = 3
+  cooldown_s = 60.0
+  # 可重试失败（网络 / 5xx / 认证）的总尝试次数。
+  max_attempts = 4
+  # 429 单独给一份**更宽**的预算：一波限流不该把整批掐死。
+  rate_limit_attempts = 6
+
+# 降级链的第二家：整段取消注释即可。**没有 key 的家会被自动跳过**，
+# 所以把「暂时没凭证」的家留在链上是安全的。
+#
+# [[provider]]
+# name = "example-second"
+# base_url = "https://api.other.example/v1"
+# model = "another-model"
+# keys_env = "EXAMPLE_API_KEY_2"
+# timeout_s = 90.0
+# max_retries = 2
+#
+#   [provider.limits]
+#   requests_per_minute = 6
+#   min_interval_ms = 6000

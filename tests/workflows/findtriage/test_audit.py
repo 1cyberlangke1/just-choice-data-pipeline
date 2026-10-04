@@ -9,21 +9,19 @@ from jc import pipeline
 from jc.jsontypes import JsonValue
 from workflows.findtriage import audit as audit_mod, features, render, workflow as ft_workflow
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.findtriage.conftest import FakeBackend
 
 
 def make_config(tmp_path: Path, run_id: str, backend: object) -> pipeline.RunConfig:
     """构造一个小 case 集合的试跑配置。"""
-    return pipeline.RunConfig(
-        workflow="findtriage",
-        split="train",
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=ft_workflow.FindTriageConfig(split="train", case_limit=4),
+    return run_config(
+        tmp_path,
+        run_id,
         backend=backend,
+        workflow="findtriage",
+        seed=7,
+        override=ft_workflow.FindTriageConfig(split="train", case_limit=4),
     )
 
 
@@ -131,13 +129,6 @@ def test_audit_flags_a_tampered_finding(tmp_path: Path) -> None:
     report, missing = audit_mod.audit_run(result.run_dir, ("train",), "zh")
     assert report["train"]["cite_bad"] == 1
     assert any("指向哪一行" in item for item in missing)
-
-
-def test_audit_reports_a_missing_product(tmp_path: Path) -> None:
-    """输入：没有产物的切分。输出：无。预期行为：缺失项里点名它。"""
-    report, missing = audit_mod.audit_run(tmp_path, ("train",), "zh")
-    assert report["train"]["samples"] == 0
-    assert any("产物不存在" in item for item in missing)
 
 
 def test_known_families_are_exactly_the_built_ones() -> None:

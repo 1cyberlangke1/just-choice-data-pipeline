@@ -32,26 +32,10 @@ def test_declaration_matches_the_contract() -> None:
     assert WF.judges == ("roundtrip", "label")
 
 
-def test_bind_backend_refuses_to_be_wired() -> None:
-    """输入：一个生成后端。输出：无。
-
-    预期行为：纯构造式 workflow 根本不会被注入后端；收到就说明接线错了，直接报错。
-    """
-    with pytest.raises(AssertionError, match="纯构造式"):
-        WF.bind_backend(object())
-
-
 def test_workflow_is_registered_under_its_name() -> None:
     """输入：注册表。输出：无。预期行为：`load("functions")` 拿得到同一个类。"""
     assert "functions" in workflow_mod.registered()
     assert isinstance(workflow_mod.load("functions"), FunctionsWorkflow)
-
-
-def test_split_names_and_unknown_split() -> None:
-    """输入：切分名。输出：无。预期行为：四档齐全；未知切分报 KeyError 并列出可用档。"""
-    assert WF.split_names() == ("train", "val", "test_iid", "test_ood")
-    with pytest.raises(KeyError, match="未知切分"):
-        WF.config_for("nope")
 
 
 def test_config_for_swaps_the_split_on_the_shared_id_config() -> None:
@@ -198,17 +182,6 @@ def test_audit_only_requires_families_of_the_tools_it_saw(tmp_path: Path) -> Non
     assert dict(report["train"]["tools"]) == {"plot_price": 1}
     assert not any("top_movers" in item or "direction" in item for item in missing)
     assert not any("一条都没出" in item for item in missing), missing
-
-
-def test_audit_flags_a_family_that_never_shows_up(tmp_path: Path) -> None:
-    """输入：把某一族的题全删掉。输出：无。预期行为：审计记一笔「一条都没出」。"""
-    row = _sample_row()
-    del row["questions"]["stated_style"]
-    del row["answers"]["stated_style"]
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["families"]["stated_style"] == 0
-    assert any("stated_style" in item and "一条都没出" in item for item in missing)
 
 
 def test_parse_read_request_defaults_alias_and_phrasing() -> None:

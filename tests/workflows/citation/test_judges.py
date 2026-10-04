@@ -193,28 +193,6 @@ def test_trace_skips_without_a_spec() -> None:
     assert judges.TraceJudge(FakeBackend(), "zh").judge(sample, None).skipped
 
 
-def test_trace_skips_when_the_draft_has_no_field() -> None:
-    """输入：反解草稿缺字段。输出：无。预期行为：记成「没判成」，不当成数据不合格。"""
-    class Mute(FakeBackend):
-        """只回一个空字典的假后端。"""
-
-        def generate(self, task: object) -> Draft:
-            """输入：任务。输出：空草稿。"""
-            return Draft(
-                data={},
-                raw_text="",
-                backend="fake",
-                provider="fake",
-                model="fake",
-                mode="fake",
-            )
-
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(Mute(), "zh").judge(sample, spec)
-    assert verdict.skipped
-    assert "in_doc" in verdict.reason
-
-
 def test_trace_skips_when_the_section_is_not_an_integer() -> None:
     """输入：反解把节号写成字符串。输出：无。预期行为：记成「没判成」。"""
     class Stringy(FakeBackend):

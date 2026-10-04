@@ -37,30 +37,6 @@ def test_rule_table_order_matches_the_code() -> None:
             assert str(loc["rules"][name]["condition"]).strip()
 
 
-def test_every_prompt_dimension_value_has_text() -> None:
-    """输入：两语言文案。输出：无。预期行为：提示词里三维的每个取值都有 brief 与 hint。"""
-    for lang in locales.available():
-        loc = locales.load(lang)
-        for dim in render.DIM_ORDER:
-            for value in features.DIMS[dim]:
-                assert str(loc["feature"][dim][value]["brief"]).strip()
-                assert str(loc["feature"][dim][value]["hint"]).strip()
-
-
-def test_banned_phrases_are_present_and_usable() -> None:
-    """输入：两语言禁用语清单。输出：无。
-
-    预期行为：每条禁用语都能被 `render.banned_echo` 认出来，而且清单非空——
-    空清单等于这道防线不存在。
-    """
-    for lang in locales.available():
-        loc = locales.load(lang)
-        phrases = loc["banned_intent_phrases"]
-        assert phrases, f"{lang} 没有禁用语"
-        for phrase in phrases:
-            assert str(phrase) in render.banned_echo(f"这是{phrase}的页面", loc)
-
-
 def test_banned_phrases_do_not_fire_on_the_fixture_texts() -> None:
     """输入：夹具里那几段查询 / 标题 / 摘要。输出：无。
 

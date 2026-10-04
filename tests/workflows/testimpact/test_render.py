@@ -19,24 +19,31 @@ from workflows.testimpact.features import ImpactCase
 LANGS = ("zh", "en")
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("touch", features.TOUCH_SETS)
-def test_state_roundtrips_for_every_case(lang: str, touch: str) -> None:
+def test_state_roundtrips_for_every_case() -> None:
     """输入：16 组触及组合 × 两种语言。输出：无。
 
     预期行为：`to_state` 出来的 state 能被 `parse_state` 反解回同一份落点与标题，覆盖表与档位表
     的编号 / 档位顺序都与 `features` 一致。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    case = ImpactCase(touch=touch, flavor="fix")
-    draft = render.ContentDraft(title=title_for(lang), diff=diff_for(case))
-    render.check_draft(draft, case, locales.load(lang))
-    state = render.to_state(draft, locales.load(lang))
-    parsed = render.parse_state(state)
-    assert parsed.paths == features.PATH_IDS
-    assert parsed.levels == features.LEVELS
-    assert parsed.title == title_for(lang)
-    assert parsed.touched == case.touched()
-    assert render.detect_locale(state) == lang
+    bad: list[str] = []
+    for lang in LANGS:
+        for touch in features.TOUCH_SETS:
+            try:
+                case = ImpactCase(touch=touch, flavor="fix")
+                draft = render.ContentDraft(title=title_for(lang), diff=diff_for(case))
+                render.check_draft(draft, case, locales.load(lang))
+                state = render.to_state(draft, locales.load(lang))
+                parsed = render.parse_state(state)
+                assert parsed.paths == features.PATH_IDS
+                assert parsed.levels == features.LEVELS
+                assert parsed.title == title_for(lang)
+                assert parsed.touched == case.touched()
+                assert render.detect_locale(state) == lang
+            except AssertionError as exc:
+                bad.append(f"{(lang, touch)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", LANGS)
@@ -147,9 +154,15 @@ def test_pasted_rules_only_matches_whole_lines() -> None:
     assert render.pasted_rules(diff_for(ImpactCase(touch="P2", flavor="fix")), loc) == []
 
 
-@pytest.mark.parametrize(
-    ("diff", "expect"),
-    [
+def test_diff_shape_problems() -> None:
+    """输入：几种行形态。输出：无。
+
+    预期行为：块内只许 `+` / `-` / 空格开头，块外只许 git 自己写的元信息行；别的都报出来。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for diff, expect in [
         ("@@ -1,3 +1,4 @@\n context\n+added\n", []),
         ("@@ -1,3 +1,4 @@\n+added\n这行是散文\n", ["这行是散文"]),
         ("index 1a2b3c4..5d6e7f8 100644\nnew file mode 100644\n", []),
@@ -158,19 +171,23 @@ def test_pasted_rules_only_matches_whole_lines() -> None:
         # 光秃秃的 `@@`：算块头（模型常这么写，整块 `+` / `-` 行得跟着进块内）
         ("@@\n context\n+added\n", []),
         ("纯散文一行\n", ["纯散文一行"]),
-    ],
-)
-def test_diff_shape_problems(diff: str, expect: list[str]) -> None:
-    """输入：几种行形态。输出：无。
+    ]:
+        try:
+            assert render.diff_shape_problems(diff) == expect
+        except AssertionError as exc:
+            bad.append(f"{(diff, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
-    预期行为：块内只许 `+` / `-` / 空格开头，块外只许 git 自己写的元信息行；别的都报出来。
+
+def test_normalize_hunks_recounts_every_hunk() -> None:
+    """输入：块头行数写歪的改动。输出：无。
+
+    预期行为：只重算行数——起点、尾部上下文与正文一行都不动（这步是算术，不是改写内容）。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    assert render.diff_shape_problems(diff) == expect
-
-
-@pytest.mark.parametrize(
-    ("diff", "expect"),
-    [
+    bad: list[str] = []
+    for diff, expect in [
         # 行数写歪了：按块内实际行数重算（旧侧 1 行、新侧 2 行）
         ("@@ -10,2 +10,5 @@\n context\n+added\n", "@@ -10 +10,2 @@\n context\n+added"),
         # 行数本来就对：连 `,1` 该省略这件事也照 git 的写法来
@@ -191,14 +208,12 @@ def test_diff_shape_problems(diff: str, expect: list[str]) -> None:
             "@@ -5,2 +5,2 @@\n a\n-b\n+c\n@@\n d\n+e\n",
             "@@ -5,2 +5,2 @@\n a\n-b\n+c\n@@ -1 +1,2 @@\n d\n+e",
         ),
-    ],
-)
-def test_normalize_hunks_recounts_every_hunk(diff: str, expect: str) -> None:
-    """输入：块头行数写歪的改动。输出：无。
-
-    预期行为：只重算行数——起点、尾部上下文与正文一行都不动（这步是算术，不是改写内容）。
-    """
-    assert render.normalize_hunks(diff) == expect
+    ]:
+        try:
+            assert render.normalize_hunks(diff) == expect
+        except AssertionError as exc:
+            bad.append(f"{(diff, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_normalize_hunks_leaves_a_canonical_diff_alone() -> None:

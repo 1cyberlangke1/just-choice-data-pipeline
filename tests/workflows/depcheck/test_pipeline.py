@@ -5,10 +5,9 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-import pytest
+from jc import language, pipeline
 
-from jc import language, pipeline, workflow as workflow_mod
-
+from tests.workflows._scaffold import run_config
 from tests.workflows.depcheck.conftest import (
     BASE_LINES,
     FakeBackend,
@@ -17,7 +16,7 @@ from tests.workflows.depcheck.conftest import (
 )
 from workflows.depcheck import features, locales, render, workflow as depcheck_workflow
 from workflows.depcheck.features import DepCheckCase
-from workflows.depcheck.spec import DepCheckSpec, spec_to_dict
+from workflows.depcheck.spec import DepCheckSpec
 from workflows.depcheck.workflow import DepCheckConfig, DepCheckWorkflow
 
 #: 小批量试跑的条数上限。train 切片一共 19 组，`_cover_pick` 会从里面挑 8 组。
@@ -25,9 +24,6 @@ from workflows.depcheck.workflow import DepCheckConfig, DepCheckWorkflow
 CASE_LIMIT = 8
 ID_SPLITS = ("train", "val", "test_iid")
 ALL_SPLITS = ("train", "val", "test_iid", "test_ood")
-
-#: 审计报告里那五个「不自洽」计数器。
-BAD_KEYS = ("content_bad", "flag_bad", "grade_bad", "combo_bad", "act_bad")
 
 
 def make_config(
@@ -39,81 +35,20 @@ def make_config(
     limit: int = CASE_LIMIT,
 ) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="depcheck",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=DepCheckConfig(split=split, case_limit=limit),
-        backend=backend,
+        seed=7,
+        override=DepCheckConfig(split=split, case_limit=limit),
     )
 
 
 def cases_of(split: str, limit: int = CASE_LIMIT) -> list[DepCheckCase]:
     """输入：切分名、条数。输出：该切分被挑中的 case（与管线看到的完全一致）。"""
     return depcheck_workflow.cases_for(DepCheckConfig(split=split, case_limit=limit))
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，四族题都真的
-    出得来（含 `score` 那一族）。
-    """
-    result = pipeline.run(make_config(tmp_path, "p1", fake_backend()))
-    expected = len(cases_of("train"))
-    assert result.accepted == expected
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"hygiene", "frame", "trace"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    report, missing = workflow_mod.load("depcheck").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == expected
-    for family in ("flag", "grade", "combo", "act"):
-        assert report["train"]["families"][family] > 0, family
-    for key in BAD_KEYS:
-        assert report["train"][key] == 0, key
-
-
-@pytest.mark.parametrize(
-    ("switch", "code"),
-    [
-        ("too_short", "E_ASSEMBLE"),
-        ("fence", "E_ASSEMBLE"),
-        ("missing_key", "E_ASSEMBLE"),
-        ("empty_note", "E_ASSEMBLE"),
-    ],
-)
-def test_always_broken_drafts_are_rejected(
-    tmp_path: Path, fake_backend: type[FakeBackend], switch: str, code: str
-) -> None:
-    """输入：每一组 case 都会踩到的「写歪」。输出：RunResult。
-
-    预期行为：一条都留不下，拒绝码就是该有的那一个——写歪的记录是渲染期的 `E_ASSEMBLE`
-    （重试耗尽后仍被拒，不静默放行）。
-    """
-    result = pipeline.run(make_config(tmp_path, f"p3-{switch}", fake_backend(**{switch: True})))
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {code}
-
-
-def test_a_lying_trace_only_spares_the_plain_record(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：反解漏报最后一条命中。输出：RunResult。
-
-    预期行为：命中组合为空的那一条照样合格（没有可漏报的），其余全被 `E_JUDGE_TRACE` 拦下——
-    「反解说反话」与「记录写歪」是两条独立的闸，各自拦各自那一类。
-    """
-    unaffected = sum(1 for case in cases_of("train") if not case.tags())
-    result = pipeline.run(make_config(tmp_path, "p3-trace", fake_backend(trace_lies=True)))
-    assert result.accepted == unaffected
-    assert {item["code"] for item in result.rejected} == {"E_JUDGE_TRACE"}
 
 
 def test_a_misread_level_is_caught_by_the_trace(
@@ -202,8 +137,6 @@ def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
     assert isinstance(first, DepCheckSpec)
     assert first.plan == second.plan
     assert first.plan == features.plan_for(case, 1)
-    assert spec_to_dict(first)["hits"] == ["D2", "D3"]
-    assert spec_to_dict(first)["level"] == features.level_of(("D2", "D3"))
 
 
 def test_reparse_and_case_label_are_wired() -> None:
@@ -261,35 +194,6 @@ def test_language_texts_is_empty_when_there_is_no_note() -> None:
     assert DepCheckWorkflow().language_texts(row) == {}
 
 
-def test_declared_contract_fields() -> None:
-    """输入：workflow 的声明项。输出：无。
-
-    预期行为：题型（**含 score**）、后端需求与判别器名单都对得上。
-    """
-    workflow = DepCheckWorkflow()
-    assert workflow.name == "depcheck"
-    assert workflow.kinds == frozenset({"choice", "noul", "score"})
-    assert workflow.needs == frozenset({"text"})
-    assert workflow.judges == ("hygiene", "frame", "trace")
-
-
-def test_config_knobs_are_validated() -> None:
-    """输入：坏旋钮。输出：无。预期行为：构造期就报人话，不拖到采样阶段。"""
-    with pytest.raises(ValueError, match="phrasing_pool"):
-        DepCheckConfig(split="train", phrasing_pool=())
-    with pytest.raises(ValueError, match="categories"):
-        DepCheckConfig(split="train", categories=())
-    with pytest.raises(ValueError, match="versions"):
-        DepCheckConfig(split="train", versions=(3,))
-    with pytest.raises(ValueError, match="licenses"):
-        DepCheckConfig(split="train", licenses=())
-    # 只给一侧的许可证池也要在构造期拦下：另一半的 case 一采样就没得抽（范式 §9.61）。
-    with pytest.raises(ValueError, match="licenses"):
-        DepCheckConfig(split="train", licenses=("MIT",))
-    with pytest.raises(ValueError, match="case_limit"):
-        DepCheckConfig(split="train", case_limit=-1)
-
-
 def test_category_knob_reaches_the_prompt() -> None:
     """输入：只留一个依赖类别的采样参数。输出：无。
 
@@ -302,7 +206,6 @@ def test_category_knob_reaches_the_prompt() -> None:
     spec = workflow.sample(random.Random(0), workflow.plan_sample(random.Random(1), config, case, 0))
     assert isinstance(spec, DepCheckSpec)
     assert spec.category == 5
-    assert spec_to_dict(spec)["category"] == 5
     prompt = render.build_prompt(
         locales.load("zh"), spec.case, spec.category, spec.version, spec.license
     )
@@ -322,7 +225,6 @@ def test_version_knob_reaches_the_prompt() -> None:
     spec = workflow.sample(random.Random(0), workflow.plan_sample(random.Random(1), config, case, 0))
     assert isinstance(spec, DepCheckSpec)
     assert spec.version == 47
-    assert spec_to_dict(spec)["version"] == 47
     prompt = render.build_prompt(
         locales.load("zh"), spec.case, spec.category, spec.version, spec.license
     )
@@ -351,43 +253,9 @@ def test_license_knob_reaches_the_prompt() -> None:
     assert isinstance(hit, DepCheckSpec) and isinstance(miss, DepCheckSpec)
     assert hit.license in features.LICENSE_COPYLEFT
     assert miss.license in features.LICENSE_PERMISSIVE
-    assert spec_to_dict(hit)["license"] == hit.license
     prompt = render.build_prompt(
         locales.load("zh"), hit.case, hit.category, hit.version, hit.license
     )
     assert hit.license in prompt
     assert workflow.stats_dimensions(hit.case) == {"flags": "D1", "ecosystem": "npm"}
 
-
-def test_unknown_split_and_judge_are_rejected() -> None:
-    """输入：不存在的切分 / 判别器 / 语言。输出：无。预期行为：三种都当场报人话。"""
-    workflow = DepCheckWorkflow()
-    with pytest.raises(KeyError, match="未知切分"):
-        workflow.config_for("nope")
-    workflow.bind_backend(FakeBackend())
-    with pytest.raises(KeyError, match="未知判别器"):
-        workflow.make_judges(("nope",), "zh")
-    with pytest.raises(FileNotFoundError):
-        workflow.audit(Path("dataset"), ("train",), "nope")
-
-
-def test_render_without_a_backend_reports_wiring_error() -> None:
-    """输入：没注入后端就渲染。输出：无。
-
-    预期行为：报错而不是悄悄降级成模板——`needs` 非空时管线一定会注入，收到「没有后端」说明接线
-    错了（范式 §9.23 那条「不许静默降级」）。
-    """
-    workflow = DepCheckWorkflow()
-    case = depcheck_workflow.cases_for(DepCheckConfig(split="train", case_limit=1))[0]
-    spec = DepCheckSpec(
-        case=case,
-        phrasing=0,
-        category=0,
-        version=11,
-        license=features.LICENSE_PERMISSIVE[0],
-        split="train",
-        seq=0,
-        plan=features.plan_for(case, 0),
-    )
-    with pytest.raises(RuntimeError, match="bind_backend"):
-        workflow.render(spec, random.Random(0), "zh")

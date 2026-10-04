@@ -34,7 +34,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import restrictor
+from jc.cover import cover_pick, restrictor
 from jc.jsontypes import JsonValue
 
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
@@ -154,26 +154,7 @@ def _cover_pick(cases: list[ChatCase], limit: int) -> list[ChatCase]:
     小批量的条数分布才是摊开的。
     """
     names = ("degree", "scene", "slot")
-    chosen: list[ChatCase] = []
-    seen: dict[str, set[str]] = {name: set() for name in names}
-    freq: dict[str, dict[str, int]] = {name: {} for name in names}
-    remaining = list(cases)
-    while remaining and len(chosen) < limit:
-        keys = [
-            (
-                sum(1 for name in names if _dims_of(case)[name] not in seen[name]),
-                -max(freq[name].get(_dims_of(case)[name], 0) for name in names),
-                -index,
-            )
-            for index, case in enumerate(remaining)
-        ]
-        best = max(range(len(remaining)), key=lambda index: keys[index])
-        case = remaining.pop(best)
-        chosen.append(case)
-        for name in names:
-            seen[name].add(_dims_of(case)[name])
-            freq[name][_dims_of(case)[name]] = freq[name].get(_dims_of(case)[name], 0) + 1
-    return chosen
+    return cover_pick(cases, limit, names, _dims_of, spread=True)
 
 
 def cases_for(config: ChatGateConfig) -> list[ChatCase]:

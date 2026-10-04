@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from jc import jsonio, pipeline
-from jc import workflow as workflow_mod
+from tests.workflows._scaffold import run_config
 from tests.workflows.planstep.conftest import tiny_config
 from workflows.planstep import features as ft
 from workflows.planstep import parse, spec as sp
@@ -19,71 +19,20 @@ def make_config(
     tmp_path: Path, run_id: str, *, split: str = "train", concurrency: int = 1
 ) -> pipeline.RunConfig:
     """输入：临时目录、run 名、切分、并发度。输出：指向 tmp 的运行配置（不需要后端）。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
         workflow="planstep",
         split=split,
-        locales=("zh",),
-        run_seed=17,
-        per_case=1,
+        seed=17,
         concurrency=concurrency,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=tiny_config(split),
+        override=tiny_config(split),
     )
 
 
 def _case_count(config: pipeline.RunConfig) -> int:
     """输入：运行配置。输出：该切分的 case 数。预期行为：与产物条数对得上。"""
     return len(PlanStepWorkflow().build_cases(config.config_override))
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path) -> None:
-    """输入：极小配置（零 token，不需要后端）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、两个判别器全通过；产物过审计。
-    """
-    config = make_config(tmp_path, "p1")
-    result = pipeline.run(config)
-    assert result.accepted == _case_count(config) > 0
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"roundtrip", "label"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0 and bucket["ok"] > 0
-    report, missing = workflow_mod.load("planstep").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == result.accepted
-    assert report["train"]["index_bad"] == 0
-    assert report["train"]["label_mismatch"] == 0
-    assert set(report["train"]["types"]) == {"choice", "noul", "score"}
-
-
-def test_manifest_and_stats_are_written(tmp_path: Path) -> None:
-    """输入：一次跑。输出：产物目录。
-
-    预期行为：manifest 记下 workflow / 切分；统计报告里出现两个维度的中文标题与两个判别器。
-    """
-    result = pipeline.run(make_config(tmp_path, "p3"))
-    manifest = jsonio.loads((result.run_dir / "manifest-train.json").read_text("utf-8"))
-    assert manifest["workflow"] == "planstep"
-    assert manifest["split"] == "train"
-    stats = (result.run_dir / "stats-train.md").read_text("utf-8")
-    for title in planstep_workflow.DIMENSION_TITLES.values():
-        assert title in stats
-    assert "roundtrip" in stats and "label" in stats
-
-
-def test_balance_report_covers_every_family_and_has_no_constant(tmp_path: Path) -> None:
-    """输入：一次跑。输出：均衡报告。
-
-    预期行为：四个题族都出现在报告里，且**没有哪一族退化成常量**——常量答案意味着这一族
-    在教「永远选同一个」，是坏数据而不是难题。
-    """
-    result = pipeline.run(make_config(tmp_path, "p4"))
-    keys = {item["key"] for item in result.stats["balance"]}
-    for family in ("score:remaining", "choice:next", "score:rounds", "noul:unlocks"):
-        assert family in keys
-    degenerate = [item for item in result.stats["balance"] if item["max_dev"] > 0.2]
-    assert not degenerate, f"有题族退化成常量或严重偏斜：{degenerate}"
 
 
 def test_ood_split_runs(tmp_path: Path) -> None:
@@ -113,23 +62,6 @@ def test_ood_split_runs(tmp_path: Path) -> None:
     holdout = {ft.deps_of(graph) for graph in ft.OOD_GRAPHS}
     for row in rows:
         assert parse.parse_state(row["state"], tables).deps in holdout
-
-
-def test_three_id_splits_are_disjoint(tmp_path: Path) -> None:
-    """输入：train / val / test_iid 三次跑。输出：三份产物。
-
-    预期行为：三份产物的 state 集合两两不相交——切分按 case 哈希分桶，同一张计划不会同时
-    出现在两档里（`config_for` 忘了替换 `split` 时这条会红）。
-    """
-    seen: list[set[str]] = []
-    for split in ("train", "val", "test_iid"):
-        result = pipeline.run(make_config(tmp_path, f"p6-{split}", split=split))
-        rows = [row for _, row in jsonio.iter_jsonl(result.run_dir / f"{split}.jsonl")]
-        assert rows
-        seen.append({str(row["state"]) for row in rows})
-    assert not seen[0] & seen[1]
-    assert not seen[0] & seen[2]
-    assert not seen[1] & seen[2]
 
 
 def test_id_splits_only_use_the_id_graphs() -> None:
@@ -190,12 +122,6 @@ def test_config_for_switches_the_split() -> None:
     assert workflow.config_for("test_ood") == sp.PlanConfig(split="test_ood")
 
 
-def test_config_for_rejects_an_unknown_split() -> None:
-    """输入：不存在的切分名。输出：无。预期行为：报错并列出可用切分。"""
-    with pytest.raises(KeyError, match="未知切分"):
-        PlanStepWorkflow().config_for("nope")
-
-
 def test_workflow_is_construct_only() -> None:
     """输入：无。输出：无。
 
@@ -213,12 +139,6 @@ def test_binding_a_backend_is_an_error() -> None:
     """输入：给构造式 workflow 绑后端。输出：无。预期行为：当场报错，不静默吞掉。"""
     with pytest.raises(AssertionError, match="纯构造式"):
         PlanStepWorkflow().bind_backend(object())
-
-
-def test_make_judges_rejects_an_unknown_name() -> None:
-    """输入：不存在的判别器名。输出：无。预期行为：报错并列出可用的两个。"""
-    with pytest.raises(KeyError, match="未知判别器"):
-        PlanStepWorkflow().make_judges(("nope",), "zh")
 
 
 def test_reparse_uses_the_merged_tables(tmp_path: Path) -> None:

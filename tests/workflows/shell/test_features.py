@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import Counter
 from itertools import product
 
-import pytest
 
 from workflows.shell import features
 from workflows.shell.features import TagSet
@@ -116,9 +115,13 @@ def test_labels_cover_every_value() -> None:
     assert radius == {0, 1, 2, 3, 4}
 
 
-@pytest.mark.parametrize(
-    ("goal", "target", "elevation", "expected"),
-    [
+def test_verdict_rules() -> None:
+    """输入：一组特征与期望档位。输出：无。预期行为：处置规则与文档一致。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for goal, target, elevation, expected in [
         ("list_dir", "workdir", "none", "allow"),
         ("read_file", "workdir", "none", "allow"),
         ("list_dir", "system_path", "none", "confirm"),
@@ -129,18 +132,23 @@ def test_labels_cover_every_value() -> None:
         ("remove_file", "system_path", "none", "deny"),
         ("remove_tree", "production", "elevated", "deny"),
         ("drop_table", "production", "none", "deny"),
-    ],
-)
-def test_verdict_rules(goal: str, target: str, elevation: str, expected: str) -> None:
-    """输入：一组特征与期望档位。输出：无。预期行为：处置规则与文档一致。"""
-    case = TagSet(dialect="bash", goal=goal, target=target, elevation=elevation)
-    assert features.compatible(case)
-    assert features.verdict_for(case) == expected
+    ]:
+        try:
+            case = TagSet(dialect="bash", goal=goal, target=target, elevation=elevation)
+            assert features.compatible(case)
+            assert features.verdict_for(case) == expected
+        except AssertionError as exc:
+            bad.append(f"{(goal, target, elevation, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize(
-    ("goal", "target", "elevation", "expected"),
-    [
+def test_blast_radius_rules() -> None:
+    """输入：一组特征与期望半径。输出：无。预期行为：0~4 且封顶。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for goal, target, elevation, expected in [
         ("list_dir", "workdir", "none", 0),
         ("list_dir", "production", "none", 1),
         ("copy_file", "workdir", "none", 1),
@@ -148,13 +156,14 @@ def test_verdict_rules(goal: str, target: str, elevation: str, expected: str) ->
         ("remove_file", "system_path", "none", 3),
         ("remove_file", "production", "elevated", 4),
         ("drop_table", "production", "elevated", 4),
-    ],
-)
-def test_blast_radius_rules(goal: str, target: str, elevation: str, expected: int) -> None:
-    """输入：一组特征与期望半径。输出：无。预期行为：0~4 且封顶。"""
-    case = TagSet(dialect="bash", goal=goal, target=target, elevation=elevation)
-    assert features.compatible(case)
-    assert features.blast_radius_for(case) == expected
+    ]:
+        try:
+            case = TagSet(dialect="bash", goal=goal, target=target, elevation=elevation)
+            assert features.compatible(case)
+            assert features.blast_radius_for(case) == expected
+        except AssertionError as exc:
+            bad.append(f"{(goal, target, elevation, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_label_flip_axes_skips_forbidden() -> None:
@@ -172,9 +181,3 @@ def test_label_flip_axes_skips_forbidden() -> None:
     assert "container" not in neighbours
     assert "remote" in neighbours
 
-
-def test_build_cases_is_deterministic() -> None:
-    """输入：无。输出：无。预期行为：同一入参两次调用给出同一份列表。"""
-    first = features.build_cases(32)
-    second = features.build_cases(32)
-    assert [c.as_dict() for c in first] == [c.as_dict() for c in second]

@@ -4,7 +4,6 @@
 """
 
 from __future__ import annotations
-from jc.jsontypes import JsonValue
 
 from dataclasses import dataclass
 
@@ -60,15 +59,3 @@ class MailSpec:
     def trace_task_id(self) -> str:
         """输入：无。输出：反解（判别器）任务的后端任务 id。"""
         return f"mail-{self.split}-{self.seq:07d}-trace"
-
-
-def spec_to_dict(spec: MailSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的字典（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "tags": spec.tags.as_dict(),
-        "link_target": spec.tags.link_target,
-        "anchor": spec.tags.anchor,
-        "phrasing": spec.phrasing,
-        "split": spec.split,
-        "seq": spec.seq,
-    }

@@ -18,6 +18,10 @@
 才把「渲染 × 读法」的笛卡尔积补齐。
 
 零 token 的代价：假后端按 `task.spec` 现造草稿，从不发网络请求。
+
+为什么不是每家每个切分一条参数化用例：`_sweep_one` 是同一段端到端流程，74 条用例只是把
+同一件事报 74 遍。收成一条循环之后，失败信息攒在 `bad` 里一起报（点名到 workflow / 切分），
+用例数从 74 降到 1。
 """
 
 from __future__ import annotations
@@ -26,8 +30,6 @@ import dataclasses
 import importlib
 import inspect
 from pathlib import Path
-
-import pytest
 
 from jc import pipeline
 from jc import workflow as workflow_mod
@@ -40,6 +42,8 @@ from tests.workflows._contract import (
     assert_audit_reads_a_mixed_file,
     assert_contract,
     assert_language_texts_are_declared,
+    assert_manifest_and_stats,
+    assert_no_unresolved_slots,
 )
 
 
@@ -69,7 +73,7 @@ def test_the_prose_exemption_list_names_real_llm_workflows() -> None:
     """
     unknown = sorted(set(LLM_WITHOUT_PROSE) - set(LLM_WORKFLOWS))
     assert not unknown, f"豁免清单里的这些名字不是走 LLM 的 workflow：{unknown}"
-    assert LLM_WITHOUT_PROSE, "豁免清单空了？那 lint / review / shell 就该报出正文了"
+    assert LLM_WITHOUT_PROSE, "豁免清单空了？那 lint / review 就该报出正文了"
 
 
 def test_locale_faithful_fakes_are_real() -> None:
@@ -157,10 +161,8 @@ def config_for(name: str, tmp_path: Path, locale: str, split: str) -> pipeline.R
     )
 
 
-@pytest.mark.parametrize("split", ("train", "test_ood"))
-@pytest.mark.parametrize("name", LLM_WORKFLOWS)
-def test_every_locale_runs_end_to_end(name: str, split: str, tmp_path: Path) -> None:
-    """输入：workflow 名、切分、临时目录。输出：无。
+def _sweep_one(name: str, split: str, tmp_path: Path) -> None:
+    """输入：workflow 名、切分、临时目录。输出：无（断言）。
 
     预期行为：给定切分在**每种语言**下都零拒稿、产物非空，而且**各语言出的条数一致**
     ——case 集合与语言无关，条数不一致就说明某种语言在悄悄丢样本（迷宫 en 侧那次就是这个症状）。
@@ -171,17 +173,33 @@ def test_every_locale_runs_end_to_end(name: str, split: str, tmp_path: Path) -> 
     counts: dict[str, int] = {}
     run_dirs: list[Path] = []
     for locale in locales:
-        result = pipeline.run(config_for(name, tmp_path, locale, split))
+        cfg = config_for(name, tmp_path, locale, split)
+        result = pipeline.run(cfg)
         reasons = [row.get("reason") for row in result.rejected]
         assert not result.rejected, (
             f"{name}/{locale}/{split} 有 {len(result.rejected)} 条被拒——假后端是忠实的，"
             f"拒稿只可能是渲染或判别器的读法有 bug：{reasons[:3]}"
         )
         assert result.accepted > 0, f"{name}/{locale}/{split} 一条都没出"
+        # 每个 case 正好出一条样本：少一条就是某个 case 被静默跳过了（各家 `test_pipeline.py`
+        # 里各抄一份的那条断言，现在只留这里）。
+        expected = len(wf.build_cases(cfg.config_override))
+        assert result.accepted == expected, (
+            f"{name}/{locale}/{split} 出了 {result.accepted} 条、case 有 {expected} 个——"
+            "每个 case 必须正好出一条样本"
+        )
         counts[locale] = result.accepted
         run_dirs.append(result.run_dir)
+        # 审计报告里带 `families` 表的那几家：每个题族都得真的出过题，一个都不许是 0
+        # （题族一条不出等于那道题根本没进数据集，而审计的 `missing` 只看计数与自洽）。
+        report, _missing = wf.audit(result.run_dir, (split,), locale)
+        families = report.get(split, {}).get("families")
+        if isinstance(families, dict):
+            assert all(families.values()), f"{name}/{locale}/{split} 有题族一条都没出：{families}"
         assert_audit_ignores_the_callers_locale(wf, result.run_dir, split, f"{name}/{locale}/{split}")
         assert_contract(result.run_dir, split, f"{name}/{locale}/{split}")
+        assert_no_unresolved_slots(result.run_dir, split, f"{name}/{locale}/{split}")
+        assert_manifest_and_stats(result.run_dir, split, wf, f"{name}/{locale}/{split}", locale)
         assert_language_texts_are_declared(
             wf,
             result.run_dir,
@@ -191,3 +209,19 @@ def test_every_locale_runs_end_to_end(name: str, split: str, tmp_path: Path) -> 
         )
     assert len(set(counts.values())) == 1, f"{name}/{split} 各语言出的条数不一致：{counts}"
     assert_audit_reads_a_mixed_file(wf, run_dirs, split, f"{name}/{split}", tmp_path)
+
+
+def test_every_locale_runs_end_to_end(tmp_path: Path) -> None:
+    """输入：无（名单现场列）。输出：无。
+
+    预期行为：每个 (workflow, 切分) 在**每种语言**下都过 `_sweep_one` 那一整套；问题攒在
+    `bad` 里一起报（点名到 workflow / 切分），不因为第一家炸掉就看不见其余。
+    """
+    bad: list[str] = []
+    for name in LLM_WORKFLOWS:
+        for split in ("train", "test_ood"):
+            try:
+                _sweep_one(name, split, tmp_path)
+            except AssertionError as error:
+                bad.append(f"{name}/{split}：{error}")
+    assert not bad, bad

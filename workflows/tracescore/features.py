@@ -89,9 +89,6 @@ SOURCE_EDITOR: Final[str] = "editor"
 SOURCE_CHAT: Final[str] = "chat"
 SOURCES: Final[tuple[str, ...]] = (SOURCE_CLI, SOURCE_EDITOR, SOURCE_CHAT)
 
-#: 评分档（1~5 分）。分档由四条**计分条件**加权算出来（见 `score_for`）。
-SCORE_LEVELS: Final[tuple[int, ...]] = (1, 2, 3, 4, 5)
-
 #: 处置档位（**结构键**，文案全在 `locales/`）。三档按分数切，在 16 组命中组合上占比 5:6:5，
 #: 摊得很平——三档而不是四档，是因为分档口径只有「继续 / 换方案 / 停下问人」这三种真实动作。
 ROUTE_LEVELS: Final[tuple[str, ...]] = ("proceed", "replan", "escalate")

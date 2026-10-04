@@ -13,6 +13,10 @@ state 用占位串——组装不看它。
 1. **整族消失**：同分布侧出过的题族，留出侧不许一条都不出；
 2. **塌成常量**：同分布侧有两个以上答案的题族，留出侧也不许只剩一个答案（样本量太小的不算，
    见 `MIN_N`）。
+
+两条收在一条测试里、循环扫名单：`buckets_of` 每个 workflow 要跑一遍全切分，原来两条参数化
+用例各跑一遍等于把同一份扫描做两遍（98 条用例、两倍时间）；现在每个 workflow 只扫一次，
+两条要求一起判，问题攒在 `bad` 里一起报。
 """
 
 from __future__ import annotations
@@ -20,8 +24,6 @@ from __future__ import annotations
 import random
 from collections import Counter
 from typing import Final
-
-import pytest
 
 from jc import assemble, workflow as workflow_mod
 from jc.workflow import family_of
@@ -37,6 +39,15 @@ NEEDS_RENDER: Final[frozenset[str]] = frozenset({"autoformat", "hybrid"})
 #: 换任何一维当留出维都一样（`category` ↔ `cat`、`band` ↔ `tier`）。这种塌陷不是渲染 bug，
 #: 而是「拿这一维当留出维」的必然结果；它仍然测试「留出侧不许答成另一侧」。
 CONSTANT_ON_OOD_OK: Final[frozenset[str]] = frozenset({"receiptcat"})
+
+#: 注册表**在导入期快照**，不在用例体里现场 `discover()`：注册表是全局可变的，
+#: `tests/core/test_workflow.py::test_register_rejects_duplicate` 会往里塞一个
+#: `dummy-for-test`（它只有 `name`，没有 `available_locales`）。现场 discover() 会让这个假
+#: workflow 混进扫描名单，跑全套时当场 AttributeError——单跑这个文件却看不见（是顺序问题）。
+DISCOVERED: Final[tuple[str, ...]] = tuple(workflow_mod.discover())
+
+#: 能零 token 扫的 workflow 名单（从上面的快照里减去 `NEEDS_RENDER`）。
+SCANNABLE: Final[tuple[str, ...]] = tuple(n for n in DISCOVERED if n not in NEEDS_RENDER)
 
 
 def buckets_of(name: str) -> dict[str, dict[str, Counter[str]]]:
@@ -59,54 +70,53 @@ def buckets_of(name: str) -> dict[str, dict[str, Counter[str]]]:
     return out
 
 
-def scannable() -> list[str]:
-    """输入：无。输出：能零 token 扫的 workflow 名（排序后）。"""
-    return [name for name in workflow_mod.discover() if name not in NEEDS_RENDER]
-
-
 def test_the_scan_covers_the_catalogue() -> None:
     """输入：无。输出：无。
 
     预期行为：扫到的 workflow 数与注册表只差 `NEEDS_RENDER` 那几个——否则一把「全库闸门」
     会悄悄退化成「只看几家」。
     """
-    assert set(scannable()) | NEEDS_RENDER == set(workflow_mod.discover())
-    assert len(scannable()) >= 40
+    assert set(SCANNABLE) | NEEDS_RENDER == set(DISCOVERED)
+    assert len(SCANNABLE) >= 40
 
 
-@pytest.mark.parametrize("name", scannable())
-def test_no_family_disappears_in_the_held_out_side(name: str) -> None:
-    """输入：workflow 名。输出：无。
+def test_the_held_out_side_neither_loses_nor_flattens_a_family() -> None:
+    """输入：无（名单现场列）。输出：无。
 
-    预期行为：同分布侧出过的题族，留出侧一条都不许少。留出侧少一族，意味着那一族在「没见过
-    的取值」上根本没有题——留出集就白留了。
+    预期行为（两条一起判，每个 workflow 只扫一遍）：
+
+    1. 同分布侧出过的题族，留出侧一条都不许少——留出侧少一族，意味着那一族在「没见过的取值」
+       上根本没有题，留出集就白留了；
+    2. 同分布侧出现过两个以上答案、且留出侧样本量够大的族，留出侧也不许只剩一个答案——那一族
+       在留出侧就一条信息都不带了（`clipcut/dup_any` 就是这么塌的）。`CONSTANT_ON_OOD_OK` 里
+       那几家跳过第二条（留出维与题族一一对应，塌成常量是设计后果，见文件头注释）。
+
+    失败信息攒在 `bad` 里一起报，不因为第一家炸掉就看不见其余。
     """
-    table = buckets_of(name)
-    id_splits = [split for split in table if split != "test_ood"]
-    assert id_splits, f"{name} 没有同分布切分"
-    id_families = set().union(*(set(table[split]) for split in id_splits))
-    gone = sorted(id_families - set(table["test_ood"]))
-    assert not gone, f"{name} 的 test_ood 侧少了这些题族：{gone}"
-
-
-@pytest.mark.parametrize("name", scannable())
-def test_no_family_collapses_to_a_constant_in_the_held_out_side(name: str) -> None:
-    """输入：workflow 名。输出：无。
-
-    预期行为：同分布侧出现过两个以上答案、且留出侧样本量够大的族，留出侧也不许只剩一个答案
-    ——那一族在留出侧就一条信息都不带了（`clipcut/dup_any` 就是这么塌的）。
-    """
-    if name in CONSTANT_ON_OOD_OK:
-        pytest.skip(f"{name} 的留出维与题族一一对应，塌成常量是设计后果（见文件头注释）")
-    table = buckets_of(name)
-    id_splits = [split for split in table if split != "test_ood"]
-    collapsed: list[str] = []
-    for key, bucket in sorted(table["test_ood"].items()):
-        if len(bucket) > 1 or sum(bucket.values()) < MIN_N:
+    bad: list[str] = []
+    for name in SCANNABLE:
+        table = buckets_of(name)
+        id_splits = [split for split in table if split != "test_ood"]
+        if not id_splits:
+            bad.append(f"{name} 没有同分布切分")
             continue
-        id_values: set[str] = set()
-        for split in id_splits:
-            id_values |= set(table[split].get(key, {}))
-        if len(id_values) > 1:
-            collapsed.append(f"{key}（留出侧 {sum(bucket.values())} 条全是 {sorted(bucket)[0]}）")
-    assert not collapsed, f"{name} 的留出侧塌成常量：{collapsed}"
+        id_families = set().union(*(set(table[split]) for split in id_splits))
+        gone = sorted(id_families - set(table["test_ood"]))
+        if gone:
+            bad.append(f"{name} 的 test_ood 侧少了这些题族：{gone}")
+        if name in CONSTANT_ON_OOD_OK:
+            continue
+        collapsed: list[str] = []
+        for key, bucket in sorted(table["test_ood"].items()):
+            if len(bucket) > 1 or sum(bucket.values()) < MIN_N:
+                continue
+            id_values: set[str] = set()
+            for split in id_splits:
+                id_values |= set(table[split].get(key, {}))
+            if len(id_values) > 1:
+                collapsed.append(
+                    f"{key}（留出侧 {sum(bucket.values())} 条全是 {sorted(bucket)[0]}）"
+                )
+        if collapsed:
+            bad.append(f"{name} 的留出侧塌成常量：{collapsed}")
+    assert not bad, bad

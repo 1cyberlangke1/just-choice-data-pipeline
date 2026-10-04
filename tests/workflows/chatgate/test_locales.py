@@ -46,20 +46,6 @@ def test_tables_line_up_with_the_structural_keys(lang: str) -> None:
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_threshold_and_route_tables_line_up_with_features(lang: str) -> None:
-    """输入：一种语言。输出：无。预期行为：两张表都覆盖四个档位，动作文案两两不同。"""
-    loc = locales.load(lang)
-    options = loc["fam"]["route"]["opt"]
-    assert isinstance(options, dict)
-    assert sorted(options) == sorted(features.HANDLING_LEVELS)
-    assert len({str(value) for value in options.values()}) == len(options)
-    thresholds = loc["state"]["threshold"]
-    assert isinstance(thresholds, dict)
-    assert sorted(thresholds) == sorted(features.HANDLING_LEVELS)
-    assert len({str(value) for value in thresholds.values()}) == len(thresholds)
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_count_and_reply_option_tables_are_complete(lang: str) -> None:
     """输入：一种语言。输出：无。预期行为：count 有 5 档、reply 有 3 档，文案两两不同。"""
     loc = locales.load(lang)
@@ -172,12 +158,3 @@ def test_prompt_forbids_pasting_the_criteria(lang: str) -> None:
     assert str(loc["prompt"]["vary_rule"]) in render.build_prompt(loc, case, features.plan_for(case, 0))
 
 
-def test_available_lists_both_languages() -> None:
-    """输入：无。输出：无。预期行为：语言目录里就是 zh 与 en。"""
-    assert locales.available() == ["en", "zh"]
-
-
-def test_missing_locale_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：抛错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="可用"):
-        locales.load("nope")

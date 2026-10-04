@@ -32,7 +32,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from jc.cover import hash_bucket, slice_by_bucket, restrictor
+from jc.cover import cover_pick, hash_bucket, slice_by_bucket, restrictor
 from jc.jsontypes import JsonValue
 
 from jc.workflow import BackendHolder, LabeledQuestion, SplitSpec, plan_with_phrasing, register
@@ -134,23 +134,7 @@ def _cover_pick(cases: list[LogTriageCase], limit: int) -> list[LogTriageCase]:
     算的，没变）。
     """
     names = ("hits", "source", "count")
-    chosen: list[LogTriageCase] = []
-    seen: dict[str, set[str]] = {name: set() for name in names}
-    remaining = list(cases)
-    while remaining and len(chosen) < limit:
-        keys = [
-            (
-                sum(1 for name in names if _dims_of(case)[name] not in seen[name]),
-                -index,
-            )
-            for index, case in enumerate(remaining)
-        ]
-        best = max(range(len(remaining)), key=lambda index: keys[index])
-        case = remaining.pop(best)
-        chosen.append(case)
-        for name in names:
-            seen[name].add(_dims_of(case)[name])
-    return chosen
+    return cover_pick(cases, limit, names, _dims_of)
 
 
 def cases_for(config: LogTriageConfig) -> list[LogTriageCase]:

@@ -5,7 +5,7 @@
 # Expected behaviour (each locked by a test):
 # - the three heading marks are pairwise non-prefixes;
 # - `[state.threshold]` and `[fam.action.opt]` both line up with `features.ACTION_LEVELS`;
-# - `[clause.*]` lines up with `features.CLAUSE_IDS`, each with name / rule / example / avoid;
+# - `[clause.*]` lines up with `features.CLAUSE_IDS`, each with name / rule / examples / avoid;
 # - every placeholder in the prompt and question templates gets filled.
 
 lang = "en"
@@ -26,25 +26,25 @@ block = "3 or more clauses hit"
 [clause.P1]
 name = "contact details"
 rule = "the text must not contain 7 or more digits in a row"
-example = "13812345678"
+examples = ["13812345678", "13907155882", "15920436671", "18653190742", "17786203415"]
 avoid = "a run of 7 or more digits **in a row** (a phone number like 13812345678 counts; a date like 2024-09-29, a 5-digit order id, or the short numbers inside a URL do **not** count - only digits that really sit seven-in-a-row)"
 
 [clause.P2]
 name = "external links"
 rule = "the text must not contain a URL (starting with http://, https:// or www.)"
-example = "http://shop.example.com/order"
+examples = ["http://shop.example.com/order", "https://docs.alfa-labs.cn/spec", "www.harbor-notes.net/pricing", "https://portal.silverkey.io/faq", "http://cdn.tinypress.org/manual"]
 avoid = "http://, https:// or www."
 
 [clause.P3]
 name = "email or mention"
 rule = "the text must not contain the @ sign"
-example = "liu.wei@example.com"
+examples = ["liu.wei@example.com", "chen.qiang@mailhost.cn", "support@nanoforge.io", "he.yu@datawell.net", "zhao.min@brightlab.org"]
 avoid = "the @ sign"
 
 [clause.P4]
 name = "shouting"
 rule = "the text must not contain three or more exclamation marks in a row"
-example = "!!!"
+examples = ["!!!"]
 avoid = "three or more exclamation marks in a row"
 
 [prompt]

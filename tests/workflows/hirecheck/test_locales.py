@@ -10,24 +10,6 @@ from workflows.hirecheck import features, locales, questions, render
 LANGS: tuple[str, ...] = ("zh", "en")
 
 
-def test_available_lists_both_languages() -> None:
-    """输入：无。输出：无。预期行为：语言目录里就是 zh / en 两个文件。"""
-    assert locales.available() == ["en", "zh"]
-
-
-def test_unknown_language_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报人话并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("nope")
-
-
-def test_pick_wraps_around() -> None:
-    """输入：候选列表、越界下标。输出：无。预期行为：回绕取模，不抛异常。"""
-    assert locales.pick(["a", "b"], 0) == "a"
-    assert locales.pick(["a", "b"], 2) == "a"
-    assert locales.pick(["a", "b"], 3) == "b"
-
-
 @pytest.mark.parametrize("lang", LANGS)
 def test_section_marks_are_pairwise_non_prefixes(lang: str) -> None:
     """输入：语言字典。输出：无。

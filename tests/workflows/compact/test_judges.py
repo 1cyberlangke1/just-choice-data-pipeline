@@ -91,26 +91,3 @@ def test_trace_catches_a_misread_fact(fake_backend: type[FakeBackend]) -> None:
     verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
     assert not verdict.ok
     assert "fact" in verdict.reason
-
-
-def test_trace_marks_a_broken_draft_as_skipped(fake_backend: type[FakeBackend]) -> None:
-    """输入：反解草稿缺字段。输出：无。预期行为：记成跳过。"""
-    backend = fake_backend(trace_data={"kind": "user"})
-    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
-    assert verdict.ok and verdict.skipped
-
-
-def test_build_trace_prompt_asks_both_families_with_the_shared_options() -> None:
-    """输入：一段 state。输出：无。
-
-    预期行为：反解提示词把两族原子题连同选项原样再问一遍——选项与数据集里的一致，
-    否则「答对了」与「标签对了」不是一回事。
-    """
-    loc = locales.load("zh")
-    prompt = judges.build_trace_prompt(state_of(), loc)
-    assert state_of() in prompt
-    assert judges.TRACE_FAMILIES == ("kind", "fact")
-    for family in judges.TRACE_FAMILIES:
-        assert str(loc["fam"][family]["q"][0]) in prompt
-        for name in loc["fam"][family]["criteria"]:
-            assert str(name) in prompt

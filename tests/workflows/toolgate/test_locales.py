@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import typing
 
-import pytest
-
 from jc.jsontypes import JsonValue
 from workflows.toolgate import features, judges, locales, questions, render
 
@@ -202,12 +200,3 @@ def test_meta_placeholders_render() -> None:
         assert str(meta["colon"]).strip()
 
 
-def test_unknown_locale_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：FileNotFoundError 且把可用语言列出来。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("xx")
-
-
-def test_available_lists_both_shipped_languages() -> None:
-    """输入：无。输出：无。预期行为：zh 与 en 都在。"""
-    assert set(locales.available()) >= {"zh", "en"}

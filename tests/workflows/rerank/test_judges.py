@@ -118,25 +118,3 @@ def test_trace_rejects_a_lying_backend() -> None:
     verdict = judges.TraceJudge(FakeBackend(trace_lies=True), "zh").judge(sample, spec)
     assert not verdict.ok and not verdict.skipped
     assert "计划" in verdict.reason and "反解" in verdict.reason
-
-
-def test_trace_skips_when_the_draft_has_no_field() -> None:
-    """输入：反解草稿缺字段。输出：无。预期行为：记成「没判成」，不当成数据不合格。"""
-    class Mute(FakeBackend):
-        """只回一个空字典的假后端。"""
-
-        def generate(self, task: object) -> Draft:
-            """输入：任务。输出：空草稿。"""
-            return Draft(
-                data={},
-                raw_text="",
-                backend="fake",
-                provider="fake",
-                model="fake",
-                mode="fake",
-            )
-
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(Mute(), "zh").judge(sample, spec)
-    assert verdict.skipped
-    assert "relevant" in verdict.reason

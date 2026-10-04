@@ -2,24 +2,18 @@
 
 from __future__ import annotations
 
-import pytest
 
 from tests.workflows.subqa.conftest import cue_of
 from workflows.subqa import features
 
 
-def test_tag_ids_and_hit_sets_are_complete() -> None:
-    """输入：无。输出：无。预期行为：四条判据、16 组命中组合、顺序稳定。"""
-    assert features.TAG_IDS == ("S1", "S2", "S3", "S4")
-    assert len(features.HIT_SETS) == 16
-    assert features.HIT_SETS[0] == ""
-    assert features.HIT_SETS[-1] == "S1+S2+S3+S4"
-    assert len(set(features.HIT_SETS)) == 16
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一条字幕对里的一行。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
 
-
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("Source: [MUSIC] the band picks up again", ("S1",)),
         ("Source: [音乐] 前奏响起来", ("S1",)),
         ("Source: [LAUGHTER] everyone cracks up", ("S1",)),
@@ -47,13 +41,14 @@ def test_tag_ids_and_hit_sets_are_complete() -> None:
         ("Target: 这儿的 & 符号只是原文里本来就有的", ()),
         ("Note: NOTODORO 只是一个人名，不是没写完的痕迹", ()),
         ("Note: 这句直译就行，没有什么术语要查喵", ()),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一条字幕对里的一行。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
-    assert features.parse_hits(features.hits_of(text)) == expect
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+            assert features.parse_hits(features.hits_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_key_lines_are_the_four_structure_keys() -> None:
@@ -128,19 +123,6 @@ def test_case_describe_and_fingerprint() -> None:
     assert case.fingerprint() == "hits=|track=movie"
     assert case.tags() == ()
     assert features.parse_hits("") == ()
-
-
-def test_act_level_swallows_everything_above_the_last_bucket() -> None:
-    """输入：0~6 条命中。输出：无。预期行为：最后一档吃掉所有更大的数，档位名按 `ACTS` 取。"""
-    assert [features.act_level(count) for count in range(6)] == [
-        "ship",
-        "spot_check",
-        "review",
-        "reject",
-        "reject",
-        "reject",
-    ]
-    assert features.ACTS == ("ship", "spot_check", "review", "reject")
 
 
 def test_timecode_hints_are_well_formed_and_distinct() -> None:

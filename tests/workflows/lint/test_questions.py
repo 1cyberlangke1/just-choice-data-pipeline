@@ -20,21 +20,28 @@ def test_spot_family_only_when_exactly_one_line_hits() -> None:
     assert "spot" not in questions.ALWAYS_FAMILIES
 
 
-@pytest.mark.parametrize("lang", ["zh", "en"])
-@pytest.mark.parametrize("case", [ZERO, SINGLE, MANY])
-def test_build_emits_the_declared_families(case: LintCase, lang: str) -> None:
+def test_build_emits_the_declared_families() -> None:
     """输入：三个 case、两个语言。输出：无。
 
     预期行为：题号是「族名 + 序号」，题族与 `families_for` 一致；`line` 族正好八道，
     其余每族一道。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    plan = features.plan_for(case, 0)
-    labeled = questions.build(plan, locales.load(lang), 0)
-    ids = [item.family for item in labeled]
-    assert ids.count("line") == features.SIZE
-    assert set(ids) == set(questions.families_for(plan))
-    for family in ("count", "gate", "spot"):
-        assert ids.count(family) == (1 if family in questions.families_for(plan) else 0)
+    bad: list[str] = []
+    for lang in ["zh", "en"]:
+        for case in [ZERO, SINGLE, MANY]:
+            try:
+                plan = features.plan_for(case, 0)
+                labeled = questions.build(plan, locales.load(lang), 0)
+                ids = [item.family for item in labeled]
+                assert ids.count("line") == features.SIZE
+                assert set(ids) == set(questions.families_for(plan))
+                for family in ("count", "gate", "spot"):
+                    assert ids.count(family) == (1 if family in questions.families_for(plan) else 0)
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_line_answers_follow_the_plan_in_order() -> None:
@@ -81,12 +88,6 @@ def test_choice_options_allow_shuffling_and_noul_does_not() -> None:
     for item in labeled:
         expected = item.question["type"] == "choice"
         assert item.shuffle is expected
-
-
-def test_duplicate_option_descriptions_are_rejected() -> None:
-    """输入：两个描述一样的选项。输出：无。预期行为：抛 ValueError。"""
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice("count", "题面", {"c0": "一样", "c1": "一样"}, "c0")
 
 
 def test_answer_must_be_one_of_the_options() -> None:

@@ -189,12 +189,6 @@ def test_meta_punctuation_comes_from_the_locale(lang: str) -> None:
             assert not (set("：；。") & set(loc["meta"][key]))
 
 
-def test_missing_language_file_raises() -> None:
-    """输入：不存在的语言代码。输出：FileNotFoundError。预期行为：报错并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="可用"):
-        locales.load("fr")
-
-
 def test_pick_wraps_and_word_of_rejects_out_of_range() -> None:
     """输入：越界问法编号 / 越界词表下标。输出：回绕 / IndexError。
 

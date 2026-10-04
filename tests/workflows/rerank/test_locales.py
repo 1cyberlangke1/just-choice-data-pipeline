@@ -7,25 +7,6 @@ import pytest
 from jc.jsontypes import JsonValue
 from workflows.rerank import features, locales, questions, render
 
-MARKS = ("query_mark", "terms_mark", "cands_mark", "rule_mark")
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_marks_are_non_empty_and_pairwise_non_prefix(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：四个抬头标记两两不互为前缀——`【查询】` 与 `【查询词】` 那种关系会让解析
-    先命中短的那个，整段 state 当场错位。
-    """
-    loc = locales.load(lang)
-    marks = [str(loc["state"][key]) for key in MARKS]
-    assert all(marks)
-    for left in marks:
-        for right in marks:
-            if left != right:
-                assert not right.startswith(left), f"{left!r} 是 {right!r} 的前缀"
-
-
 @pytest.mark.parametrize("lang", ["en", "zh"])
 def test_rule_rows_are_present_and_non_empty(lang: str) -> None:
     """输入：一种语言。输出：无。预期行为：排序口径至少一行、都不是空串。"""

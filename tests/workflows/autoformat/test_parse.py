@@ -205,6 +205,20 @@ def test_single_region_branches(bodies: tuple[str, ...], kind: str) -> None:
     assert doc.blocks[0].kind == kind
 
 
+def test_heading_sits_tight_against_its_paragraph() -> None:
+    """输入：一个短行紧跟着一段长行（中间**不空行**）。输出：无。
+
+    预期行为：两块——第一行是标题，后面那些行合成同一段正文。这是「空行才分块」的**第一处例外**，
+    读者题面与考生题面里都照抄了这一条（`render.split_rules_block`，同一份）。2026-10-04 真机
+    36 条被拒 17 条（47%）就是因为读者手里只有「空行才分块」：把紧贴正文的标题并进了正文，
+    而这里的确定性读法是对的。
+    """
+    loc = locales.load("en")
+    doc = parse.parse_state(state("Migration memo", "a" * (SHORT_LIMIT + 1), "b" * 10), loc)
+    assert doc.kinds() == (KIND_HEADING, KIND_PARAGRAPH)
+    assert doc.blocks[1].line_ids == ("L002", "L003")
+
+
 def test_two_short_lines_become_two_list_items_and_read_the_step_words() -> None:
     """输入：两行短行，一行带步骤词。输出：无。
 

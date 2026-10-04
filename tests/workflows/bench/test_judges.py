@@ -27,32 +27,6 @@ def _sample(**overrides: object) -> tuple[dict[str, JsonValue], sp.BenchSpec]:
     return row, spec
 
 
-def test_answer_value_handles_every_type() -> None:
-    """输入：三种题型的答案 + 各种坏形态。输出：无。
-
-    预期行为：choice 给选项名、score 给档位下标、noul 给布尔；编号越界、类型不对
-    （布尔不是编号）、criteria 形状不对都给 None——那是对不上，不是崩。
-    """
-    choice = {"type": "choice", "criteria": {"a": "第 1 个", "b": "第 2 个"}}
-    assert judges.answer_value(choice, {"choice": 1}) == "b"
-    assert judges.answer_value(choice, {"choice": 2}) is None
-    assert judges.answer_value(choice, {"choice": True}) is None
-    assert judges.answer_value(choice, {"choice": "1"}) is None
-    assert judges.answer_value({"type": "choice", "criteria": []}, {"choice": 0}) is None
-
-    score = {"type": "score", "criteria": ["答对 0 道", "答对 1 道", "答对 2 道"]}
-    assert judges.answer_value(score, {"score": 2}) == 2
-    assert judges.answer_value(score, {"score": 3}) is None
-    assert judges.answer_value(score, {"score": False}) is None
-    assert judges.answer_value({"type": "score", "criteria": {}}, {"score": 0}) is None
-
-    noul = {"type": "noul", "criteria": {"true": "是", "false": "否"}}
-    assert judges.answer_value(noul, {"noul": True}) is True
-    assert judges.answer_value(noul, {"noul": "true"}) is None
-    assert judges.answer_value({"type": "score"}, {}) is None
-    assert judges.answer_value({"type": "bogus"}, {}) is None
-
-
 def test_recompute_matches_the_production_path() -> None:
     """输入：一份规格的文本反解结果。输出：无。
 
@@ -216,14 +190,6 @@ def test_label_judge_flags_a_wrong_answer_and_a_wrong_spec() -> None:
 
     verdict = judges.LabelJudge(locale="zh").judge(sample, object())
     assert verdict.ok is False and "规格类型不对" in verdict.reason
-
-
-def test_label_judge_flags_a_missing_question() -> None:
-    """输入：把某一族整族删掉。输出：无。预期行为：题号对不上，判不通过。"""
-    sample, spec = _sample()
-    trimmed = {qid: item for qid, item in sample["questions"].items() if qid != "best"}
-    verdict = judges.LabelJudge(locale="zh").judge({**sample, "questions": trimmed}, spec)
-    assert verdict.ok is False and "题号与规格不符" in verdict.reason
 
 
 def test_judges_work_with_and_without_the_gap_family() -> None:

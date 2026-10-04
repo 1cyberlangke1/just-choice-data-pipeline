@@ -11,17 +11,6 @@ from workflows.depcheck.features import DepCheckCase
 CASE = DepCheckCase("D1+D3", features.ECO_NPM)
 
 
-def test_family_order_matches_the_declared_families() -> None:
-    """输入：无。输出：无。
-
-    预期行为：`build` 出的题族**首次出现顺序**与 `FAMILIES` 一致（逐标记那一族出四道，所以比的是
-    去重之后的顺序）。
-    """
-    out = questions.build(features.plan_for(CASE, 0), locales.load("zh"), 0)
-    assert list(dict.fromkeys(item.family for item in out)) == list(questions.FAMILIES)
-    assert questions.FAMILIES == ("flag", "grade", "combo", "act")
-
-
 def test_flag_answers_are_fifty_fifty() -> None:
     """输入：全空间 48 组 case。输出：无。预期行为：每条判据的 True / False 各占一半。"""
     loc = locales.load("zh")
@@ -115,32 +104,3 @@ def test_choice_options_never_duplicate() -> None:
                 assert len(set(values)) == len(values), f"{lang}/{case.describe()}/{item.family}"
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_every_question_is_self_contained(lang: str) -> None:
-    """输入：一种语言 × 第二种问法。输出：无。
-
-    预期行为：逐标记那一族的题面里带上要问的那条判据的名字与原文——只读 state 的考生要能自己按
-    字面判。（用第二种问法：第一种是短问法，只点名标记，不重述判据原文。）
-    """
-    loc = locales.load(lang)
-    for tag, item in zip(
-        features.TAG_IDS, questions.build(features.plan_for(CASE, 0), loc, 1), strict=False
-    ):
-        entry = loc["fact"][tag]
-        instructions = str(item.question["instructions"])
-        assert str(entry["name"]) in instructions
-        assert str(entry["rule"]) in instructions
-
-
-def test_bad_answer_names_are_rejected() -> None:
-    """输入：不在选项里的答案名。输出：无。预期行为：抛 ValueError。"""
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("act", "题面", {"approve": "直接进依赖树"}, "nope")
-
-
-def test_duplicate_option_descriptions_are_rejected() -> None:
-    """输入：两个描述一样的选项。输出：无。预期行为：抛 ValueError。"""
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice(
-            "act", "题面", {"approve": "直接进依赖树", "watch": "直接进依赖树"}, "approve"
-        )

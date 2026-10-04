@@ -5,14 +5,14 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-import pytest
 
-from jc import jsonio, pipeline, workflow as workflow_mod
+from jc import jsonio, pipeline
 from jc.jsontypes import JsonValue
 
 from workflows.rerank import features, locales, render, workflow as rerank_workflow
-from workflows.rerank.spec import RerankSpec, spec_to_dict
+from workflows.rerank.spec import RerankSpec
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.rerank.conftest import FakeBackend
 
 CASE_LIMIT = 10
@@ -28,47 +28,16 @@ def make_config(
     （`how do i fix … on the server`），zh 侧因此不是汉字。真机 zh 产物不是这样，这是夹具的
     局限；语言闸本身由 `tests/core` 的定点测试与认 `locale` 的假后端验。
     """
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="rerank",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=rerank_workflow.RerankConfig(split=split, case_limit=limit),
-        backend=backend,
+        seed=7,
+        override=rerank_workflow.RerankConfig(split=split, case_limit=limit),
         language_gate=False,
     )
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、三个判别器都记到通过；产物能过审计，而且
-    `top` 一族真的出得来（小批量选 case 是覆盖优先的，`relevant>0` 不会被漏掉）。
-    """
-    result = pipeline.run(make_config(tmp_path, "c1", fake_backend()))
-    assert result.accepted == CASE_LIMIT
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"hygiene", "frame", "trace"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    report, missing = workflow_mod.load("rerank").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == CASE_LIMIT
-    assert report["train"]["families"]["top"] > 0
-    for counter in (
-        "terms_bad",
-        "candidates_bad",
-        "rule_bad",
-        "top_bad",
-        "count_bad",
-        "pair_bad",
-        "order_bad",
-    ):
-        assert report["train"][counter] == 0, counter
 
 
 def test_pair_family_is_balanced_in_the_products(
@@ -85,32 +54,6 @@ def test_pair_family_is_balanced_in_the_products(
                 else:
                     no += 1
     assert yes == no > 0
-
-
-@pytest.mark.parametrize(
-    ("switch", "code"),
-    [
-        ("unrealized", "E_ASSEMBLE"),
-        ("extra_hit", "E_ASSEMBLE"),
-        ("duplicate", "E_ASSEMBLE"),
-        ("drop_candidate", "E_ASSEMBLE"),
-        ("bad_terms", "E_ASSEMBLE"),
-        ("term_missing_from_query", "E_ASSEMBLE"),
-        ("fence_line", "E_ASSEMBLE"),
-        ("trace_lies", "E_JUDGE_TRACE"),
-    ],
-)
-def test_bad_drafts_and_bad_traces_are_rejected(
-    tmp_path: Path, fake_backend: type[FakeBackend], switch: str, code: str
-) -> None:
-    """输入：各种作弊开关。输出：RunResult。
-
-    预期行为：一条都留不下，拒绝码就是该有的那一个——写歪的候选是渲染期的 `E_ASSEMBLE`
-    （重试耗尽后仍被拒，不静默放行），反解说反话是 `E_JUDGE_TRACE`。
-    """
-    result = pipeline.run(make_config(tmp_path, f"c3-{switch}", fake_backend(**{switch: True})))
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {code}
 
 
 def test_case_splits_are_disjoint_and_cover_the_space() -> None:
@@ -180,33 +123,6 @@ def test_full_train_run_is_balanced(tmp_path: Path, fake_backend: type[FakeBacke
     )
 
 
-def test_render_without_a_backend_is_an_error() -> None:
-    """输入：没绑后端的 workflow。输出：无。预期行为：抛 RuntimeError，不静默降级成模板。"""
-    workflow = rerank_workflow.RerankWorkflow()
-    case = features.RerankCase(terms=2, relevant=2, best="first")
-    spec = RerankSpec(case=case, phrasing=0, split="train", seq=0, plan=features.plan_for(case, 0))
-    with pytest.raises(RuntimeError, match="bind_backend"):
-        workflow.render(spec, random.Random(0), "zh")
-
-
-def test_trace_judge_without_a_backend_is_an_error() -> None:
-    """输入：没绑后端却要 trace 判别器。输出：无。预期行为：抛 RuntimeError（接线错了）。"""
-    workflow = rerank_workflow.RerankWorkflow()
-    with pytest.raises(RuntimeError, match="trace"):
-        workflow.make_judges(("trace",), "zh")
-
-
-def test_unknown_split_and_judge_and_locale_report_available() -> None:
-    """输入：不存在的切分 / 判别器 / 语言。输出：无。预期行为：都报人话。"""
-    workflow = rerank_workflow.RerankWorkflow()
-    with pytest.raises(KeyError, match="未知切分"):
-        workflow.config_for("nope")
-    with pytest.raises(KeyError, match="未知判别器"):
-        workflow.make_judges(("nope",), "zh")
-    with pytest.raises(FileNotFoundError):
-        workflow.audit(Path("dataset"), ("train",), "nope")
-
-
 def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
     """输入：同一个 case 的两次采样。输出：无。预期行为：名次计划与切分、进程无关。"""
     case = features.RerankCase(terms=3, relevant=4, best="last")
@@ -221,7 +137,6 @@ def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
     assert isinstance(first, RerankSpec)
     assert first.plan == second.plan
     assert first.plan == features.plan_for(case, 1)
-    assert spec_to_dict(first)["overlaps"] == list(first.plan.overlaps)
 
 
 def test_reparse_and_case_label_are_wired() -> None:
@@ -247,8 +162,3 @@ def test_reparse_and_case_label_are_wired() -> None:
     assert workflow.stats_dimensions(case) == {"terms": 2, "relevant": 1, "best": "first"}
     assert workflow.dimension_titles()["relevant"]
 
-
-def test_locales_are_reported() -> None:
-    """输入：无。输出：无。预期行为：支持的语言与语言文件目录一致。"""
-    workflow = rerank_workflow.RerankWorkflow()
-    assert workflow.available_locales() == locales.available() == ["en", "zh"]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import random
 from collections import Counter
 
@@ -231,15 +230,6 @@ def test_sample_spec_ignores_the_rng() -> None:
     )
 
 
-def test_spec_to_dict_is_json_ready() -> None:
-    """输入：一条规格。输出：无。预期行为：能直接 json 序列化，且摊平了五个维度。"""
-    case = sp.MatchCase("lager", sp.PATTERNS[1], sp.SPELLINGS[1], "reversed", "origin")
-    payload = sp.spec_to_dict(sp.sample_spec(None, case, "val", 1, 2))
-    assert json.loads(json.dumps(payload)) == payload
-    assert payload["split"] == "val" and payload["seq"] == 1
-    assert len(payload["same"]) == len(sp.FIELDS)
-    assert "reversed" in payload["case"]
-    assert payload["unseen_dims"] == []
 
 
 def test_case_describe_and_as_dict() -> None:

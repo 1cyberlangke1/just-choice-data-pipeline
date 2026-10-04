@@ -127,14 +127,6 @@ def test_parse_rejects_an_unknown_row_line() -> None:
         parse.parse_state(state, parse.tables_of(loc))
 
 
-def test_parse_rejects_an_unknown_header() -> None:
-    """输入：抬头认不出来的 state。输出：无。预期行为：报「认不出来」，不静默当空值。"""
-    loc = locales.load("zh")
-    state = render.build(_make_spec(4), loc).replace("行情读数请求号", "随便什么", 1)
-    with pytest.raises(ValueError, match="认不出来"):
-        parse.parse_state(state, parse.tables_of(loc))
-
-
 def test_merged_tables_read_both_languages() -> None:
     """输入：中英两条 state。输出：无。
 

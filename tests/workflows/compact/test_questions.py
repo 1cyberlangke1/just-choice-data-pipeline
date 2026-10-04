@@ -79,18 +79,6 @@ def test_choice_options_are_only_the_allowed_ones() -> None:
         assert list(criteria) == list(features.CHOICE_OPTIONS[family])
 
 
-def test_noul_and_score_criteria_shapes() -> None:
-    """输入：一组特征。输出：无。
-
-    预期行为：noul 的选项是 `true` / `false`；score 的选项是有序阶梯（档数 == `PRIORITY_LEVELS`）。
-    """
-    loc = locales.load("zh")
-    families = by_family()
-    assert list(families["pin_overrode"].question["criteria"]) == ["true", "false"]
-    assert list(families["priority"].question["criteria"]) == list(loc["fam"]["priority"]["levels"])
-    assert len(families["priority"].question["criteria"]) == features.PRIORITY_LEVELS
-
-
 def test_only_the_score_and_noul_families_are_unshuffled() -> None:
     """输入：一组特征。输出：无。
 

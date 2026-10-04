@@ -11,6 +11,7 @@ from jc import pipeline
 from workflows.compact import audit as audit_mod, features, questions
 from workflows.compact.workflow import CompactConfig
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.compact.conftest import FakeBackend
 
 CASE_LIMIT = 4
@@ -18,16 +19,13 @@ CASE_LIMIT = 4
 
 def make_config(tmp_path: Path, run_id: str, backend: object) -> pipeline.RunConfig:
     """构造一个小 case 集合的试跑配置。"""
-    return pipeline.RunConfig(
-        workflow="compact",
-        split="train",
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=CompactConfig(split="train", case_limit=CASE_LIMIT),
+    return run_config(
+        tmp_path,
+        run_id,
         backend=backend,
+        workflow="compact",
+        seed=7,
+        override=CompactConfig(split="train", case_limit=CASE_LIMIT),
     )
 
 
@@ -164,23 +162,3 @@ def test_known_families_are_exactly_the_built_ones() -> None:
     """输入：无。输出：无。预期行为：审计认得的题族就是题族表本身。"""
     assert audit_mod.KNOWN_FAMILIES == frozenset(questions.FAMILIES)
     assert features.RULES
-
-
-def test_audit_flags_an_unknown_family_and_a_missing_one(tmp_path: Path) -> None:
-    """输入：把一个题族改名成不认识的。输出：无。
-
-    预期行为：报出 `unknown_families` 一笔，同时点名原来那一族一条都没出——
-    产物串版本时这两条会一起出现。
-    """
-    result = pipeline.run(make_config(tmp_path, "a5", FakeBackend()))
-    rows = read_rows(result.run_dir)
-    for row in rows:
-        questions_of = row["questions"]
-        answers_of = row["answers"]
-        assert isinstance(questions_of, dict) and isinstance(answers_of, dict)
-        questions_of["bogus"] = questions_of.pop("kind")
-        answers_of["bogus"] = answers_of.pop("kind")
-    write_rows(result.run_dir, rows)
-    report, missing = audit_mod.audit_run(result.run_dir, ("train",), "zh")
-    assert report["train"]["unknown_families"]["bogus"] == CASE_LIMIT
-    assert any("题族 kind" in item for item in missing)

@@ -19,8 +19,6 @@ from tests.workflows.posttriage.conftest import (
 from workflows.posttriage import features, judges, locales, render
 from workflows.posttriage.features import PostTriageCase
 
-#: 全空间 32 组 case。
-CASES = features.build_cases(512)
 
 #: 一个普通 case：命中两条、没有诱饵。
 CASE = PostTriageCase("S1+S3", features.DECOY_NONE)

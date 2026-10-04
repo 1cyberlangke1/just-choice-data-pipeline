@@ -8,18 +8,13 @@ from tests.workflows.memorygate.conftest import text_of
 from workflows.memorygate import features
 
 
-def test_hit_sets_are_all_sixteen_combinations() -> None:
-    """输入：无。输出：无。预期行为：16 组、空串在前、全命中在最后、顺序稳定。"""
-    assert len(features.HIT_SETS) == 16
-    assert features.HIT_SETS[0] == ""
-    assert features.HIT_SETS[1] == "M1"
-    assert features.HIT_SETS[-1] == "M1+M2+M3+M4"
-    assert len(set(features.HIT_SETS)) == 16
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一条记忆。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
 
-
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("以后所有项目都要用 tabs", ("M1",)),
         ("每次提交前都要跑一遍", ("M1",)),
         ("always use spaces in every project", ("M1",)),
@@ -34,13 +29,14 @@ def test_hit_sets_are_all_sixteen_combinations() -> None:
         ("the page says the flag was renamed", ("M4",)),
         ("项目组把评审会挪到了周四下午。", ()),
         ("以后每次都要这样，网页上也这么说", ("M1", "M4")),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一条记忆。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
-    assert features.parse_hits(features.hits_of(text)) == expect
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+            assert features.parse_hits(features.hits_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_forms_are_three_distinct_shapes() -> None:

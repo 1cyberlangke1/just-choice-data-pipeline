@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from workflows.modelroute import features, locales, questions
 from workflows.modelroute.judges import TraceDraft
 
@@ -122,12 +120,3 @@ def test_meta_placeholders_render() -> None:
         assert str(meta["none_mark"]).strip()
 
 
-def test_unknown_locale_reports_available() -> None:
-    """输入：不存在的语言。输出：无。预期行为：报错里列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="zh"):
-        locales.load("xx")
-
-
-def test_available_lists_both_shipped_languages() -> None:
-    """输入：无。输出：无。预期行为：随仓库分发的两种语言都在。"""
-    assert locales.available() == ["en", "zh"]

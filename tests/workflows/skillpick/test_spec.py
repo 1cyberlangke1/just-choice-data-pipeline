@@ -223,22 +223,6 @@ def test_sample_spec_carries_the_derived_truth() -> None:
     assert orphan.allowed is False and orphan.conflicts is False
 
 
-def test_spec_to_dict_is_json_shaped() -> None:
-    """输入：一条规格。输出：无。预期行为：摘要里的每一项都能直接进 manifest。"""
-    payload = sp.spec_to_dict(_make_spec())
-    assert set(payload) == {
-        "case",
-        "unseen_dims",
-        "request_id",
-        "target_slot",
-        "target_entry",
-        "inuse_tag",
-        "allowed",
-        "conflicts",
-        "rows",
-    }
-    assert len(payload["rows"]) == len(sp.CATALOG)
-    assert isinstance(payload["unseen_dims"], list)
 
 
 def test_row_helpers() -> None:

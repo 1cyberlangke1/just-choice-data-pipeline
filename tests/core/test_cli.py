@@ -240,6 +240,59 @@ def test_gen_accepts_repeated_locales_and_builds_the_backend(
     assert config.backend.providers == ["fake"]
 
 
+def test_gen_reads_the_key_from_an_env_file_without_touching_the_process_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """给了 `--env-file` 时 key 只从文件读进内存——进程环境里一个变量都不加。
+
+    输入：一份后端配置 + 一份 dotenv 文件（同名的进程环境变量**故意删掉**）。输出：无。
+    预期行为：装配出的后端照样有那家 provider（说明 key 真从文件读到了），而且
+    `os.environ` 里始终没有那个变量——「key 不落环境变量」那条规矩的机器可查版。
+    """
+    seen: list[pipeline.RunConfig] = []
+    monkeypatch.setattr(
+        pipeline, "run", lambda config: seen.append(config) or pipeline.RunResult(run_dir=tmp_path)
+    )
+    monkeypatch.setattr(
+        "jc.backend.llm.probe_capabilities",
+        lambda **kwargs: BackendCapabilities(json_schema=True),
+    )
+    monkeypatch.delenv("JC_ENV_FILE_KEYS", raising=False)
+    config_path = tmp_path / "backends.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[[provider]]",
+                'name = "fake"',
+                'base_url = "https://example.test/v1"',
+                'model = "m"',
+                'keys_env = "JC_ENV_FILE_KEYS"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    keys_path = tmp_path / "keys.env"
+    keys_path.write_text('JC_ENV_FILE_KEYS="k1,k2"\n', encoding="utf-8")
+    code = cli.main(
+        [
+            "gen",
+            "--workflow",
+            "mail",
+            "--backend-config",
+            str(config_path),
+            "--env-file",
+            str(keys_path),
+            "--out",
+            str(tmp_path),
+        ]
+    )
+    assert code == 0
+    assert seen[0].backend is not None
+    assert seen[0].backend.providers == ["fake"]
+    assert "JC_ENV_FILE_KEYS" not in os.environ
+
+
 def test_unknown_workflow_is_reported_in_plain_language() -> None:
     """名字写错时报人话并列出**真实**已注册的 workflow，不静默跑空。
 

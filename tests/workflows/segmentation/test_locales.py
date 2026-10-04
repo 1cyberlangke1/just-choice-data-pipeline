@@ -105,14 +105,3 @@ def test_both_languages_define_the_same_families() -> None:
     assert set(zh["fam"]["route"]["opt"]) == set(en["fam"]["route"]["opt"])
     assert set(zh["state"]["rules"]) == set(en["state"]["rules"])
 
-
-def test_unknown_language_lists_the_available_ones() -> None:
-    """输入：不存在的语言。输出：无。预期行为：抛 FileNotFoundError 并列出可用语言。"""
-    with pytest.raises(FileNotFoundError, match="en, zh"):
-        locales.load("nope")
-
-
-def test_pick_wraps_around() -> None:
-    """输入：候选列表与越界编号。输出：无。预期行为：回绕取模。"""
-    assert locales.pick(["甲", "乙"], 0) == "甲"
-    assert locales.pick(["甲", "乙"], 3) == "乙"

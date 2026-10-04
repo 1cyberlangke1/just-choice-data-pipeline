@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from jc.jsontypes import JsonValue
 
 from .features import Labels, LintCase, LintPlan, label_for
 
@@ -43,14 +42,3 @@ class LintSpec:
     def trace_task_id(self) -> str:
         """输入：无。输出：反解（判别器）任务的后端任务 id。"""
         return f"lint-{self.split}-{self.seq:07d}-trace"
-
-
-def spec_to_dict(spec: LintSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的字典（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.as_dict(),
-        "phrasing": spec.phrasing,
-        "split": spec.split,
-        "seq": spec.seq,
-        "hit_rows": list(spec.plan.hit_rows),
-    }

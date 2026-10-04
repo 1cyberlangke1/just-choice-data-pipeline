@@ -78,7 +78,6 @@ CD_SETS: Final[dict[str, tuple[int, ...]]] = {
     "c1": (0, 1, 2, 0, 1, 2),
     "c2": (0, 1, 2, 2, 0, 1),
 }
-CD_GROUPS: Final[tuple[str, ...]] = tuple(CD_SETS)
 
 # ---------- 二十四个局面 ----------
 
@@ -497,21 +496,3 @@ def sample_spec(case: SimCase, split: str, seq: int, phrasing: int, rng: random.
         best_slot=best_slot(board, case.layout),
         cost_level=cost_level(board),
     )
-
-
-def spec_to_dict(spec: SimSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.describe(),
-        "unseen_dims": list(spec.case.unseen_dims()),
-        "request_id": spec.request_id,
-        "resources": spec.resources,
-        "turn": spec.turn,
-        "haul": spec.haul,
-        "done": spec.done,
-        "best_slot": spec.best_slot,
-        "cost_level": spec.cost_level,
-        "legal": list(spec.legal),
-        "gains": list(spec.gains),
-        "rows": [row.describe() for row in spec.rows],
-    }

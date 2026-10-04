@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import random
 from collections import Counter
 from itertools import pairwise
@@ -111,6 +110,8 @@ def test_build_cases_is_stable_and_filtered() -> None:
     assert all(sp.compatible(case) for case in first)
     assert len({case.describe() for case in first}) == len(first)
     assert len(first) > 100
+    # 默认取值表被悄悄改窄不会报错，只会让默认数据集少一档会期数——所以在这里钉死。
+    assert {case.meetings for case in first} == {2, 3, 4}
 
 
 def test_ood_only_keeps_exactly_the_unseen_values() -> None:
@@ -242,17 +243,6 @@ def test_text_of_raises_before_render() -> None:
         spec.text_of("m1")
 
 
-def test_spec_to_dict_is_json_serializable(make_spec: object) -> None:
-    """输入：一份渲染过的规格。输出：字典。
-
-    预期行为：能直接 `json.dumps`（manifest 与调试要用），且带上骨架与写好的文本。
-    """
-    spec = make_spec(9)
-    payload = sp.spec_to_dict(spec)
-    assert json.loads(json.dumps(payload, ensure_ascii=False))["meetings"]
-    assert len(payload["meetings"]) == spec.case.meetings
-    assert set(payload["written"]) == set(spec.slot_names())
-    assert payload["weekday"] == spec.weekday
 
 
 def test_case_helpers() -> None:

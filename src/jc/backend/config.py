@@ -11,6 +11,7 @@ from __future__ import annotations
 from jc.jsontypes import JsonValue
 
 import os
+import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -188,3 +189,45 @@ def resolve_all_keys(
 ) -> tuple[tuple[str, ...], ...]:
     """输入：整份配置、环境变量映射。输出：与 `config.providers` 一一对应的 key 元组。"""
     return tuple(resolve_keys(p, env) for p in config.providers)
+
+
+#: `KEY=VALUE` 里键名允许的形状（与 shell 的标识符一致）。
+_ENV_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def read_env_file(path: str | Path) -> dict[str, str]:
+    """输入：dotenv 风格文件的路径。输出：{变量名: 值}。
+
+    预期行为：只认 `KEY=VALUE` 这一种行——空行与 `#` 开头的整行注释跳过；行首可有 `export `；
+    值两侧成对的单 / 双引号剥掉（引号里的 `#` 不当注释）；不带引号的值里，空白之后的 `#`
+    起注释。坏行报人话并点**行号**，但**绝不回显那一行的内容**——那一行可能就是一串 key。
+
+    为什么要有：`keys_env` 说的是「从哪个变量读 key」，而「把 key 写进进程环境」这件事本身
+    是有代价的（子进程、崩溃转储、`env` 输出都会带上它）。这个函数只**读文件、返回字典**，
+    不碰 `os.environ`：调用方（`jc gen --env-file`）拿它去喂 `build_backend(env=...)`，
+    凭证就只在内存里过一手。
+    """
+    target = Path(path)
+    if not target.is_file():
+        # 人话：`jc gen` 的入口只把 KeyError / FileNotFoundError 转成一行提示，别的异常照抛。
+        raise FileNotFoundError(f"环境文件不存在：{target}")
+    text = target.read_text(encoding="utf-8")
+    out: dict[str, str] = {}
+    for number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        key, sep, value = line.partition("=")
+        if not sep or not _ENV_KEY.fullmatch(key.strip()):
+            raise ValueError(
+                f"{path} 第 {number} 行不是 KEY=VALUE 形式（内容不回显：它可能是凭证）"
+            )
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        else:
+            value = re.split(r"\s#", value, maxsplit=1)[0].strip()
+        out[key.strip()] = value
+    return out

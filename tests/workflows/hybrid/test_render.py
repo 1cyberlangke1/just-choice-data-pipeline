@@ -269,9 +269,16 @@ def test_check_draft_rejects_a_non_object_meeting(make_spec: object) -> None:
         render.check_draft(spec, loc, data)
 
 
-@pytest.mark.parametrize(
-    ("text", "keyword"),
-    [
+def test_text_problems_catch_every_leak() -> None:
+    """输入：各种不干净的文本。输出：问题列表。
+
+    预期行为：空 / 时刻 / 日期 / 星期 / 会议室名 / 竖线都要点名，
+    理由里带上具体片段方便排查。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, keyword in [
         ("", "是空的"),
         ("下午 3 点的评审", "夹带了时刻或日期"),
         ("9 月 3 日的评审", "夹带了时刻或日期"),
@@ -279,16 +286,13 @@ def test_check_draft_rejects_a_non_object_meeting(make_spec: object) -> None:
         ("星期三的评审", "夹带了星期"),
         ("在青松厅开会", "夹带了会议室名"),
         ("标题|带竖线", "有竖线"),
-    ],
-)
-def test_text_problems_catch_every_leak(text: str, keyword: str) -> None:
-    """输入：各种不干净的文本。输出：问题列表。
-
-    预期行为：空 / 时刻 / 日期 / 星期 / 会议室名 / 竖线都要点名，
-    理由里带上具体片段方便排查。
-    """
-    problems = render.text_problems(text, "测试")
-    assert problems and any(keyword in item for item in problems)
+    ]:
+        try:
+            problems = render.text_problems(text, "测试")
+            assert problems and any(keyword in item for item in problems)
+        except AssertionError as exc:
+            bad.append(f"{(text, keyword)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_text_problems_accepts_a_clean_text() -> None:

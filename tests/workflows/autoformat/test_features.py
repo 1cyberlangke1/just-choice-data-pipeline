@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from workflows.autoformat import features, locales, parse
 from workflows.autoformat.features import (
@@ -111,9 +110,13 @@ def test_ood_only_keeps_exactly_the_cases_with_an_unseen_value() -> None:
     assert not (set(ood) & set(id_side))
 
 
-@pytest.mark.parametrize(
-    ("case", "want"),
-    [
+def test_unseen_dims_points_at_exactly_the_held_out_values() -> None:
+    """输入：几种组合。输出：无。预期行为：四个留出取值各点名自己的维度，见过的取值一个都不点名。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for case, want in [
         (features.DocCase("build", 64, "plain", "na", "na"), ()),
         (features.DocCase("incident", 64, "plain", "na", "na"), ("topic",)),
         (features.DocCase("build", 56, "plain", "na", "na"), ("wrap",)),
@@ -123,13 +126,12 @@ def test_ood_only_keeps_exactly_the_cases_with_an_unseen_value() -> None:
             features.DocCase("migration", 56, "mixed", "tip", "container"),
             ("topic", "wrap", "variant", "code_family"),
         ),
-    ],
-)
-def test_unseen_dims_points_at_exactly_the_held_out_values(
-    case: features.DocCase, want: tuple[str, ...]
-) -> None:
-    """输入：几种组合。输出：无。预期行为：四个留出取值各点名自己的维度，见过的取值一个都不点名。"""
-    assert case.unseen_dims() == want
+    ]:
+        try:
+            assert case.unseen_dims() == want
+        except AssertionError as exc:
+            bad.append(f"{(case, want)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_material_of_is_stable_and_distinguishes_cases() -> None:
@@ -152,37 +154,39 @@ def test_build_plan_is_reproducible_with_a_fixed_skeleton() -> None:
     assert plan.kinds()[-1] == KIND_PARAGRAPH
 
 
-@pytest.mark.parametrize(
-    ("shape", "needs", "forbids"),
-    [
+def test_each_shape_produces_exactly_its_own_blocks() -> None:
+    """输入：每种形状 × 它名下的全部组合。输出：无。
+
+    预期行为：该形状该有的块一定在、不该有的块一定不在；列表项数落在预算区间里。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for shape, needs, forbids in [
         ("plain", (), (KIND_LIST_ITEM, KIND_CODE, KIND_QUOTE, KIND_CALLOUT)),
         ("list", (KIND_LIST_ITEM,), (KIND_CODE, KIND_QUOTE, KIND_CALLOUT)),
         ("code", (KIND_CODE,), (KIND_LIST_ITEM, KIND_QUOTE, KIND_CALLOUT)),
         ("quote", (KIND_QUOTE,), (KIND_LIST_ITEM, KIND_CODE, KIND_CALLOUT)),
         ("callout", (KIND_CALLOUT,), (KIND_LIST_ITEM, KIND_CODE, KIND_QUOTE)),
         ("mixed", (KIND_LIST_ITEM, KIND_CODE, KIND_QUOTE, KIND_CALLOUT), ()),
-    ],
-)
-def test_each_shape_produces_exactly_its_own_blocks(
-    shape: str, needs: tuple[str, ...], forbids: tuple[str, ...]
-) -> None:
-    """输入：每种形状 × 它名下的全部组合。输出：无。
-
-    预期行为：该形状该有的块一定在、不该有的块一定不在；列表项数落在预算区间里。
-    """
-    cases = [case for case in ALL_CASES if case.shape == shape]
-    assert cases
-    for case in cases:
-        kinds = features.build_plan(case).kinds()
-        for kind in needs:
-            assert kind in kinds, case.describe()
-        for kind in forbids:
-            assert kind not in kinds, case.describe()
-        items = kinds.count(KIND_LIST_ITEM)
-        if KIND_LIST_ITEM in needs:
-            assert features.MIN_LIST_ITEMS <= items <= features.MAX_LIST_ITEMS, case.describe()
-        else:
-            assert items == 0, case.describe()
+    ]:
+        try:
+            cases = [case for case in ALL_CASES if case.shape == shape]
+            assert cases
+            for case in cases:
+                kinds = features.build_plan(case).kinds()
+                for kind in needs:
+                    assert kind in kinds, case.describe()
+                for kind in forbids:
+                    assert kind not in kinds, case.describe()
+                items = kinds.count(KIND_LIST_ITEM)
+                if KIND_LIST_ITEM in needs:
+                    assert features.MIN_LIST_ITEMS <= items <= features.MAX_LIST_ITEMS, case.describe()
+                else:
+                    assert items == 0, case.describe()
+        except AssertionError as exc:
+            bad.append(f"{(shape, needs, forbids)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_list_items_share_one_list_and_the_flag_follows_the_variant() -> None:

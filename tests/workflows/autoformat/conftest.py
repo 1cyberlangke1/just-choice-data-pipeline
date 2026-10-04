@@ -15,8 +15,6 @@ from __future__ import annotations
 import re
 from typing import Final
 
-import pytest
-
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
 from tests.workflows import _fakes
@@ -135,6 +133,8 @@ class FakeBackend(_fakes.ScriptedBackend):
     - `drop_text`：少写一块（验「段数与计划对不上」）；
     - `heading_punct`：标题末尾加句号（验标题的结尾标点）；
     - `short_paragraph`：把段落压到 4 个字（验长度区间）；
+    - `short_paragraph_first`：**只在第一次**把段落压到 4 个字，重写就写对（验「带着失败理由
+      重写」真的改对了——渲染期先拿 `check_draft` 的原话回灌，再校验一次）；
     - `callout_wrong_word`：提示框改用别的种类的关键词开头（验提示框种类）；
     - `code_wrong_tool`：命令行块换成不以工具名开头（验代码块判据）；
     - `marker_leak`：标题前面加 `# `（验 `hygiene` 抓排版标记残留）；
@@ -149,6 +149,7 @@ class FakeBackend(_fakes.ScriptedBackend):
         drop_text: bool = False,
         heading_punct: bool = False,
         short_paragraph: bool = False,
+        short_paragraph_first: bool = False,
         callout_wrong_word: bool = False,
         code_wrong_tool: bool = False,
         marker_leak: bool = False,
@@ -160,25 +161,38 @@ class FakeBackend(_fakes.ScriptedBackend):
         self.drop_text = drop_text
         self.heading_punct = heading_punct
         self.short_paragraph = short_paragraph
+        self.short_paragraph_first = short_paragraph_first
         self.callout_wrong_word = callout_wrong_word
         self.code_wrong_tool = code_wrong_tool
         self.marker_leak = marker_leak
         self.trace_lies = trace_lies
         self.trace_raises = trace_raises
         self.tasks: list[str] = []
+        self.prompts: list[str] = []
+        self.seen: dict[str, int] = {}
 
-    def texts(self, plan: DocPlan, loc: dict[str, JsonValue]) -> list[str]:
-        """输入：块计划、语言字典。输出：按开关写歪之后的各块文字。"""
-        out = [self._bend(slot, text, loc) for slot, text in zip(plan.slots, texts_for(plan, loc), strict=True)]
+    def texts(self, plan: DocPlan, loc: dict[str, JsonValue], *, short: bool | None = None) -> list[str]:
+        """输入：块计划、语言字典、可选的「这次要不要把段落压短」覆盖。输出：写歪之后的各块文字。
+
+        预期行为：`short` 不传就用 `short_paragraph` 开关；传了就按它——「第一次写歪、第二次写对」
+        的夹具靠这个覆盖。
+        """
+        out = [
+            self._bend(slot, text, loc, short=short)
+            for slot, text in zip(plan.slots, texts_for(plan, loc), strict=True)
+        ]
         if self.drop_text and out:
             out.pop()
         return out
 
-    def _bend(self, slot: features.Slot, text: str, loc: dict[str, JsonValue]) -> str:
-        """输入：槽位、忠实文案、语言字典。输出：按开关改坏之后的文案。"""
+    def _bend(
+        self, slot: features.Slot, text: str, loc: dict[str, JsonValue], *, short: bool | None = None
+    ) -> str:
+        """输入：槽位、忠实文案、语言字典、可选的压短覆盖。输出：按开关改坏之后的文案。"""
+        bend_short = self.short_paragraph if short is None else short
         if self.heading_punct and slot.kind == features.KIND_HEADING:
             return text + "。"
-        if self.short_paragraph and slot.kind == features.KIND_PARAGRAPH:
+        if bend_short and slot.kind == features.KIND_PARAGRAPH:
             return "太短了。"
         if self.marker_leak and slot.kind == features.KIND_HEADING:
             return "# " + text
@@ -196,13 +210,22 @@ class FakeBackend(_fakes.ScriptedBackend):
         return text
 
     def generate(self, task: object) -> Draft:
-        """输入：`GenerationTask`。输出：草稿。预期行为：按任务现造，不发网络。"""
+        """输入：`GenerationTask`。输出：草稿。预期行为：按任务现造，不发网络。
+
+        同一个 task_id 可以被问两次（渲染期带着失败理由重写），`seen` 记这是第几次：
+        `short_paragraph_first` 只在**第一次**把段落压短。提示词逐次留档（`prompts`），
+        测试据此确认第二次真的带上了 `check_draft` 的原话。
+        """
         task_id = str(getattr(task, "task_id"))
         self.tasks.append(task_id)
+        self.prompts.append(str(getattr(task, "prompt", "")))
         if task_id.endswith("-trace"):
             return self._trace(task)
         plan = plan_of(task)
-        texts = self.texts(plan, locales.load(self.locale))
+        seen = self.seen.get(task_id, 0)
+        self.seen[task_id] = seen + 1
+        short = (seen == 0) if self.short_paragraph_first else None
+        texts = self.texts(plan, locales.load(self.locale), short=short)
         return _draft({"texts": texts}, f"texts={len(texts)}")
 
     def _trace(self, task: object) -> Draft:
@@ -245,13 +268,7 @@ def filled(case: DocCase, lang: str = "zh") -> DocSpec:
     return spec
 
 
-@pytest.fixture
-def backend() -> FakeBackend:
-    """输入：无。输出：一个完全兑现计划的假后端。"""
-    return FakeBackend()
+backend = _fakes.instance_fixture(FakeBackend)
 
 
-@pytest.fixture
-def fake_backend() -> type[FakeBackend]:
-    """工厂夹具：`fake_backend(trace_lies=True)` 造一个假后端。"""
-    return FakeBackend
+fake_backend = _fakes.factory_fixture(FakeBackend)

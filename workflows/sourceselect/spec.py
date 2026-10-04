@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from jc.jsontypes import JsonValue
-from jc.spec_dict import case_spec_dict
 
 from .features import SourceCase, SourceLabels, SourcePlan, label_for, plan_for
 
@@ -50,8 +48,3 @@ class SourceSpec:
     def trace_task_id(self) -> str:
         """输入：无。输出：反解（判别器）任务的后端任务 id。"""
         return f"sourceselect-{self.split}-{self.seq:07d}-trace"
-
-
-def spec_to_dict(spec: SourceSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的字典（写进 manifest 与调试，不进样本行）。"""
-    return case_spec_dict(case=spec.case, phrasing=spec.phrasing, split=spec.split, seq=spec.seq)

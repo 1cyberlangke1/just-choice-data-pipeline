@@ -16,6 +16,7 @@ from pathlib import Path
 
 from jc import pipeline, workflow as workflow_mod
 from workflows.maze import audit, grid, locales, spec as maze_spec
+from tests.workflows._scaffold import run_config
 
 
 def audit_config() -> maze_spec.MazeConfig:
@@ -38,16 +39,12 @@ def audit_config() -> maze_spec.MazeConfig:
 
 def make_config(tmp_path: Path, run_id: str) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用极小迷宫配置试跑的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
         workflow="maze",
-        split="train",
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        concurrency=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=audit_config(),
+        seed=7,
+        override=audit_config(),
     )
 
 

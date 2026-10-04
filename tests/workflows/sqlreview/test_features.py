@@ -2,24 +2,18 @@
 
 from __future__ import annotations
 
-import pytest
 
 from tests.workflows.sqlreview.conftest import packet_of
 from workflows.sqlreview import features
 
 
-def test_tag_ids_and_hit_sets_are_complete() -> None:
-    """输入：无。输出：无。预期行为：四条判据、16 组命中组合、顺序稳定。"""
-    assert features.TAG_IDS == ("Q1", "Q2", "Q3", "Q4")
-    assert len(features.HIT_SETS) == 16
-    assert features.HIT_SETS[0] == ""
-    assert features.HIT_SETS[-1] == "Q1+Q2+Q3+Q4"
-    assert len(set(features.HIT_SETS)) == 16
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一屏评审记录里的一行。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
 
-
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("statement: DELETE FROM sessions;", ("Q1",)),
         ("statement: update orders set paid = true;", ("Q1",)),
         ("statement: UPDATE orders SET status = 'paid' WHERE id = 42;", ()),
@@ -46,13 +40,14 @@ def test_tag_ids_and_hit_sets_are_complete() -> None:
         ("note: DROP TABLE orders;", ()),
         ("statement: 这条语句没有 WHERE，也无所谓", ()),
         ("ddl: 结构变更那一条写在别处", ()),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一屏评审记录里的一行。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
-    assert features.parse_hits(features.hits_of(text)) == expect
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+            assert features.parse_hits(features.hits_of(text)) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_key_lines_are_the_four_structure_keys() -> None:
@@ -127,16 +122,3 @@ def test_case_describe_and_fingerprint() -> None:
     assert case.fingerprint() == "hits=|workload=oltp"
     assert case.tags() == ()
     assert features.parse_hits("") == ()
-
-
-def test_act_level_swallows_everything_above_the_last_bucket() -> None:
-    """输入：0~6 条命中。输出：无。预期行为：最后一档吃掉所有更大的数，档位名按 `ACTS` 取。"""
-    assert [features.act_level(count) for count in range(6)] == [
-        "apply",
-        "explain_first",
-        "dba_review",
-        "reject",
-        "reject",
-        "reject",
-    ]
-    assert features.ACTS == ("apply", "explain_first", "dba_review", "reject")

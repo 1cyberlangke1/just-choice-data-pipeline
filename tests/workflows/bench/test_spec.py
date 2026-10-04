@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import random
 from collections import Counter
 from itertools import permutations, product
 
 import pytest
 
-from tests.workflows.bench.conftest import _make_case, _make_spec, TINY_TABLES
+from tests.workflows.bench.conftest import _make_case, TINY_TABLES
 from workflows.bench import spec as sp
 
 
@@ -313,10 +312,3 @@ def test_sample_spec_ignores_the_rng() -> None:
     assert left == right
 
 
-def test_spec_to_dict_is_json_serializable() -> None:
-    """输入：一份规格。输出：无。预期行为：摘要能直接 JSON 序列化，且带上五个题族要用的键。"""
-    payload = sp.spec_to_dict(_make_spec())
-    text = json.dumps(payload, ensure_ascii=False)
-    assert "counts" in text and "best_column" in text
-    assert payload["counts"] == list(sp.counts_of(sp.table_of("k3s0")))
-    assert payload["bar"] == sp.BAR

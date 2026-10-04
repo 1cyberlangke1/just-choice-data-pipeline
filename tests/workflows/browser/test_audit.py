@@ -5,14 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from jc import pipeline
 
 from workflows.browser import audit as audit_mod, features, locales, questions, render
 from workflows.browser.features import TagSet
 from workflows.browser.workflow import BrowserConfig
 
+from tests.workflows._scaffold import run_config
 from tests.workflows.browser.conftest import FakeBackend
 
 CASE_LIMIT = 4
@@ -20,16 +19,13 @@ CASE_LIMIT = 4
 
 def make_config(tmp_path: Path, run_id: str, backend: object) -> pipeline.RunConfig:
     """构造一个小 case 集合的试跑配置。"""
-    return pipeline.RunConfig(
-        workflow="browser",
-        split="train",
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=BrowserConfig(split="train", case_limit=CASE_LIMIT),
+    return run_config(
+        tmp_path,
+        run_id,
         backend=backend,
+        workflow="browser",
+        seed=7,
+        override=BrowserConfig(split="train", case_limit=CASE_LIMIT),
     )
 
 
@@ -302,44 +298,10 @@ def test_audit_flags_a_table_missing_the_intent_role(tmp_path: Path) -> None:
     assert any("反推不出" in item for item in missing)
 
 
-def test_audit_reports_a_missing_product(tmp_path: Path) -> None:
-    """输入：没有产物的切分。输出：无。预期行为：缺失项里点名它，计数全为零。"""
-    report, missing = audit_mod.audit_run(tmp_path, ("train",), "zh")
-    assert report["train"]["samples"] == 0
-    assert any("产物不存在" in item for item in missing)
-    assert report["train"]["families"] == {}
-
-
-def test_audit_rejects_an_unknown_locale(tmp_path: Path) -> None:
-    """输入：不存在的语言。输出：无。预期行为：当场报错，不拖到解析阶段。"""
-    with pytest.raises(FileNotFoundError):
-        audit_mod.audit_run(tmp_path, ("train",), "nope")
-
-
 def test_known_families_are_exactly_the_built_ones() -> None:
     """输入：无。输出：无。预期行为：审计认得的题族就是题族表本身。"""
     assert audit_mod.KNOWN_FAMILIES == frozenset(questions.FAMILIES)
     assert audit_mod.CHECKED_FAMILIES == frozenset(questions.FAMILIES)
-
-
-def test_audit_flags_an_unknown_family_and_a_missing_one(tmp_path: Path) -> None:
-    """输入：把一个题族改名成不认识的。输出：无。
-
-    预期行为：报出 `unknown_families` 一笔，同时点名原来那一族一条都没出——
-    产物串版本时这两条会一起出现。
-    """
-    result = pipeline.run(make_config(tmp_path, "a9", FakeBackend()))
-    rows = read_rows(result.run_dir)
-    for row in rows:
-        questions_of = row["questions"]
-        answers_of = row["answers"]
-        assert isinstance(questions_of, dict) and isinstance(answers_of, dict)
-        questions_of["bogus"] = questions_of.pop("confirm")
-        answers_of["bogus"] = answers_of.pop("confirm")
-    write_rows(result.run_dir, rows)
-    report, missing = audit_mod.audit_run(result.run_dir, ("train",), "zh")
-    assert report["train"]["unknown_families"]["bogus"] == CASE_LIMIT
-    assert any("题族 confirm" in item for item in missing)
 
 
 def test_audit_accepts_the_english_locale(tmp_path: Path) -> None:

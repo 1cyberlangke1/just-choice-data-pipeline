@@ -11,7 +11,6 @@
 """
 
 from __future__ import annotations
-from jc.jsontypes import JsonValue
 
 import random
 from dataclasses import dataclass
@@ -46,7 +45,6 @@ SYMBOL_SETS: Final[dict[str, tuple[str, str]]] = {
 # 选项是否写明「走向的方块是什么」
 OPTION_PLAIN: Final[str] = "plain"
 OPTION_CELL: Final[str] = "cell"
-OPTION_DETAILS: Final[tuple[str, ...]] = (OPTION_PLAIN, OPTION_CELL)
 
 # path_length 题族的分桶区间（含端点）；语言文件里的等级文案与这里一一对应。
 # 用代码而非文案保存区间，是因为采样时要按目标桶去挑起止点（先定答案再挑输入）。
@@ -189,11 +187,6 @@ class MazeSpec:
     def path(self) -> list[int] | None:
         """S→E 的最短路（完美迷宫下唯一）；出口被砍断时返回 None。"""
         return grid.shortest_path(self.mask, self.rows, self.cols, self.start, self.exit)
-
-    def path_cells(self) -> set[int]:
-        """S→E 最优路径上的格子集合（不可达时为空集）。"""
-        path = self.path()
-        return set(path) if path else set()
 
     def dist_from_exit(self) -> list[int]:
         """各格到出口 E 的最短步数（-1 = 不可达）。"""
@@ -569,31 +562,3 @@ def sample_spec(
         families=families,
         phrasing=tuple(rng.choice(pool) for _ in families),
     )
-
-
-def spec_to_dict(spec: MazeSpec) -> dict[str, JsonValue]:
-    """把 spec 转成可 JSON 序列化的字典（用于 manifest 与调试，不写进样本行）。"""
-    return {
-        "rows": spec.rows,
-        "cols": spec.cols,
-        "algo": spec.algo,
-        "transform": spec.transform,
-        "start": list(grid.rowcol_of(spec.start, spec.cols)),
-        "exit": list(grid.rowcol_of(spec.exit, spec.cols)),
-        "marks": {k: list(grid.rowcol_of(v, spec.cols)) for k, v in spec.marks.items()},
-        "cut": [list(grid.rowcol_of(c, spec.cols)) for c in spec.cut] if spec.cut else None,
-        "braid": spec.braid,
-        "render": {
-            "fmt": spec.render.fmt,
-            "symbols": spec.render.symbols,
-            "mark_trail": spec.render.mark_trail,
-            "history_len": spec.render.history_len,
-            "option_detail": spec.render.option_detail,
-        },
-        "agent": {
-            "moves": list(spec.agent.moves),
-            "deviation": spec.agent.deviation,
-            "current": list(grid.rowcol_of(spec.current(), spec.cols)),
-        },
-        "families": list(spec.families),
-    }

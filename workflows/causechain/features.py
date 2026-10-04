@@ -372,10 +372,6 @@ class CauseLabels:
     probed: str | None
     distractors: tuple[tuple[str, ...], ...]
 
-    def is_root(self, service: str) -> bool:
-        """输入：服务。输出：它是不是这次故障的根因。"""
-        return service == self.root
-
     @property
     def probed_is_root(self) -> bool:
         """输入：无。输出：这次问的那个服务是不是根因。预期行为：探针没落地时给 False。"""

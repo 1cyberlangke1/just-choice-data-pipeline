@@ -26,80 +26,116 @@ CASES: Final[tuple[ReceiptCase, ...]] = (
 )
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_every_case_gets_all_four_families(case: ReceiptCase, lang: str) -> None:
+def test_every_case_gets_all_four_families() -> None:
     """输入：一个 case、一种语言。输出：无。
 
     预期行为：四个题族**每一个 case 上都能出题**——出题条件苛刻的题族（比如只在某几档才有
     唯一解的反向问法）在 10 条的小批量里会一条都出不来，审计当场报「题族一条都没出」。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    items = questions.build(case, locales.load(lang), 0)
-    assert tuple(item.family for item in items) == questions.FAMILIES
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                items = questions.build(case, locales.load(lang), 0)
+                assert tuple(item.family for item in items) == questions.FAMILIES
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_question_types(case: ReceiptCase, lang: str) -> None:
-    """输入：一个 case、一种语言。输出：无。预期行为：cat 是 choice、tier 是 score、其余 noul。"""
-    kinds = {item.family: item.question["type"] for item in questions.build(case, locales.load(lang), 0)}
-    assert kinds == {"cat": "choice", "over": "noul", "tier": "score", "near": "noul"}
+def test_question_types() -> None:
+    """输入：一个 case、一种语言。输出：无。预期行为：cat 是 choice、tier 是 score、其余 noul。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                kinds = {item.family: item.question["type"] for item in questions.build(case, locales.load(lang), 0)}
+                assert kinds == {"cat": "choice", "over": "noul", "tier": "score", "near": "noul"}
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_cat_options_are_the_four_categories(case: ReceiptCase, lang: str) -> None:
+def test_cat_options_are_the_four_categories() -> None:
     """输入：一个 case、一种语言。输出：无。
 
     预期行为：选项就是四个类别名（描述是各自的关键词清单，两两不同），答案是真值那一类——
     选项描述重复时 `_choice` 会当场报错，所以这里顺带把「四个类别的关键词清单互不相同」
     也钉住了。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    loc = locales.load(lang)
-    item = questions.build(case, loc, 0)[0]
-    criteria = item.question["criteria"]
-    assert isinstance(criteria, dict)
-    assert list(criteria) == [render.category_name(loc, cid) for cid in features.CATEGORY_IDS]
-    assert item.answer == render.category_name(loc, case.category)
-    assert list(criteria.values()) == [questions.category_text(loc, cid) for cid in features.CATEGORY_IDS]
-    assert len(set(criteria.values())) == 4
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                loc = locales.load(lang)
+                item = questions.build(case, loc, 0)[0]
+                criteria = item.question["criteria"]
+                assert isinstance(criteria, dict)
+                assert list(criteria) == [render.category_name(loc, cid) for cid in features.CATEGORY_IDS]
+                assert item.answer == render.category_name(loc, case.category)
+                assert list(criteria.values()) == [questions.category_text(loc, cid) for cid in features.CATEGORY_IDS]
+                assert len(set(criteria.values())) == 4
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_over_and_near_answers(case: ReceiptCase, lang: str) -> None:
+def test_over_and_near_answers() -> None:
     """输入：一个 case、一种语言。输出：无。
 
     预期行为：`over` 的答案就是「档位不是 under」，`near` 的答案就是「计划里要诱饵」——
     两族共享同一次注入，但问的是两件事（金额超没超 / 有没有近似说法）。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    labels = features.label_for(case)
-    items = {item.family: item for item in questions.build(case, locales.load(lang), 0)}
-    assert items["over"].answer is labels.over
-    assert items["near"].answer is labels.near
-    for family in ("over", "near"):
-        criteria = items[family].question["criteria"]
-        assert isinstance(criteria, dict)
-        assert sorted(criteria) == ["false", "true"]
-        assert items[family].shuffle is False
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                labels = features.label_for(case)
+                items = {item.family: item for item in questions.build(case, locales.load(lang), 0)}
+                assert items["over"].answer is labels.over
+                assert items["near"].answer is labels.near
+                for family in ("over", "near"):
+                    criteria = items[family].question["criteria"]
+                    assert isinstance(criteria, dict)
+                    assert sorted(criteria) == ["false", "true"]
+                    assert items[family].shuffle is False
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("case", CASES)
-def test_tier_is_a_score_over_the_tier_table(case: ReceiptCase, lang: str) -> None:
+def test_tier_is_a_score_over_the_tier_table() -> None:
     """输入：一个 case、一种语言。输出：无。
 
     预期行为：`tier` 的等级数组就是档位表四档的名字（顺序 = `TIERS`），答案是这个数组的
     下标——score 的答案本来就是一个下标，而档位**本来就是有序的**。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    loc = locales.load(lang)
-    item = {entry.family: entry for entry in questions.build(case, loc, 0)}["tier"]
-    criteria = item.question["criteria"]
-    assert criteria == questions.tier_levels(loc)
-    assert len(criteria) == len(features.TIERS)
-    assert item.answer == questions.tier_index(features.label_for(case).tier)
-    assert 0 <= int(item.answer) < len(features.TIERS)
-    assert item.shuffle is False
+    bad: list[str] = []
+    for lang in LANGS:
+        for case in CASES:
+            try:
+                loc = locales.load(lang)
+                item = {entry.family: entry for entry in questions.build(case, loc, 0)}["tier"]
+                criteria = item.question["criteria"]
+                assert criteria == questions.tier_levels(loc)
+                assert len(criteria) == len(features.TIERS)
+                assert item.answer == questions.tier_index(features.label_for(case).tier)
+                assert 0 <= int(item.answer) < len(features.TIERS)
+                assert item.shuffle is False
+            except AssertionError as exc:
+                bad.append(f"{(lang, case)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", LANGS)

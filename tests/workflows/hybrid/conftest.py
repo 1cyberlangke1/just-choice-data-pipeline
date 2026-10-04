@@ -137,10 +137,7 @@ def _make_spec(seed: int = 5, *, locale: str = "zh", **overrides: object) -> sp.
     return fill_text(spec, locale)
 
 
-@pytest.fixture
-def fake_backend() -> type[FakeBackend]:
-    """工厂夹具：`fake_backend(dirty=True)` 造一个假后端。"""
-    return FakeBackend
+fake_backend = _fakes.factory_fixture(FakeBackend)
 
 
 @pytest.fixture

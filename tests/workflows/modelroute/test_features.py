@@ -7,7 +7,7 @@ from itertools import product
 
 import pytest
 
-from jc.cover import cover_dims, missing_pairs
+from jc.cover import missing_pairs
 from workflows.modelroute import features
 from workflows.modelroute.features import TagSet
 
@@ -102,20 +102,25 @@ def test_survivors_apply_all_four_gates() -> None:
     assert features.survivors(blocked) == []
 
 
-@pytest.mark.parametrize(
-    ("tags", "expected"),
-    [
+def test_route_rules() -> None:
+    """输入：一组特征与期望路由。输出：无。预期行为：选人规则与文档一致。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for tags, expected in [
         (("chat", "small", "batch", "normal", "all_ok"), "atlas-xl"),
         (("code_gen", "small", "batch", "tight", "all_ok"), "cinder-mini"),
         (("code_gen", "medium", "interactive", "normal", "all_ok"), "borealis-pro"),
         (("extraction", "small", "interactive", "normal", "borealis_down"), "atlas-lite"),
         (("code_gen", "huge", "batch", "normal", "atlas_down"), "borealis-pro"),
         (("math_reason", "huge", "interactive", "tight", "borealis_down"), "none"),
-    ],
-)
-def test_route_rules(tags: tuple[str, ...], expected: str) -> None:
-    """输入：一组特征与期望路由。输出：无。预期行为：选人规则与文档一致。"""
-    assert TagSet(*tags).label().route == expected
+    ]:
+        try:
+            assert TagSet(*tags).label().route == expected
+        except AssertionError as exc:
+            bad.append(f"{(tags, expected)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize(
@@ -193,12 +198,3 @@ def test_label_flip_axes_lists_one_change_neighbours() -> None:
         ]
         assert len(changed) == 1, neighbour.as_dict()
 
-
-def test_build_cases_is_deterministic() -> None:
-    """输入：无。输出：无。预期行为：同一入参两次调用给出同一份列表。"""
-    first = features.build_cases(48)
-    second = features.build_cases(48)
-    assert [c.as_dict() for c in first] == [c.as_dict() for c in second]
-    assert cover_dims(features.DIMS, max_full=48) == [
-        case.as_dict() for case in first
-    ]

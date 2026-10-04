@@ -492,23 +492,3 @@ def sample_spec(
         phrasing=phrasing,
         theme=theme,
     )
-
-
-def spec_to_dict(spec: HybridSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.describe(),
-        "unseen_dims": list(spec.case.unseen_dims()),
-        "split": spec.split,
-        "seq": spec.seq,
-        "date": list(spec.date),
-        "weekday": spec.weekday,
-        "meetings": [
-            {"start": item.start, "dur": item.dur, "room": item.room, "lead": item.lead}
-            for item in spec.meetings
-        ],
-        "written": {
-            slot: {"title": text.title, "agenda": text.agenda}
-            for slot, text in spec.written.items()
-        },
-    }

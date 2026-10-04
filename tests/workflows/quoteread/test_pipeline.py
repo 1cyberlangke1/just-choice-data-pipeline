@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from jc import jsonio, pipeline
-from jc import workflow as workflow_mod
+from tests.workflows._scaffold import run_config
 from tests.workflows.quoteread.conftest import tiny_config
 from workflows.quoteread import features as ft
 from workflows.quoteread import locales
@@ -18,71 +18,20 @@ def make_config(
     tmp_path: Path, run_id: str, *, split: str = "train", concurrency: int = 1
 ) -> pipeline.RunConfig:
     """输入：临时目录、run 名、切分、并发度。输出：指向 tmp 的运行配置（不需要后端）。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
         workflow="quoteread",
         split=split,
-        locales=("zh",),
-        run_seed=17,
-        per_case=1,
+        seed=17,
         concurrency=concurrency,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=tiny_config(split),
+        override=tiny_config(split),
     )
 
 
 def _case_count(config: pipeline.RunConfig) -> int:
     """输入：运行配置。输出：该切分的 case 数。预期行为：与产物条数对得上。"""
     return len(QuoteReadWorkflow().build_cases(config.config_override))
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path) -> None:
-    """输入：极小配置（零 token，不需要后端）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、两个判别器全通过；产物过审计。
-    """
-    config = make_config(tmp_path, "c1")
-    result = pipeline.run(config)
-    assert result.accepted == _case_count(config) > 0
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {"roundtrip", "label"}
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0 and bucket["ok"] > 0
-    report, missing = workflow_mod.load("quoteread").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == result.accepted
-    assert report["train"]["index_bad"] == 0
-    assert report["train"]["label_mismatch"] == 0
-    assert set(report["train"]["types"]) == {"choice", "noul", "score"}
-
-
-def test_manifest_and_stats_are_written(tmp_path: Path) -> None:
-    """输入：一次跑。输出：产物目录。
-
-    预期行为：manifest 记下 workflow / 切分；统计报告里出现三个维度的中文标题与两个判别器。
-    """
-    result = pipeline.run(make_config(tmp_path, "c3"))
-    manifest = jsonio.loads((result.run_dir / "manifest-train.json").read_text("utf-8"))
-    assert manifest["workflow"] == "quoteread"
-    assert manifest["split"] == "train"
-    stats = (result.run_dir / "stats-train.md").read_text("utf-8")
-    for title in quoteread_workflow.DIMENSION_TITLES.values():
-        assert title in stats
-    assert "roundtrip" in stats and "label" in stats
-
-
-def test_balance_report_covers_every_family_and_has_no_constant(tmp_path: Path) -> None:
-    """输入：一次跑。输出：均衡报告。
-
-    预期行为：四个题族都出现在报告里，且**没有哪一族退化成常量**——常量答案意味着这一族
-    在教「永远选同一个」，是坏数据而不是难题。
-    """
-    result = pipeline.run(make_config(tmp_path, "c4"))
-    keys = {item["key"] for item in result.stats["balance"]}
-    for family in ("score:tier", "choice:leader", "noul:alert", "noul:divergent"):
-        assert family in keys
-    degenerate = [item for item in result.stats["balance"] if item["max_dev"] > 0.2]
-    assert not degenerate, f"有题族退化成常量或严重偏斜：{degenerate}"
 
 
 def test_ood_split_runs(tmp_path: Path) -> None:

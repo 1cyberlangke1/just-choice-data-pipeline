@@ -68,12 +68,30 @@ def has_passage(mask: tuple[int, ...], cell: int, d: int, rows: int, cols: int) 
 def open_neighbors(
     mask: tuple[int, ...], cell: int, rows: int, cols: int
 ) -> list[tuple[int, int]]:
-    """格子的全部可走方向，返回 [(方向, 邻居索引)]，按方向序号升序。"""
+    """格子的全部可走方向，返回 [(方向, 邻居索引)]，按方向序号升序。
+
+    输入：通路位掩码、格子索引、行列数。
+    输出：[(方向, 邻居索引)]，按方向序号升序。
+    预期行为：只留「有通路且在界内」的方向，越界或没打通的一律不算。
+
+    写法说明（2026-10-04 提速）：原写法每个方向各调一次 `neighbor`，再让 `has_passage`
+    把同一次边界计算又算一遍——一个格子最多 8 次函数调用 + 8 次 `divmod`。这里是 BFS 的
+    内层循环：4000 条 OOD 迷宫上实测 904 万次调用、6773 万次 `neighbor`，是 maze 端到端里
+    最大的一处热点。改成**一次 `divmod` + 直接算**：先看位、再看边界，顺序仍是方向升序，
+    语义逐条不变（`neighbor` 与 `has_passage` 都留着，别处还在用）。
+    """
     out: list[tuple[int, int]] = []
+    bits = mask[cell]
+    if not bits:
+        return out
+    r, c = divmod(cell, cols)
     for d in DIRECTIONS:
-        nxt = neighbor(cell, d, rows, cols)
-        if nxt is not None and has_passage(mask, cell, d, rows, cols):
-            out.append((d, nxt))
+        if not bits >> d & 1:
+            continue
+        dr, dc = DELTAS[d]
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < rows and 0 <= nc < cols:
+            out.append((d, nr * cols + nc))
     return out
 
 

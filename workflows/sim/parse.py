@@ -27,8 +27,6 @@ from .spec import ACTIONS, HAULS, RESOURCES, TURNS
 CELL_FIELDS: Final[tuple[str, ...]] = ("action", "cost", "gain", "cooldown")
 #: 抬头字段名（跨语言必须互不相同，否则合并表有歧义）。
 LABEL_FIELDS: Final[tuple[str, ...]] = ("request", "turn", "resources", "haul")
-#: 抬头三格里**是整数**的那几格（单号是字符串）。
-NUMERIC_LABELS: Final[tuple[str, ...]] = ("turn", "resources", "haul")
 #: 词表名（合并表要逐张做「跨语言不重叠」检查）。
 VOCAB_FIELDS: Final[tuple[str, ...]] = ("action", "cost", "gain", "cooldown")
 #: 三格整数的取值域。

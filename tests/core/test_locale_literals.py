@@ -20,8 +20,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
-
 #: 扫描入口：目录递归扫 `*.py`。
 ROOTS: tuple[str, ...] = ("src", "workflows")
 
@@ -85,16 +83,23 @@ def test_docstring_and_comment_are_ignored() -> None:
     assert literal_load_sites(source) == []
 
 
-@pytest.mark.parametrize("rel", _sources())
-def test_no_literal_locale_load(rel: str) -> None:
-    """输入：一个相对路径。输出：无。
+def test_no_literal_locale_load() -> None:
+    """输入：无（扫 `_sources()` 列出的每个文件）。输出：无。
 
-    预期行为：文件里不许出现 `load("字面量")`；报了就把行号一起说出来，方便直接去改。
+    预期行为：全仓库不许出现 `load("字面量")`；有就把**每一个**违规点聚合在一条断言里
+    （路径 + 行号 + 修法），一次看全。
+
+    为什么不按文件参数化：被测对象是「这个仓库」，文件只是遍历的粒度，不是 485 个各自
+    独立的被测对象；同族的 `test_locale_templates.py` 与 `test_no_any.py` 都是循环写法。
     """
-    if rel in EXEMPT:
-        pytest.skip(EXEMPT[rel])
-    sites = literal_load_sites(Path(rel).read_text(encoding="utf-8"), filename=rel)
-    assert not sites, (
-        f"{rel} 第 {sites} 行把语言写死了——改成从调用方取（`self.locale` / 形参），"
-        "否则另一种语言的样本会解析出空串"
-    )
+    offenders: list[str] = []
+    for rel in _sources():
+        if rel in EXEMPT:
+            continue
+        sites = literal_load_sites(Path(rel).read_text(encoding="utf-8"), filename=rel)
+        if sites:
+            offenders.append(
+                f"{rel} 第 {sites} 行把语言写死了——改成从调用方取（`self.locale` / 形参），"
+                "否则另一种语言的样本会解析出空串"
+            )
+    assert not offenders, "\n".join(offenders)

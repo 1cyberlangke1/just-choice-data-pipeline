@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import random
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import combinations
 from typing import Final
@@ -54,10 +55,40 @@ DECOYS: Final[tuple[str, ...]] = (DECOY_NONE, DECOY_DASHED)
 #: 的第二段只有 2 位）排除在外——只写 `\d+-\d+` 的话，一个日期就能冒充诱饵。
 DECOY_PATTERN: Final[re.Pattern[str]] = re.compile(r"[0-9]{3,4}[-‑][0-9]{3,4}[-‑][0-9]{3,4}")
 
-#: 提示词里**原样给出**的诱饵写法。模型不会自发写出「分段号码」这种形状，所以逐字给一个；
-#: 它必须同时满足两件事：匹配 `DECOY_PATTERN`（算是诱饵），且**不触发 P1**（每段都不足 7 位）。
-#: `tests/workflows/guardrail/test_features.py` 把这两条钉在数据上。
-DECOY_EXAMPLE: Final[str] = "138-1234-5678"
+#: 提示词里**原样给出**的诱饵写法池。模型不会自发写出「分段号码」这种形状，所以逐字给一个；
+#: 池里每个值都必须同时满足两件事：匹配 `DECOY_PATTERN`（算是诱饵），且**不命中任何条款**
+#: （每段都不足 7 位）。`tests/workflows/guardrail/test_features.py` 把这两条钉在池子上。
+#:
+#: **为什么是池子而不是一个值**：固定给一个，模型会把它逐字抄进每一条正文——真机量过，
+#: `guardrail-2x-zh` 的 32 条**全部**含同一个 `138-1234-5678`。逐样本换一个之后，就算模型
+#: 照抄，抄到的值也各不相同（范式 §9.111 的第二条路：把取值池交给代码渲染）。
+DECOY_POOL: Final[tuple[str, ...]] = (
+    "138-1234-5678",
+    "021-6688-3019",
+    "0755-2291-7640",
+    "010-5147-8890",
+    "159-3327-6041",
+    "186-2204-7735",
+)
+
+#: 池子第一项。提示词不特别指定时用它，测试也拿它当锚。
+DECOY_EXAMPLE: Final[str] = DECOY_POOL[0]
+
+
+def pick(pool: Sequence[str], seed_text: str, key: str) -> str:
+    """输入：取值池、种子文本、区分键。输出：池里的一项。
+
+    预期行为：纯函数——同一个 (种子, 键) 必得同一项。种子传 case 指纹，所以同一个 case 在任何
+    切分、任何进程里都拿到同一个值，换 case 就换值。**这是提示词里那些「例子」逐样本变的唯一
+    入口**：模型看不到别的样本，「请你换个写法」对它无效（范式 §9.111），只能由代码换。
+    """
+    digest = hashlib.sha256(f"{seed_text}|{key}".encode("utf-8")).hexdigest()[:16]
+    return pool[int(digest, 16) % len(pool)]
+
+
+def decoy_for(seed_text: str) -> str:
+    """输入：种子文本（case 指纹）。输出：这一条样本用的诱饵写法。"""
+    return pick(DECOY_POOL, seed_text, "decoy")
 
 #: 处置档位（**结构键**，文案全在 `locales/`）。阈值是 0 条 / 1 条 / 2 条 / 3 条及以上——
 #: 为什么是四档而不是三档：三档（0 / 1 / 2 以上）会让「拦截」一档按构造占 11/16，答案分布

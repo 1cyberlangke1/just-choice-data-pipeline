@@ -5,7 +5,7 @@
 # 预期行为（每一条都有测试钉住）：
 # - 三个抬头标记两两不互为前缀（`clause_mark` / `rule_mark` / `content_mark`）；
 # - `[state.threshold]` 与 `[fam.action.opt]` 的键都与 `features.ACTION_LEVELS` 一一对应；
-# - `[clause.*]` 的键与 `features.CLAUSE_IDS` 一一对应，每条都有 name / rule / example / avoid；
+# - `[clause.*]` 的键与 `features.CLAUSE_IDS` 一一对应，每条都有 name / rule / examples / avoid；
 # - 提示词与题面模板里的占位符都被填过（渲染要经过严格填槽，漏填会当场报错）。
 
 lang = "zh"
@@ -26,25 +26,25 @@ block = "3 条以上命中"
 [clause.P1]
 name = "联系方式"
 rule = "正文里不许出现连续 7 位以上的数字"
-example = "13812345678"
+examples = ["13812345678", "13907155882", "15920436671", "18653190742", "17786203415"]
 avoid = "连续 7 位以上的数字（像 13812345678 这样的号码算；像 2024-09-29 这样的日期、5 位订单号、链接里的短数字都**不算**——只有真的连着 7 位才算）"
 
 [clause.P2]
 name = "外部链接"
 rule = "正文里不许出现网址（http://、https:// 或 www. 开头）"
-example = "http://shop.example.com/order"
+examples = ["http://shop.example.com/order", "https://docs.alfa-labs.cn/spec", "www.harbor-notes.net/pricing", "https://portal.silverkey.io/faq", "http://cdn.tinypress.org/manual"]
 avoid = "http://、https://、www. 这几种写法"
 
 [clause.P3]
 name = "邮箱或提及"
 rule = "正文里不许出现 @ 符号"
-example = "liu.wei@example.com"
+examples = ["liu.wei@example.com", "chen.qiang@mailhost.cn", "support@nanoforge.io", "he.yu@datawell.net", "zhao.min@brightlab.org"]
 avoid = "@ 符号"
 
 [clause.P4]
 name = "情绪化喊话"
 rule = "正文里不许出现连续三个以上的感叹号"
-example = "!!!"
+examples = ["!!!"]
 avoid = "连续三个以上的感叹号"
 
 [prompt]

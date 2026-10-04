@@ -9,10 +9,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from jc import pipeline, workflow as workflow_mod
 from workflows.maze import spec as maze_spec
+from tests.workflows._scaffold import run_config
 
 
 def tiny_config() -> maze_spec.MazeConfig:
@@ -31,16 +30,13 @@ def tiny_config() -> maze_spec.MazeConfig:
 
 def make_config(tmp_path: Path, run_id: str, *, concurrency: int = 1) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小配置试跑的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
         workflow="maze",
-        split="train",
-        locales=("zh",),
-        run_seed=4242,
-        per_case=1,
+        seed=4242,
         concurrency=concurrency,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=tiny_config(),
+        override=tiny_config(),
     )
 
 
@@ -112,15 +108,6 @@ def test_question_stats_are_per_type(tmp_path: Path) -> None:
     assert any(key.startswith("choice:") for key in result.stats["answers"])
     assert any(key.startswith("score:") for key in result.stats["answers"])
     assert set(result.stats["types"]) <= {"choice", "noul", "score"}
-
-
-def test_bind_backend_is_a_guard() -> None:
-    """迷宫是纯构造式：管线不该给它绑后端，真被绑了必须炸出来而不是静默吞掉。
-
-    输入：一个随便什么对象。输出：AssertionError。
-    """
-    with pytest.raises(AssertionError, match="纯构造式"):
-        workflow_mod.load("maze").bind_backend(object())
 
 
 def test_manifest_has_no_backend(tmp_path: Path) -> None:

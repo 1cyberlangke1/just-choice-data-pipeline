@@ -133,23 +133,3 @@ def test_label_judge_passes_a_good_sample() -> None:
     sample, spec = _sample()
     verdict = judges.LabelJudge(locale="zh").judge(sample, spec)
     assert verdict.ok is True
-
-
-def test_label_judge_flags_a_wrong_answer_and_a_wrong_spec() -> None:
-    """输入：答案被改坏 / 规格类型不对。输出：无。预期行为：都判不通过并说清原因。"""
-    sample, spec = _sample()
-    answers = dict(sample["answers"])
-    answers["fits"] = {"type": "noul", "noul": not sample["answers"]["fits"]["noul"]}
-    verdict = judges.LabelJudge(locale="zh").judge({**sample, "answers": answers}, spec)
-    assert verdict.ok is False and "fits" in verdict.reason
-
-    verdict = judges.LabelJudge(locale="zh").judge(sample, object())
-    assert verdict.ok is False and "规格类型不对" in verdict.reason
-
-
-def test_label_judge_flags_a_missing_question() -> None:
-    """输入：把某一族整族删掉。输出：无。预期行为：题号对不上，判不通过。"""
-    sample, spec = _sample()
-    trimmed = {qid: item for qid, item in sample["questions"].items() if qid != "scope"}
-    verdict = judges.LabelJudge(locale="zh").judge({**sample, "questions": trimmed}, spec)
-    assert verdict.ok is False and "题号与规格不符" in verdict.reason

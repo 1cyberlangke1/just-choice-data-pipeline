@@ -44,6 +44,76 @@ def test_load_good_config(tmp_path: Path) -> None:
     assert loaded.providers[1].limits.requests_per_minute == 12
 
 
+def env_file(tmp_path: Path, text: str, name: str = "keys.env") -> Path:
+    """输入：临时目录、文件内容、文件名。输出：写好的 dotenv 文件路径。"""
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_read_env_file_handles_comments_quotes_and_export(tmp_path: Path) -> None:
+    """输入：一份带注释 / `export` / 引号 / 空行的 dotenv 文件。输出：变量表。
+
+    预期行为：只认 `KEY=VALUE`；空行与整行注释跳过；`export ` 前缀剥掉；成对引号剥掉
+    （引号里的 `#` 不当注释）；不带引号的值里「空白 + `#`」起注释。
+    """
+    path = env_file(
+        tmp_path,
+        "\n".join(
+            [
+                "# 整行注释",
+                "",
+                "JC_A=plain",
+                "export JC_B = spaced ",
+                'JC_C="quoted # not a comment"',
+                "JC_D='single'",
+                "JC_E=value # 行尾注释",
+            ]
+        ),
+    )
+    assert cfg.read_env_file(path) == {
+        "JC_A": "plain",
+        "JC_B": "spaced",
+        "JC_C": "quoted # not a comment",
+        "JC_D": "single",
+        "JC_E": "value",
+    }
+
+
+def test_read_env_file_later_file_overrides(tmp_path: Path) -> None:
+    """输入：两份 dotenv 文件。输出：先读的那份被后读的覆盖。"""
+    first = env_file(tmp_path, "JC_A=1\nJC_B=1\n", "first.env")
+    second = env_file(tmp_path, "JC_B=2\n", "second.env")
+    merged: dict[str, str] = {}
+    for path in (first, second):
+        merged.update(cfg.read_env_file(path))
+    assert merged == {"JC_A": "1", "JC_B": "2"}
+
+
+def test_read_env_file_reports_the_line_without_echoing_it(tmp_path: Path) -> None:
+    """输入：第 2 行不是 `KEY=VALUE` 的文件。输出：ValueError。
+
+    预期行为：报错点**行号**，但**不回显那一行**——那一行可能就是一串凭证。
+    """
+    path = env_file(tmp_path, "JC_A=1\n这不是一行赋值\n")
+    with pytest.raises(ValueError, match="第 2 行") as info:
+        cfg.read_env_file(path)
+    assert "这不是一行赋值" not in str(info.value)
+
+
+def test_read_env_file_rejects_a_bad_key_name(tmp_path: Path) -> None:
+    """输入：键名不合法的文件。输出：ValueError，点行号且不回显内容。"""
+    path = env_file(tmp_path, "1BAD=value\n")
+    with pytest.raises(ValueError, match="第 1 行"):
+        cfg.read_env_file(path)
+
+
+def test_read_env_file_missing_file_is_a_plain_error(tmp_path: Path) -> None:
+    """输入：不存在的路径。输出：FileNotFoundError（人话，由调用方决定怎么报）。"""
+    with pytest.raises(FileNotFoundError):
+        cfg.read_env_file(tmp_path / "nope.env")
+
+
 def test_limits_defaults_match_plan(tmp_path: Path) -> None:
     """PLAN 3.1.6 定的初值：并发 4 / 单 key 1 / 40 RPM / 熔断 3 次 60 秒。"""
     limits = cfg.load_config(write(tmp_path, GOOD)).providers[0].limits
@@ -199,3 +269,15 @@ def test_allow_mixed_must_be_a_boolean(tmp_path: Path) -> None:
     text = 'allow_mixed_providers = "yes"\n[[provider]]\nname="a"\nbase_url="u"\nmodel="m"\n'
     with pytest.raises(ValueError, match="必须是布尔值"):
         cfg.load_config(write(tmp_path, text))
+
+
+def test_shipped_example_config_loads() -> None:
+    """输入：仓库根的 `backends.example.toml`。输出：无（断言）。
+
+    预期行为：那份示例是给人照抄的，必须真的能被 `load_config` 收下（未知键会被拒，
+    所以它同时钉住了「示例里的每个键都还在 schema 里」），而且每家都声明了 `keys_env`
+    ——不声明的家拿不到 key，抄了也跑不起来。schema 改了示例没跟上，这条就红。
+    """
+    loaded = cfg.load_config(Path("backends.example.toml"))
+    assert loaded.providers, "示例里至少要有一家 provider"
+    assert all(provider.keys_env for provider in loaded.providers)

@@ -8,14 +8,16 @@
 
 `tests/workflows/mail/test_pipeline.py` 已经锁了 mail 的**值留出**（curiosity / 短链接），
 这里补的是**维度跨度**这一层。
+
+两张留出清单是**数据**（哪家留哪几维），留着当文档；查它们的用例收成循环——每行跑的
+都是同一段 `spans_of` 统计，摊成 44 条参数化用例只是把同一件事报 44 遍。失败信息攒在
+`bad` 里一起报，点名到类名与维度。
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-
-
-import pytest
+from typing import Final
 
 from workflows.hybrid.workflow import HybridWorkflow
 from workflows.invoice.workflow import InvoiceWorkflow
@@ -80,25 +82,30 @@ def id_splits_of(workflow: object) -> tuple[str, ...]:
     return tuple(split for split in workflow.split_names() if split != "test_ood")
 
 
-@pytest.mark.parametrize(
-    ("factory", "dim"),
-    [
-        (InvoiceWorkflow, "labels"),
-        (HybridWorkflow, "layout"),
-        (QuoteReadWorkflow, "names"),
-   ],
+#: 维度留出：这些 workflow 的这些维度在同分布侧必须恒为一个取值，`test_ood` 侧才出现新取值。
+DIMENSION_HOLDOUTS: Final[tuple[tuple[object, str], ...]] = (
+    (InvoiceWorkflow, "labels"),
+    (HybridWorkflow, "layout"),
+    (QuoteReadWorkflow, "names"),
 )
-def test_dimension_holdout_is_realized(factory: object, dim: str) -> None:
-    """输入：workflow 与它被留出的维度。输出：无。
+
+
+def test_dimension_holdout_is_realized() -> None:
+    """输入：无（清单见 `DIMENSION_HOLDOUTS`）。输出：无。
 
     预期行为：同分布侧**恰好一个取值**、且 `test_ood` 侧有同分布侧没见过的取值——
     这就是「整个维度没见过」在本格式里的落地形态（字段不可能缺席，只能恒为一个值）。
     """
-    workflow = factory()
-    id_values = spans_of(workflow, id_splits_of(workflow))[dim]
-    ood_values = spans_of(workflow, ("test_ood",))[dim]
-    assert len(id_values) == 1, f"{dim} 在同分布侧有多个取值：{sorted(id_values)}"
-    assert ood_values - id_values, f"{dim} 的 test_ood 侧没有新取值：{sorted(ood_values)}"
+    bad: list[str] = []
+    for factory, dim in DIMENSION_HOLDOUTS:
+        workflow = factory()
+        id_values = spans_of(workflow, id_splits_of(workflow))[dim]
+        ood_values = spans_of(workflow, ("test_ood",))[dim]
+        if len(id_values) != 1:
+            bad.append(f"{factory.__name__} 的 {dim} 在同分布侧有多个取值：{sorted(id_values)}")
+        if not ood_values - id_values:
+            bad.append(f"{factory.__name__} 的 {dim} 的 test_ood 侧没有新取值：{sorted(ood_values)}")
+    assert not bad, bad
 
 
 def test_mail_has_no_dimension_holdout() -> None:
@@ -119,53 +126,53 @@ def value_spans(workflow: object, splits: tuple[str, ...]) -> dict[str, set[str]
     return {dim: values for dim, values in spans_of(workflow, splits).items()}
 
 
-@pytest.mark.parametrize(
-    ("factory", "dims"),
-    [
-        (MatchWorkflow, ("product", "spelling")),
-       (FunctionsWorkflow, ("tool", "window", "alias", "phrasing")),
-       (SkillPickWorkflow, ("layout", "phrasing")),
-       (SimWorkflow, ("layout", "phrasing")),
-        (BenchWorkflow, ("layout", "phrasing")),
-        (ShellWorkflow, ("goal", "target")),
-        (ModelRouteWorkflow, ("task_kind",)),
-        (VerifyWorkflow, ("claim_kind", "tone")),
-        (ToolGateWorkflow, ("tool", "policy")),
-        (SearchWorkflow, ("freshness",)),
-        (CompactWorkflow, ("age",)),
-        (BrowserWorkflow, ("screen",)),
-        (RoutingWorkflow, ("area",)),
-        (ReviewWorkflow, ("change_kind",)),
-        (RubricWorkflow, ("length",)),
-        (LintWorkflow, ("genre",)),
-        (RerankWorkflow, ("terms",)),
-        (CitationWorkflow, ("target",)),
-        (GuardrailWorkflow, ("decoy",)),
-        (AutoformatWorkflow, ("topic", "wrap", "variant", "code_family")),
-        (PromptInjectWorkflow, ("source",)),
-        (MemoryGateWorkflow, ("form",)),
-        (LogTriageWorkflow, ("source",)),
-        (TurnTakeWorkflow, ("channel",)),
-        (AdBlockWorkflow, ("surface",)),
-        (AlertRiskWorkflow, ("source",)),
-        (DepCheckWorkflow, ("ecosystem",)),
-        (HireCheckWorkflow, ("channel",)),
-        (DebugStepWorkflow, ("runtime",)),
-        (SubQaWorkflow, ("track",)),
-        (SqlReviewWorkflow, ("workload",)),
-        (CacheReuseWorkflow, ("flavor",)),
-        (ClipCutWorkflow, ("topics",)),
-        (QuoteReadWorkflow, ("names",)),
-        (PostTriageWorkflow, ("decoy",)),
-        (ReceiptCatWorkflow, ("decoy",)),
-        (SiftRankWorkflow, ("flavor",)),
-        (SourceSelectWorkflow, ("size",)),
-        (FindTriageWorkflow, ("size",)),
-        (ElementPickWorkflow, ("layout", "phrasing")),
-    ],
+#: 值留出：这些 workflow 的这些维度在 `test_ood` 侧必须出现同分布侧没见过的取值。
+VALUE_HOLDOUTS: Final[tuple[tuple[object, tuple[str, ...]], ...]] = (
+    (MatchWorkflow, ("product", "spelling")),
+    (FunctionsWorkflow, ("tool", "window", "alias", "phrasing")),
+    (SkillPickWorkflow, ("layout", "phrasing")),
+    (SimWorkflow, ("layout", "phrasing")),
+    (BenchWorkflow, ("layout", "phrasing")),
+    (ShellWorkflow, ("goal", "target")),
+    (ModelRouteWorkflow, ("task_kind",)),
+    (VerifyWorkflow, ("claim_kind", "tone")),
+    (ToolGateWorkflow, ("tool", "policy")),
+    (SearchWorkflow, ("freshness",)),
+    (CompactWorkflow, ("age",)),
+    (BrowserWorkflow, ("screen",)),
+    (RoutingWorkflow, ("area",)),
+    (ReviewWorkflow, ("change_kind",)),
+    (RubricWorkflow, ("length",)),
+    (LintWorkflow, ("genre",)),
+    (RerankWorkflow, ("terms",)),
+    (CitationWorkflow, ("target",)),
+    (GuardrailWorkflow, ("decoy",)),
+    (AutoformatWorkflow, ("topic", "wrap", "variant", "code_family")),
+    (PromptInjectWorkflow, ("source",)),
+    (MemoryGateWorkflow, ("form",)),
+    (LogTriageWorkflow, ("source",)),
+    (TurnTakeWorkflow, ("channel",)),
+    (AdBlockWorkflow, ("surface",)),
+    (AlertRiskWorkflow, ("source",)),
+    (DepCheckWorkflow, ("ecosystem",)),
+    (HireCheckWorkflow, ("channel",)),
+    (DebugStepWorkflow, ("runtime",)),
+    (SubQaWorkflow, ("track",)),
+    (SqlReviewWorkflow, ("workload",)),
+    (CacheReuseWorkflow, ("flavor",)),
+    (ClipCutWorkflow, ("topics",)),
+    (QuoteReadWorkflow, ("names",)),
+    (PostTriageWorkflow, ("decoy",)),
+    (ReceiptCatWorkflow, ("decoy",)),
+    (SiftRankWorkflow, ("flavor",)),
+    (SourceSelectWorkflow, ("size",)),
+    (FindTriageWorkflow, ("size",)),
+    (ElementPickWorkflow, ("layout", "phrasing")),
 )
-def test_value_holdout_is_realized(factory: object, dims: tuple[str, ...]) -> None:
-    """输入：纯构造式 workflow 与它们被留出的维度。输出：无。
+
+
+def test_value_holdout_is_realized() -> None:
+    """输入：无（清单见 `VALUE_HOLDOUTS`）。输出：无。
 
     预期行为：被点名的每个维度在 `test_ood` 侧都**真有**同分布侧没见过的取值——
     留出清单是设计意图，这条把它钉在数据上；只写注释不写断言的话，
@@ -174,8 +181,12 @@ def test_value_holdout_is_realized(factory: object, dims: tuple[str, ...]) -> No
     只看被点名的维度：留出某一维会**连带**带出别的维度的新取值
     ——那是留出的后果，不是漏留。
     """
-    workflow = factory()
-    id_spans = value_spans(workflow, id_splits_of(workflow))
-    ood_spans = value_spans(workflow, ("test_ood",))
-    for dim in dims:
-        assert ood_spans[dim] - id_spans[dim], f"{dim} 的 test_ood 侧没有新取值"
+    bad: list[str] = []
+    for factory, dims in VALUE_HOLDOUTS:
+        workflow = factory()
+        id_spans = value_spans(workflow, id_splits_of(workflow))
+        ood_spans = value_spans(workflow, ("test_ood",))
+        for dim in dims:
+            if not ood_spans[dim] - id_spans[dim]:
+                bad.append(f"{factory.__name__} 的 {dim} 在 test_ood 侧没有新取值")
+    assert not bad, bad

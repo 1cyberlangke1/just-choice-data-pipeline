@@ -25,12 +25,16 @@ def test_prompt_lists_required_and_forbidden_fragments() -> None:
     顺手带上别的形状，命中组合当场多出几条。
     """
     loc = locales.load("zh")
-    prompt = render.build_prompt(loc, features.GuardrailCase("P1+P3", features.DECOY_NONE))
-    assert str(loc["clause"]["P1"]["example"]) in prompt
-    assert str(loc["clause"]["P3"]["example"]) in prompt
+    case = features.GuardrailCase("P1+P3", features.DECOY_NONE)
+    prompt = render.build_prompt(loc, case)
+    for clause in ("P1", "P3"):
+        pool = loc["clause"][clause]["examples"]
+        assert isinstance(pool, list)
+        picked = features.pick([str(value) for value in pool], case.fingerprint(), clause)
+        assert picked in prompt, f"{clause}: 提示词里没给出这一条样本抽中的例子"
     assert str(loc["clause"]["P2"]["avoid"]) in prompt
     assert str(loc["clause"]["P4"]["avoid"]) in prompt
-    assert features.DECOY_EXAMPLE not in prompt
+    assert features.decoy_for(case.fingerprint()) not in prompt
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -51,10 +55,11 @@ def test_prompt_says_the_fragments_are_only_examples(lang: str) -> None:
 def test_prompt_says_none_may_be_hit_when_the_plan_is_empty() -> None:
     """输入：一个空命中的 case。输出：无。预期行为：走「一条都不许踩」那一句，不提诱饵。"""
     loc = locales.load("zh")
-    prompt = render.build_prompt(loc, features.GuardrailCase("", features.DECOY_NONE))
+    case = features.GuardrailCase("", features.DECOY_NONE)
+    prompt = render.build_prompt(loc, case)
     assert str(loc["prompt"]["no_hits"]) in prompt
     assert str(loc["prompt"]["hits_header"]) not in prompt
-    assert features.DECOY_EXAMPLE not in prompt
+    assert features.decoy_for(case.fingerprint()) not in prompt
 
 
 def test_prompt_gives_the_decoy_verbatim_when_asked() -> None:
@@ -64,9 +69,11 @@ def test_prompt_gives_the_decoy_verbatim_when_asked() -> None:
     连续数字，计划当场落空。
     """
     loc = locales.load("zh")
-    prompt = render.build_prompt(loc, features.GuardrailCase("", features.DECOY_DASHED))
-    assert features.DECOY_EXAMPLE in prompt
-    assert str(loc["prompt"]["decoy_line"]).format(decoy=features.DECOY_EXAMPLE) in prompt
+    case = features.GuardrailCase("", features.DECOY_DASHED)
+    prompt = render.build_prompt(loc, case)
+    decoy = features.decoy_for(case.fingerprint())
+    assert decoy in prompt
+    assert str(loc["prompt"]["decoy_line"]).format(decoy=decoy) in prompt
 
 
 def test_prompt_has_no_unfilled_slots() -> None:
@@ -125,13 +132,21 @@ def test_content_mentioning_a_clause_does_not_break_the_parse() -> None:
     assert parsed.clauses == features.CLAUSE_IDS
 
 
-@pytest.mark.parametrize("garbage", ["", "随便一段没有抬头的文本", 42, None, {"state": 1}, []])
-def test_parse_state_gives_up_on_unknown_input(garbage: object) -> None:
-    """输入：几种认不出抬头的输入。输出：无。预期行为：如实给「认不出来」，不抛异常。"""
-    parsed = render.parse_state(garbage)
-    assert parsed.text is None
-    assert not parsed.found
-    assert render.detect_locale(garbage) is None
+def test_parse_state_gives_up_on_unknown_input() -> None:
+    """输入：几种认不出抬头的输入。输出：无。预期行为：如实给「认不出来」，不抛异常。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for garbage in ["", "随便一段没有抬头的文本", 42, None, {"state": 1}, []]:
+        try:
+            parsed = render.parse_state(garbage)
+            assert parsed.text is None
+            assert not parsed.found
+            assert render.detect_locale(garbage) is None
+        except AssertionError as exc:
+            bad.append(f"{(garbage,)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_check_draft_accepts_every_faithful_text() -> None:
@@ -196,8 +211,8 @@ def test_threshold_line_reuses_the_action_copy() -> None:
 
 def test_clause_copy_reports_missing_fields() -> None:
     """输入：缺字段 / 缺条款的文案表。输出：无。预期行为：都报人话，不静默给半句话。"""
-    loc: dict[str, JsonValue] = {"clause": {"P1": {"name": "x", "rule": "y", "example": "z"}}}
-    with pytest.raises(ValueError, match="avoid"):
+    loc: dict[str, JsonValue] = {"clause": {"P1": {"name": "x", "rule": "y", "avoid": "z"}}}
+    with pytest.raises(ValueError, match="examples"):
         render.clause_copy(loc, "P1")
     with pytest.raises(ValueError, match="P9"):
         render.clause_copy(loc, "P9")

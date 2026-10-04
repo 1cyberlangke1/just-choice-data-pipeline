@@ -447,17 +447,3 @@ def sample_spec(
         blocked=blocked_count(rows, case.label),
         shadow_present=shadow_present(rows, case.label),
     )
-
-
-def spec_to_dict(spec: ElementSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.describe(),
-        "unseen_dims": list(spec.case.unseen_dims()),
-        "screen_id": spec.screen_id,
-        "target_slot": spec.target_slot,
-        "target_class": spec.target_class,
-        "blocked": spec.blocked,
-        "shadow_present": spec.shadow_present,
-        "rows": [row.describe() for row in spec.rows],
-    }

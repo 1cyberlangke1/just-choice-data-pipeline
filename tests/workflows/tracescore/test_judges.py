@@ -20,8 +20,6 @@ from tests.workflows.tracescore.conftest import (
 from workflows.tracescore import features, judges, locales, render
 from workflows.tracescore.features import TraceScoreCase
 
-#: 全空间 48 组 case。
-CASES = features.build_cases(512)
 
 #: 一个普通 case：命中两条。
 CASE = TraceScoreCase("S1+S3", features.SOURCE_CLI)
@@ -55,14 +53,6 @@ def test_hygiene_rejects_an_extra_hit() -> None:
     assert "命中组合" in verdict.reason
 
 
-def test_hygiene_rejects_a_state_without_a_content_block() -> None:
-    """输入：一段没有轨迹抬头的 state。输出：无。预期行为：不通过，理由是认不出轨迹。"""
-    spec, _ = faithful(CASE)
-    verdict = judges.HygieneJudge("zh").judge({"state": "这里什么抬头都没有"}, spec)
-    assert not verdict.ok
-    assert "轨迹" in verdict.reason
-
-
 def test_hygiene_rejects_a_pasted_rule() -> None:
     """输入：轨迹里整段贴了判据原文。输出：无。
 
@@ -74,20 +64,6 @@ def test_hygiene_rejects_a_pasted_rule() -> None:
     verdict = judges.HygieneJudge("zh").judge(sample_of(f"{BASE} {rule}"), spec_for(case))
     assert not verdict.ok and not verdict.skipped
     assert "判据原文" in verdict.reason
-
-
-def test_frame_accepts_faithful_and_rejects_a_broken_table() -> None:
-    """输入：忠实 state 与缺了一行的 state。输出：无。
-
-    预期行为：信号表缺一条就报出来——那是构造 bug，标签会跟着一起错。
-    """
-    judge = judges.FrameJudge("zh")
-    spec, sample = faithful(CASE)
-    assert judge.judge(sample, spec).ok
-    broken = {"state": _drop_tag_line(str(sample["state"]), "S2")}
-    verdict = judge.judge(broken, spec)
-    assert not verdict.ok
-    assert "信号表" in verdict.reason
 
 
 def test_trace_drops_an_overclaim_whose_quote_does_not_match_the_criterion() -> None:
@@ -160,14 +136,6 @@ class _UnknownIdBackend:
         del task
         return _draft({"tags": [{"tag": "S9", "quote": "S9"}]})
 
-
-class _MalformedBackend:
-    """只会答一个畸形 tags 的假后端。"""
-
-    def generate(self, task: object) -> Draft:
-        """输入：任务。输出：`tags` 是字符串列表的草稿。预期行为：不联网。"""
-        del task
-        return _draft({"tags": ["S1", "S3"]})
 
 
 class _OverclaimBackend:

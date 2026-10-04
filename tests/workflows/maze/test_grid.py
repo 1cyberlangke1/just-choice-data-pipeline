@@ -28,11 +28,17 @@ def test_generate_is_deterministic() -> None:
     assert a == b
 
 
-@pytest.mark.parametrize("name", grid.TRANSFORMS)
-def test_transform_keeps_tree(name: str) -> None:
-    mask = grid.generate(random.Random(11), 4, 6, "dfs")
-    new, rows, cols = grid.apply_transform(name, mask, 4, 6)
-    assert grid.is_spanning_tree(new, rows, cols)
+def test_transform_keeps_tree() -> None:
+    """本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。"""
+    bad: list[str] = []
+    for name in grid.TRANSFORMS:
+        try:
+            mask = grid.generate(random.Random(11), 4, 6, "dfs")
+            new, rows, cols = grid.apply_transform(name, mask, 4, 6)
+            assert grid.is_spanning_tree(new, rows, cols)
+        except AssertionError as exc:
+            bad.append(f"{(name,)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_rot90_four_times_is_identity() -> None:

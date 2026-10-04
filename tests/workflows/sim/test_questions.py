@@ -180,23 +180,6 @@ def test_phrasing_only_changes_the_wording() -> None:
     )
 
 
-def test_instructions_carry_the_whole_rulebook() -> None:
-    """输入：一份规格出的全部题目。输出：无。
-
-    预期行为：判据原文整段拼在每道题的问句后面（范式 §9.8）——只读 state 与题面的读者
-    必须能自己算出来。
-    """
-    _spec, items = _build()
-    for item in items:
-        instructions = item.question["instructions"]
-        policy = str(LOC["policy"]["text"])
-        assert instructions.endswith(policy)
-        assert instructions != policy  # 判据前面真的带了问句
-        first = str(LOC["fam"][item.family]["q"][0])
-        if "{n}" not in first:  # 带位置号的问句由 `test_can_move_is_asked_for_every_position` 锁
-            assert instructions.startswith(first)
-
-
 def test_fill_reports_leftover_placeholders() -> None:
     """输入：一个没填完的模板。输出：无。预期行为：报人话（题面少填一个槽比报错危险）。"""
     with pytest.raises(ValueError, match="占位符"):

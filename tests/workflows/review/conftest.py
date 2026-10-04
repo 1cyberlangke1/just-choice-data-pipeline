@@ -17,8 +17,6 @@ from __future__ import annotations
 
 from typing import Final
 
-import pytest
-
 from jc.backend.types import Draft
 from jc.jsontypes import JsonValue
 from tests.workflows import _fakes
@@ -171,7 +169,4 @@ class FakeBackend(_fakes.ScriptedBackend):
         return draft(data)
 
 
-@pytest.fixture
-def fake_backend() -> type[FakeBackend]:
-    """工厂夹具：`fake_backend(trace_lies_secret=True)` 造一个假后端。"""
-    return FakeBackend
+fake_backend = _fakes.factory_fixture(FakeBackend)

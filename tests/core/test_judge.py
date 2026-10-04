@@ -136,6 +136,16 @@ def test_quote_candidates_unwraps_a_json_array_string() -> None:
     assert judge_mod.quote_candidates(json.dumps([{"a": 1}])) == (json.dumps([{"a": 1}]),)
 
 
+def test_quote_candidates_strips_quotes_off_each_line_of_a_multi_line_field() -> None:
+    """输入：几行**各自**裹着 JSON 引号、外层方括号已经丢了的引文字段。输出：候选元组。
+
+    预期行为：这是范式 §9.88 记的第四种写法——每行一段、每段外面还各裹一层引号。每行
+    **原样**与**剥引号后**都要进候选：只留带引号的那条，正文里的原句就永远比不中，
+    那条真命中会被当成误报丢掉（`quote_hit` 是拿候选去正文里找的）。
+    """
+    assert judge_mod.quote_candidates('"甲"\n"乙"') == ('"甲"', "甲", '"乙"', "乙")
+
+
 def test_quote_hit_picks_the_first_candidate_that_is_really_in_the_body() -> None:
     """输入：引文字段、正文。输出：命中的那条候选（都没有就是空串）。
 
@@ -146,6 +156,7 @@ def test_quote_hit_picks_the_first_candidate_that_is_really_in_the_body() -> Non
     assert judge_mod.quote_hit("第一段", body) == "第一段"
     assert judge_mod.quote_hit(" 第一段 ", body) == " 第一段 "
     assert judge_mod.quote_hit(json.dumps(["没有这句", "第二段"]), body) == "第二段"
+    assert judge_mod.quote_hit('"甲"\n"乙"', "正文里写着乙。") == "乙"
     assert judge_mod.quote_hit(json.dumps(["没有这句"]), body) == ""
     assert judge_mod.quote_hit("", body) == ""
     assert judge_mod.quote_hit("   ", body) == ""

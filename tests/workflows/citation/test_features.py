@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from workflows.citation import features
 from tests.workflows.citation.conftest import SENTENCES
@@ -40,25 +39,32 @@ def test_at_claimed_needs_both_being_in_doc_and_the_right_section() -> None:
     assert features.observed_labels(doc, "not in the doc", 0).at_claimed is False
 
 
-@pytest.mark.parametrize("form", features.FORMS)
-@pytest.mark.parametrize("where", features.WHERES)
-@pytest.mark.parametrize("place", features.PLACES)
-@pytest.mark.parametrize("target", features.TARGETS)
-def test_both_label_paths_agree(form: str, where: str, place: str, target: str) -> None:
+def test_both_label_paths_agree() -> None:
     """输入：全部 36 组特征。输出：无。
 
     预期行为：**构造侧**（从计划推）与**审计侧**（从文本重推）得到同一份标签——两边对不上就
     说明渲染没兑现计划，这条把它钉在每一组取值上。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
     """
-    case = features.CitationCase(form=form, where=where, place=place, target=target)
-    plan = features.plan_for(case, 0)
-    index = plan.sentence_index
-    quote = {
-        features.FORM_EXACT: SENTENCES[index],
-        features.FORM_PARTIAL: SENTENCES[index][: len(SENTENCES[index]) // 2],
-        features.FORM_ALTERED: "a quote that is nowhere in the document",
-    }[form]
-    assert features.observed_labels(sections(), quote, plan.claimed) == features.label_for(plan)
+    bad: list[str] = []
+    for form in features.FORMS:
+        for where in features.WHERES:
+            for place in features.PLACES:
+                for target in features.TARGETS:
+                    try:
+                        case = features.CitationCase(form=form, where=where, place=place, target=target)
+                        plan = features.plan_for(case, 0)
+                        index = plan.sentence_index
+                        quote = {
+                            features.FORM_EXACT: SENTENCES[index],
+                            features.FORM_PARTIAL: SENTENCES[index][: len(SENTENCES[index]) // 2],
+                            features.FORM_ALTERED: "a quote that is nowhere in the document",
+                        }[form]
+                        assert features.observed_labels(sections(), quote, plan.claimed) == features.label_for(plan)
+                    except AssertionError as exc:
+                        bad.append(f"{(form, where, place, target)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 def test_plan_is_reproducible() -> None:

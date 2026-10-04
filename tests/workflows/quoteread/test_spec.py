@@ -73,15 +73,6 @@ def test_query_id_is_stable_and_case_derived() -> None:
     assert first.query_id.startswith("Q-")
 
 
-def test_spec_to_dict_carries_every_answer() -> None:
-    """输入：一条规格。输出：无。预期行为：摘要里有四个答案与请求号（调试与 manifest 用）。"""
-    spec = sp.sample_spec(random.Random(0), ft.QuoteCase(5, 3, 1), "test_ood", 3, 1)
-    dumped = sp.spec_to_dict(spec)
-    assert dumped["query_id"] == spec.query_id
-    assert dumped["tier"] == spec.tier
-    assert dumped["leader"] == spec.leader
-    assert dumped["alert"] is spec.alert
-    assert dumped["divergent"] is spec.divergent
 
 
 def test_split_sizes_follow_the_buckets() -> None:

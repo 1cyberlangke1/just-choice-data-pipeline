@@ -189,6 +189,16 @@ class ShellWorkflow(BackendHolder):
         """输入：规格、RNG、语言。输出：题目 + 金答案（纯代码推导，不碰模型）。"""
         return questions.build(spec.tags, locales.load(locale), spec.phrasing)
 
+    def language_texts(self, sample: dict[str, JsonValue]) -> dict[str, str]:
+        """输入：契约样本。输出：`{「用户目标」: 文本, 「备注」: 文本}`。
+
+        预期行为：只报**模型写的两格自然语言**——「拟执行命令」那一行不报（命令、路径与
+        标识符按约定保持 ASCII，报进去只会把好数据当坏数据）。这两格本来就该按声明语言查：
+        提示词那条规则写的就是「全部用{language}写；命令、路径与标识符用 ASCII」。
+        取不到行时报空表——那把尺子对空表不发表意见。
+        """
+        return render.prose_of_any(sample.get("state"))
+
     def reparse(self, state: object, *, case: object = None) -> render.ParsedCommand:
         """输入：渲染后的 state。输出：纯代码能反解的部分（命令那一行）。"""
         return render.parse_state(state)

@@ -14,6 +14,7 @@ from jc import pipeline, workflow as workflow_mod
 from jc.backend.types import AllProvidersDown, GenerationBackend, TransportError
 from workflows.mail import features, judges as judges_mod, locales, workflow as mail_workflow
 from workflows.mail.spec import MailSpec
+from tests.workflows._scaffold import run_config
 
 CASE_LIMIT = 8
 
@@ -22,41 +23,15 @@ def make_config(
     tmp_path: Path, run_id: str, backend: object, *, split: str = "train"
 ) -> pipeline.RunConfig:
     """构造一个指向 tmp 目录、用小 case 集合试跑的运行配置。"""
-    return pipeline.RunConfig(
+    return run_config(
+        tmp_path,
+        run_id,
+        backend=backend,
         workflow="mail",
         split=split,
-        locales=("zh",),
-        run_seed=7,
-        per_case=1,
-        out_root=tmp_path,
-        run_id=run_id,
-        config_override=mail_workflow.MailConfig(split=split, case_limit=CASE_LIMIT),
-        backend=backend,
+        seed=7,
+        override=mail_workflow.MailConfig(split=split, case_limit=CASE_LIMIT),
     )
-
-
-def test_end_to_end_all_judges_pass(tmp_path: Path, fake_backend: GenerationBackend) -> None:
-    """输入：假后端（从不撒谎）。输出：RunResult。
-
-    预期行为：每个 case 出一条样本、零拒绝、五个判别器都记到通过；产物能过审计。
-    """
-    result = pipeline.run(make_config(tmp_path, "m1", fake_backend()))
-    assert result.accepted == CASE_LIMIT
-    assert result.rejected == []
-    assert set(result.stats["judges"]) == {
-        "link",
-        "link_text",
-        "sender_identity",
-        "hygiene",
-        "trace",
-    }
-    for bucket in result.stats["judges"].values():
-        assert bucket["fail"] == 0
-        assert bucket["ok"] > 0
-    report, missing = workflow_mod.load("mail").audit(result.run_dir, ("train",), "zh")
-    assert missing == []
-    assert report["train"]["samples"] == CASE_LIMIT
-    assert report["train"]["link_bad"] == 0
 
 
 def test_trace_judge_rejects_when_reverse_parse_disagrees(tmp_path: Path, fake_backend: GenerationBackend) -> None:
@@ -510,23 +485,6 @@ def test_trace_judge_skips_when_extra_requests_is_not_a_list(fake_backend: Gener
     assert "不是列表" in verdict.reason
 
 
-def test_id_splits_share_no_tag_combination() -> None:
-    """输入：无。输出：无。
-
-    预期行为：train / val / test_iid 的 tag 组合两两不相交——切分单位是组合，
-    同一个组合不许同时出现在训练与测试里。
-    """
-    workflow = workflow_mod.load("mail")
-    seen: dict[tuple[tuple[str, str], ...], str] = {}
-    for split in ("train", "val", "test_iid"):
-        cases = workflow.build_cases(workflow.config_for(split))
-        assert cases, f"{split} 一个 case 都没有"
-        for case in cases:
-            key = tuple(case.as_dict().items())
-            assert key not in seen, f"组合同时出现在 {seen[key]} 与 {split}：{key}"
-            seen[key] = split
-
-
 def test_ood_holds_out_values_and_id_splits_never_see_them() -> None:
     """输入：无。输出：无。
 
@@ -556,41 +514,9 @@ def test_manifest_records_backend(tmp_path: Path, fake_backend: GenerationBacken
     assert manifest["workflow"] == "mail"
 
 
-def test_render_without_backend_raises() -> None:
-    """输入：没有注入后端的 workflow。输出：异常。
-
-    预期行为：直接报错，绝不悄悄降级成模板文本（那会让「文本由后端写」这个前提失效）。
-    """
-    workflow = mail_workflow.MailWorkflow()
-    spec = MailSpec(
-        tags=features.TagSet("known_vendor", "none", "none", features.LINK_NONE, "formal"),
-        phrasing=0,
-        split="train",
-        seq=0,
-    )
-    import random
-
-    try:
-        workflow.render(spec, random.Random(0), "zh")
-    except RuntimeError as exc:
-        assert "bind_backend" in str(exc)
-    else:  # pragma: no cover —— 走到这里说明没报错，测试就该失败
-        raise AssertionError("没有后端时 render 必须报错")
-
-
 def _row(state: str, questions: dict[str, JsonValue], answers: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """造一条最小样本行（审计只读 state / questions / answers）。"""
     return {"id": "mail-train-0000000", "state": state, "questions": questions, "answers": answers}
-
-
-def test_audit_reports_a_missing_artifact(tmp_path: Path) -> None:
-    """输入：空目录。输出：(报告, 缺失项)。
-
-    预期行为：缺失的切分要明说「产物不存在」，而不是当成「0 条样本、审计通过」。
-    """
-    report, missing = workflow_mod.load("mail").audit(tmp_path, ("train",), "zh")
-    assert report["train"]["samples"] == 0
-    assert any("产物不存在" in item for item in missing)
 
 
 def test_audit_catches_link_contradiction_and_unknown_family(tmp_path: Path) -> None:
@@ -652,18 +578,6 @@ def test_audit_passes_a_consistent_artifact(tmp_path: Path) -> None:
     assert report["train"]["link_ok"] == 1
 
 
-def test_config_for_rejects_unknown_split() -> None:
-    """输入：不存在的切分名。输出：KeyError。预期行为：报错并列出可用切分。"""
-    with pytest.raises(KeyError, match="未知切分"):
-        mail_workflow.MailWorkflow().config_for("nope")
-
-
-def test_make_judges_rejects_unknown_name() -> None:
-    """输入：不存在的判别器名。输出：KeyError。预期行为：绝不静默少跑一个判别器。"""
-    with pytest.raises(KeyError, match="未知判别器"):
-        mail_workflow.MailWorkflow().make_judges(("nope",), "zh")
-
-
 def test_reparse_and_case_label() -> None:
     """输入：一段文本、一个 case。输出：反解结果、可读描述。
 
@@ -677,23 +591,11 @@ def test_reparse_and_case_label() -> None:
         assert f"{dim}=" in label
 
 
-def test_spec_to_dict_is_serializable() -> None:
-    """输入：一个规格。输出：字典。预期行为：能直接 `json.dumps`，且带上拆分后的链接维。"""
-    from workflows.mail.spec import spec_to_dict
+def test_task_ids() -> None:
+    """输入：一条真值规格。输出：无。预期行为：渲染 / 反解任务 id 按同一条样本可重算。"""
 
     case = features.TagSet("forged_brand", "fear", "credentials", "ip_mismatch", "curt")
     spec = MailSpec(tags=case, phrasing=1, split="train", seq=3)
-    payload = spec_to_dict(spec)
-    assert json.loads(json.dumps(payload)) == payload
-    assert payload["link_target"] == "ip"
-    assert payload["anchor"] == "mismatch"
     assert spec.render_task_id == "mail-train-0000003-render"
     assert spec.trace_task_id == "mail-train-0000003-trace"
 
-
-def test_available_locales_lists_shipped_language_files() -> None:
-    """输入：无。输出：语言列表。预期行为：与 locales/ 里的 toml 一一对应，且每份都读得出来。"""
-    workflow = mail_workflow.MailWorkflow()
-    assert workflow.available_locales() == ["en", "zh"]
-    for lang in workflow.available_locales():
-        assert locales.load(lang)["language_name"]

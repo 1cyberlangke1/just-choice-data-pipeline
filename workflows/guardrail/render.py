@@ -74,17 +74,22 @@ class ParsedContent:
 
 
 def clause_copy(loc: dict[str, JsonValue], clause: str) -> dict[str, JsonValue]:
-    """输入：语言字典、条款编号。输出：该条款的文案（name / rule / example / avoid）。
+    """输入：语言字典、条款编号。输出：该条款的文案（name / rule / examples / avoid）。
 
     预期行为：缺字段就当场报错——条款表与提示词都靠它，缺一个字段模型就会拿到半句话。
+    `examples` 是**取值池**（非空列表），不是单值：提示词里的例子要逐样本变，池子由
+    `features.pick` 按 case 指纹取一项（见范式 §9.111）。
     """
     table = loc.get("clause")
     entry = table.get(clause) if isinstance(table, dict) else None
     if not isinstance(entry, dict):
         raise ValueError(f"语言文件里缺条款 {clause} 的文案")
-    for key in ("name", "rule", "example", "avoid"):
+    for key in ("name", "rule", "examples", "avoid"):
         if key not in entry:
             raise ValueError(f"条款 {clause} 的文案缺字段 {key}")
+    examples = entry["examples"]
+    if not isinstance(examples, list) or not examples:
+        raise ValueError(f"条款 {clause} 的 examples 必须是非空列表")
     return entry
 
 
@@ -136,9 +141,13 @@ def build_prompt(loc: dict[str, JsonValue], case: GuardrailCase) -> str:
         lines.append(str(prompt["hits_header"]))
         for clause in hits:
             entry = clause_copy(loc, clause)
+            pool = entry["examples"]
+            examples = [str(value) for value in pool] if isinstance(pool, list) else []
             lines.append(
                 str(prompt["hits_line"]).format(
-                    name=entry["name"], example=entry["example"], rule=entry["rule"]
+                    name=entry["name"],
+                    example=features.pick(examples, case.fingerprint(), clause),
+                    rule=entry["rule"],
                 )
             )
         lines.append(str(prompt["vary_rule"]))
@@ -152,7 +161,9 @@ def build_prompt(loc: dict[str, JsonValue], case: GuardrailCase) -> str:
                 )
             )
     if case.decoy == features.DECOY_DASHED:
-        lines.append(str(prompt["decoy_line"]).format(decoy=features.DECOY_EXAMPLE))
+        lines.append(
+            str(prompt["decoy_line"]).format(decoy=features.decoy_for(case.fingerprint()))
+        )
     lines.append(str(prompt["digits_rule"]))
     lines.append(str(prompt["length_rule"]).format(min=MIN_CONTENT_CHARS, max=MAX_CONTENT_CHARS))
     lines.append(str(prompt["self_check"]))

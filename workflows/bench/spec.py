@@ -403,17 +403,3 @@ def sample_spec(case: BenchCase, split: str, seq: int, phrasing: int, rng: rando
         best_column=best_column_of_rows(rows),
         gap_level=gap_level_of_rows(rows),
     )
-
-
-def spec_to_dict(spec: BenchSpec) -> dict[str, JsonValue]:
-    """输入：规格。输出：可 JSON 序列化的摘要（写进 manifest 与调试，不进样本行）。"""
-    return {
-        "case": spec.case.describe(),
-        "unseen_dims": list(spec.case.unseen_dims()),
-        "request_id": spec.request_id,
-        "bar": spec.bar,
-        "counts": list(spec.counts),
-        "best_column": spec.best_column,
-        "gap_level": spec.gap_level,
-        "rows": [row.describe() for row in spec.rows],
-    }

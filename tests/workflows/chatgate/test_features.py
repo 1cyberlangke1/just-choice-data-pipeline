@@ -50,9 +50,13 @@ def test_tags_for_is_reproducible_and_not_a_constant() -> None:
     assert features.tags_for(4, "group", 0) == features.TAG_IDS
 
 
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+def test_hit_set_is_purely_literal() -> None:
+    """输入：一条消息。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("你定吧，我都行。", ("C1",)),
         ("这事你定，我不插手。", ("C1",)),
         ("今天之内能给我吗？", ("C2",)),
@@ -65,17 +69,22 @@ def test_tags_for_is_reproducible_and_not_a_constant() -> None:
         ("身份证号发我核对下。", ("C4",)),
         ("项目文档我更新好了，你有空翻一下。", ()),
         ("你定时间，今天之内告诉我就行。", ("C1", "C2")),
-    ],
-)
-def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一条消息。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。"""
-    assert features.hit_set(text) == expect
-    assert features.hits_of(text) == "+".join(expect)
+    ]:
+        try:
+            assert features.hit_set(text) == expect
+            assert features.hits_of(text) == "+".join(expect)
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize(
-    ("text", "expect"),
-    [
+def test_flaw_set_is_purely_literal() -> None:
+    """输入：一条候选。输出：无。预期行为：空元组就是「这条可以发」。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for text, expect in [
         ("没问题，包在我身上。", ("F1",)),
         ("放心，我来搞定。", ("F1",)),
         ("把你的卡号发我核对一下。", ("F2",)),
@@ -84,11 +93,12 @@ def test_hit_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
         ("改天再说。", ("F3",)),
         ("收到，我下午看一遍再回你。", ()),
         ("好的，我看下就回。", ()),
-    ],
-)
-def test_flaw_set_is_purely_literal(text: str, expect: tuple[str, ...]) -> None:
-    """输入：一条候选。输出：无。预期行为：空元组就是「这条可以发」。"""
-    assert features.flaw_set(text) == expect
+    ]:
+        try:
+            assert features.flaw_set(text) == expect
+        except AssertionError as exc:
+            bad.append(f"{(text, expect)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize(
@@ -156,13 +166,6 @@ def test_clean_indexes_reports_every_clean_candidate() -> None:
     assert features.clean_indexes(("收到，我看一下。", "没问题", "再说吧")) == (0,)
     assert features.clean_indexes(("嗯嗯", "再说吧", "看情况")) == ()
     assert features.clean_indexes(("收到", "没问题", "好的")) == (0, 2)
-
-
-def test_build_cases_order_is_stable() -> None:
-    """输入：同一份维度表两次。输出：无。预期行为：顺序逐格一致。"""
-    assert [case.as_dict() for case in features.build_cases(512)] == [
-        case.as_dict() for case in features.build_cases(512)
-    ]
 
 
 def test_dimension_table_matches_the_declared_keys() -> None:

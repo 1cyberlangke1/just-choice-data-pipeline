@@ -338,3 +338,48 @@ def hash_bucket(case: CaseT, seed: int) -> int:
     """
     payload = "|".join(f"{key}={value}" for key, value in case.as_dict().items())
     return int(hashlib.sha256(f"{seed}|{payload}".encode("utf-8")).hexdigest()[:8], 16) % 100
+
+
+def cover_pick(
+    cases: Sequence[CaseT],
+    limit: int,
+    names: Sequence[str],
+    dims_of: Callable[[CaseT], Mapping[str, JsonValue]],
+    spread: bool = False,
+) -> list[CaseT]:
+    """按「取值覆盖优先」挑前 `limit` 个 case（小规模试跑用）。
+
+    输入：候选 case（顺序稳定）、挑几个、**参与覆盖的维度名**（顺序即优先级）、
+    取某条 case 各维取值的函数、要不要开「摊开」平手规则。
+    输出：挑中的 case 列表（同分时取原顺序里靠前的）。
+    预期行为：贪心地先补齐没见过的维度取值；名额没用完就按原顺序接着填。
+
+    为什么不是直接截断：纯截断的话 10 条的小批量很可能一个维度的高位取值都出不来
+    （`adblock` 的 `count`、`alertrisk` 的 `level` 都是这样），均衡闸与审计会当场报出来。
+    27 家各抄一份这段贪心纯属重复——各家不同的只有「维度名」与「怎么取维度」，那两样由调用方传。
+
+    `spread`（只有 `chatgate` 开）：它的全空间只有 5×3×3 = 45 组，10 条的小批量里每条都恰好
+    补一个新取值，光看覆盖数全是平手；这时改成「优先挑那个取值被挑得最少的 case」，同分才按
+    原顺序，条数分布才摊得开（不然 `count` 的 dev 会冲到 0.4 把均衡闸判红）。
+    """
+    chosen: list[CaseT] = []
+    seen: dict[str, set[JsonValue]] = {name: set() for name in names}
+    freq: dict[str, dict[JsonValue, int]] = {name: {} for name in names}
+    remaining = list(cases)
+    while remaining and len(chosen) < limit:
+        keys = [
+            (
+                sum(1 for name in names if dims_of(case)[name] not in seen[name]),
+                -max(freq[name].get(dims_of(case)[name], 0) for name in names) if spread else 0,
+                -index,
+            )
+            for index, case in enumerate(remaining)
+        ]
+        best = max(range(len(remaining)), key=lambda index: keys[index])
+        case = remaining.pop(best)
+        chosen.append(case)
+        for name in names:
+            seen[name].add(dims_of(case)[name])
+            if spread:
+                freq[name][dims_of(case)[name]] = freq[name].get(dims_of(case)[name], 0) + 1
+    return chosen

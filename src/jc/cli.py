@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 
@@ -20,19 +20,28 @@ from .jsontypes import JsonValue
 from .workflow import Workflow, discover, load
 
 
-def _load_backend(path: str) -> object:
+def _load_backend(path: str, env_files: Sequence[str] = ()) -> object:
     """按需装配生成后端。
 
-    输入：后端配置 TOML 的路径（空串表示这个 workflow 不需要后端）。
+    输入：后端配置 TOML 的路径（空串表示这个 workflow 不需要后端）、可选的 dotenv 文件路径表。
     输出：`LLMBackend` 实例或 None。
     预期行为：只有显式给了配置才 import `jc.backend`——核心层不装 `[llm]` extra
-    也能跑构造式 workflow；key 只从环境变量读，命令行**不收明文 key**。
+    也能跑构造式 workflow；命令行**不收明文 key**。给了 `--env-file` 就从那些文件读进内存
+    （后面的文件覆盖前面的同名项）再喂给后端，**进程环境一个变量都不加**；不给就照旧读进程
+    环境——两条路都不需要把 key 写进命令行。
     """
     if not path:
         return None
     from .backend import build_backend, load_config
+    from .backend.config import read_env_file
 
-    return build_backend(load_config(path), probe=True)
+    env: dict[str, str] | None = None
+    if env_files:
+        merged: dict[str, str] = {}
+        for item in env_files:
+            merged.update(read_env_file(item))
+        env = merged
+    return build_backend(load_config(path), probe=True, env=env)
 
 
 def _declared_locales(run_dir: Path, split: str) -> tuple[str, ...]:
@@ -182,6 +191,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--backend-config", default="", help="后端配置 TOML；workflow 声明 needs 时必填"
     )
     gen.add_argument(
+        "--env-file",
+        action="append",
+        dest="env_files",
+        default=None,
+        help="dotenv 风格文件，可重复（后面的覆盖前面的）；key 只读进内存，不写进程环境",
+    )
+    gen.add_argument(
         "--judges",
         action="append",
         default=None,
@@ -309,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
         balance_tolerance=args.balance_tolerance,
         balance_strict=args.balance_strict,
         judges=_parse_judges(args.judges),
-        backend=_load_backend(args.backend_config),
+        backend=_load_backend(args.backend_config, tuple(args.env_files or ())),
     )
     result = pipeline.run(config)
     print(f"合格 {result.accepted} 条；被拒 {len(result.rejected)} 条")

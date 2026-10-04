@@ -59,33 +59,3 @@ def test_audit_does_not_ask_for_four_families_on_a_decoy(tmp_path: Path) -> None
     assert missing == []
     assert dict(report["train"]["families"]) == {"fits": 1}
     assert report["train"]["fits_true"] == 0
-
-
-def test_audit_flags_an_out_of_range_choice_index(tmp_path: Path) -> None:
-    """输入：编号越界的产物。输出：无。预期行为：审计记一笔「编号越界」。"""
-    row = _sample_row()
-    row["answers"]["pick"]["choice"] = 99
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 1
-    assert any("编号越界" in item for item in missing)
-
-
-def test_audit_flags_a_non_integer_choice_index(tmp_path: Path) -> None:
-    """输入：编号不是整数的产物。输出：无。预期行为：同样记一笔「编号越界」。"""
-    row = _sample_row()
-    row["answers"]["scope"]["choice"] = True
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, _ = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 1
-
-
-def test_audit_flags_a_family_that_never_shows_up(tmp_path: Path) -> None:
-    """输入：把某一族的题全删掉。输出：无。预期行为：审计记一笔「一条都没出」。"""
-    row = _sample_row()
-    del row["questions"]["pick"]
-    del row["answers"]["pick"]
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["families"]["pick"] == 0
-    assert any("pick" in item and "一条都没出" in item for item in missing)

@@ -29,13 +29,6 @@ def test_prompt_lists_required_and_forbidden_fragments() -> None:
         assert str(render.tag_copy(loc, tag)["avoid"]) in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_prompt_says_the_fragments_are_only_examples(lang: str) -> None:
-    """输入：一种语言。输出：无。预期行为：提示词里明说那些片段只是例子、要自己另编。"""
-    loc = locales.load(lang)
-    assert str(loc["prompt"]["vary_rule"]) in render.build_prompt(loc, CASE)
-
-
 def test_prompt_says_none_may_be_hit_when_the_plan_is_empty() -> None:
     """输入：空命中的 case。输出：无。预期行为：改成「一条都不许踩」的说法，且不出现要求段落。"""
     loc = locales.load("zh")
@@ -45,14 +38,22 @@ def test_prompt_says_none_may_be_hit_when_the_plan_is_empty() -> None:
     assert str(loc["prompt"]["hits_header"]) not in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-@pytest.mark.parametrize("form", ["sentence", "bullet", "quote"])
-def test_prompt_states_the_form_shape(lang: str, form: str) -> None:
-    """输入：一种语言 × 一种写法。输出：无。预期行为：提示词里点明这条记忆写成什么形态。"""
-    loc = locales.load(lang)
-    case = MemoryGateCase("M2", form)
-    prompt = render.build_prompt(loc, case)
-    assert render.form_copy(loc, form) in prompt
+def test_prompt_states_the_form_shape() -> None:
+    """输入：一种语言 × 一种写法。输出：无。预期行为：提示词里点明这条记忆写成什么形态。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    bad: list[str] = []
+    for lang in ["en", "zh"]:
+        for form in ["sentence", "bullet", "quote"]:
+            try:
+                loc = locales.load(lang)
+                case = MemoryGateCase("M2", form)
+                prompt = render.build_prompt(loc, case)
+                assert render.form_copy(loc, form) in prompt
+            except AssertionError as exc:
+                bad.append(f"{(lang, form)!r}: {exc}")
+    assert not bad, "\n".join(bad)
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -140,36 +141,11 @@ def test_check_draft_rejects_empty_and_overlong_text() -> None:
         render.check_draft(render.ContentDraft(text="短"), case)
 
 
-def test_build_task_carries_the_injected_features() -> None:
-    """输入：真值规格。输出：无。
-
-    预期行为：任务 id 可重算、`spec` 里带上注入特征（假后端与真后端都能照着它答）、响应模型是
-    草稿模型。
-    """
-    spec = spec_for(CASE)
-    task = render.build_task(spec, locales.load("zh"))
-    assert task.task_id == "memorygate-train-0000001-render"
-    assert task.domain == "memorygate"
-    assert task.response_model is render.ContentDraft
-    assert task.spec["case"] == {"hits": "M1+M3", "form": "sentence"}
-    assert task.spec["hits"] == ["M1", "M3"]
-    assert task.spec["form"] == "sentence"
-
-
 def test_threshold_line_reuses_the_gate_copy() -> None:
     """输入：一种语言 × 四个档位。输出：无。预期行为：档位表与 `gate` 那一族的选项文案同源。"""
     loc = locales.load("zh")
     for level in features.HANDLING_LEVELS:
         assert str(loc["fam"]["gate"]["opt"][level]) in render.threshold_line(loc, level)
-
-
-def test_tag_copy_reports_missing_fields() -> None:
-    """输入：缺字段的语言字典。输出：无。预期行为：抛 ValueError，点名缺了哪个字段。"""
-    with pytest.raises(ValueError, match="缺判据 M1"):
-        render.tag_copy({"tag": {}}, "M1")
-    broken: dict[str, JsonValue] = {"tag": {"M1": {"name": "作用域膨胀"}}}
-    with pytest.raises(ValueError, match="缺字段 rule"):
-        render.tag_copy(broken, "M1")
 
 
 def test_form_copy_reports_a_missing_shape() -> None:

@@ -28,7 +28,7 @@ from jc.workflow import answer_value  # noqa: F401 —— 公开名字，本文�
 from jc.workflow import compare_expected
 from pydantic import BaseModel, Field
 
-from . import features, locales, parse, questions
+from . import features, locales, parse, questions, render
 from .features import KIND_CALLOUT, KIND_CODE, KIND_HEADING, KIND_QUOTE
 from .spec import DocSpec
 
@@ -71,6 +71,13 @@ def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
     2026-10-01 小批量实测，不带判据时读者按自己的习惯认，20 条里 10 条读出别的结构——
     最常见的是把「标题紧贴着的那段正文」并进标题、把没带署名的引用读成正文。这是范式 §9.8
     那条「判据必须写在题面里」的反解侧版本：**考生看得见的判据，读者也得看得见**。
+
+    **切块规则也要照抄**（`render.split_rules_block`，与考生题面同一份、与
+    `parse._split_region` 的读法同源）：2026-10-04 真机 36 条里被拒 17 条（47%），拒稿理由
+    全是「读出来的块类型少一块」——原提示词只说了「块与块之间用空行隔开」，而渲染规则里
+    **标题是紧贴正文的**（不空行）、同一列表的相邻项也不空行，于是读者按「空行才分块」
+    把标题并进了正文。确定性读法（`parse.parse_state`）读同一份文本是对的——错的是读者手里的
+    规则少了两条。
     """
     steps = str(loc["doc"]["list_sep"]).join(parse.seq_words(loc))
     legend = [str(loc["verify"]["kinds_header"])]
@@ -80,7 +87,16 @@ def build_trace_prompt(state: str, loc: dict[str, JsonValue]) -> str:
         )
         for kind in features.BLOCK_KINDS
     )
-    return "\n".join([str(loc["verify"]["ask"]).format(steps=steps), *legend, "", state])
+    return "\n".join(
+        [
+            str(loc["verify"]["ask"]).format(steps=steps),
+            render.split_rules_block(loc),
+            "",
+            *legend,
+            "",
+            state,
+        ]
+    )
 
 
 def recompute(doc: parse.ParsedDoc, loc: dict[str, JsonValue]) -> dict[str, list[JsonValue]]:
