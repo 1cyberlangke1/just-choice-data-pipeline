@@ -174,6 +174,7 @@ def cases_for(config: AlertRiskConfig) -> list[AlertRiskCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class AlertRiskWorkflow(BackendHolder):
     """安全警报风险定级：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -273,10 +274,3 @@ class AlertRiskWorkflow(BackendHolder):
         parsed = render.parse_state(sample.get("state"))
         detail = render.detail_text(parsed.text or "")
         return {"告警描述": detail} if detail else {}
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> AlertRiskWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return AlertRiskWorkflow()

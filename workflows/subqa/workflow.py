@@ -164,6 +164,7 @@ def cases_for(config: SubQaConfig) -> list[SubQaCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class SubQaWorkflow(BackendHolder):
     """字幕对质检：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -263,10 +264,3 @@ class SubQaWorkflow(BackendHolder):
         cue = parsed.text or ""
         texts = {"译文": render.target_text(cue), "译者备注": render.note_text(cue)}
         return {field: text for field, text in texts.items() if text}
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> SubQaWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return SubQaWorkflow()

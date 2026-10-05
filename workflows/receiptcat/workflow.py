@@ -152,6 +152,7 @@ def cases_for(config: ReceiptCatConfig) -> list[ReceiptCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class ReceiptCatWorkflow(BackendHolder):
     """报销收据归类：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -228,10 +229,3 @@ class ReceiptCatWorkflow(BackendHolder):
         parsed = render.parse_state(sample.get("state"))
         text = parsed.text
         return {"收据行": text} if text and text.strip() else {}
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> ReceiptCatWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return ReceiptCatWorkflow()

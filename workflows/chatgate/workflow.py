@@ -173,6 +173,7 @@ def cases_for(config: ChatGateConfig) -> list[ChatCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class ChatGateWorkflow(BackendHolder):
     """聊天回复门控：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -256,10 +257,3 @@ class ChatGateWorkflow(BackendHolder):
         if replies:
             out["候选回复"] = "\n".join(replies)
         return out
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> ChatGateWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return ChatGateWorkflow()

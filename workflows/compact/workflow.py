@@ -127,6 +127,7 @@ def cases_for(config: CompactConfig) -> list[TagSet]:
     )
 
 
+@register(WORKFLOW_NAME)
 class CompactWorkflow(BackendHolder):
     """会话上下文压缩：正文、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -204,10 +205,3 @@ class CompactWorkflow(BackendHolder):
         """
         parsed = render.parse_state(sample.get("state"))
         return {"本块内容": parsed.content} if parsed.content.strip() else {}
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> CompactWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return CompactWorkflow()

@@ -149,6 +149,7 @@ def cases_for(config: CitationConfig) -> list[CitationCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class CitationWorkflow(BackendHolder):
     """引文核查：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -264,10 +265,3 @@ class CitationWorkflow(BackendHolder):
             for position, sentence in enumerate(section, start=1):
                 texts[f"第 {index} 节第 {position} 句"] = sentence
         return texts
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> CitationWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return CitationWorkflow()

@@ -118,6 +118,7 @@ def cases_for(config: FindTriageConfig) -> list[RecordCase]:
     return cases[: config.case_limit] if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class FindTriageWorkflow(BackendHolder):
     """改动引入性判定：正文、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -202,10 +203,3 @@ class FindTriageWorkflow(BackendHolder):
         if frame.fix.strip():
             out["修法"] = frame.fix
         return out
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> FindTriageWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return FindTriageWorkflow()

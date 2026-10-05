@@ -179,6 +179,7 @@ def cases_for(config: ImpactConfig) -> list[ImpactCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class ImpactWorkflow(BackendHolder):
     """测试影响选择：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -257,10 +258,3 @@ class ImpactWorkflow(BackendHolder):
         parsed = render.parse_state(sample.get("state"))
         title = parsed.title
         return {"提交标题": title} if title and title.strip() else {}
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> ImpactWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return ImpactWorkflow()

@@ -132,6 +132,7 @@ def cases_for(config: RerankConfig) -> list[RerankCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class RerankWorkflow(BackendHolder):
     """检索重排：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -223,10 +224,3 @@ class RerankWorkflow(BackendHolder):
         for index, candidate in enumerate(parsed.candidates, start=1):
             texts[f"第 {index} 条候选"] = candidate
         return texts
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> RerankWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return RerankWorkflow()

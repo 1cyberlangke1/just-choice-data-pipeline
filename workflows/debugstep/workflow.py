@@ -150,6 +150,7 @@ def cases_for(config: DebugStepConfig) -> list[DebugStepCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class DebugStepWorkflow(BackendHolder):
     """调试器下一步动作：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -226,11 +227,3 @@ class DebugStepWorkflow(BackendHolder):
         parsed = render.parse_state(sample.get("state"))
         note = render.note_text(parsed.text or "")
         return {"会话说明": note} if note else {}
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> DebugStepWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return DebugStepWorkflow()
-

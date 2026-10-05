@@ -126,6 +126,7 @@ def cases_for(config: SearchConfig) -> list[TagSet]:
     )
 
 
+@register(WORKFLOW_NAME)
 class SearchWorkflow(BackendHolder):
     """检索结果判读：查询与结果、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -207,10 +208,3 @@ class SearchWorkflow(BackendHolder):
             if value.strip():
                 texts[name] = value
         return texts
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> SearchWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return SearchWorkflow()

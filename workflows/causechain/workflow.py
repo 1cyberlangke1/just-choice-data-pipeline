@@ -174,6 +174,7 @@ def cases_for(config: CauseConfig) -> list[CauseCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class CauseChainWorkflow(BackendHolder):
     """根因定位：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -260,10 +261,3 @@ class CauseChainWorkflow(BackendHolder):
             for service, text in logs.items()
             if text and text.strip()
         }
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> CauseChainWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return CauseChainWorkflow()

@@ -127,6 +127,7 @@ def cases_for(config: AutoformatConfig) -> list[DocCase]:
     return cases
 
 
+@register(WORKFLOW_NAME)
 class AutoformatWorkflow(BackendHolder):
     """结构恢复：纯文本的块结构由代码定，正文由后端写。"""
 
@@ -234,10 +235,3 @@ class AutoformatWorkflow(BackendHolder):
             for index, block in enumerate(doc.blocks, start=1)
             if block.kind != features.KIND_CODE and block.text.strip()
         }
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> AutoformatWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return AutoformatWorkflow()

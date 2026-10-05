@@ -116,6 +116,7 @@ def cases_for(config: RubricConfig) -> list[TagSet]:
     )
 
 
+@register(WORKFLOW_NAME)
 class RubricWorkflow(BackendHolder):
     """打分与评分：正文、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -193,10 +194,3 @@ class RubricWorkflow(BackendHolder):
         """
         parsed = render.parse_state(sample.get("state"))
         return {"待评材料": "\n".join(parsed.body_lines)} if parsed.body_lines else {}
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> RubricWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return RubricWorkflow()

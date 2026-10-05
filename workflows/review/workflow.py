@@ -121,6 +121,7 @@ def cases_for(config: ReviewConfig) -> list[TagSet]:
     )
 
 
+@register(WORKFLOW_NAME)
 class ReviewWorkflow(BackendHolder):
     """改动审查：正文、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -192,7 +193,3 @@ class ReviewWorkflow(BackendHolder):
         return questions.build(spec.tags, locales.load(locale), spec.phrasing)
 
 
-@register(WORKFLOW_NAME)
-def _factory() -> ReviewWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return ReviewWorkflow()

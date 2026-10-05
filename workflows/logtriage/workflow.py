@@ -155,6 +155,7 @@ def cases_for(config: LogTriageConfig) -> list[LogTriageCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class LogTriageWorkflow(BackendHolder):
     """日志行分诊：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -229,10 +230,3 @@ class LogTriageWorkflow(BackendHolder):
         parsed = render.parse_state(sample.get("state"))
         text = parsed.text
         return {"日志行": text} if text and text.strip() else {}
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> LogTriageWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return LogTriageWorkflow()

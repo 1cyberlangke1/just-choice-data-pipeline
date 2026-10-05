@@ -167,6 +167,7 @@ def cases_for(config: TraceScoreConfig) -> list[TraceScoreCase]:
     return _cover_pick(cases, config.case_limit) if config.case_limit else cases
 
 
+@register(WORKFLOW_NAME)
 class TraceScoreWorkflow(BackendHolder):
     """代理轨迹自评：特征、计划、生成、质量四段（`jc.workflow.Workflow` 协议）。"""
 
@@ -241,10 +242,3 @@ class TraceScoreWorkflow(BackendHolder):
         parsed = render.parse_state(sample.get("state"))
         text = parsed.text
         return {"执行轨迹": text} if text and text.strip() else {}
-
-
-
-@register(WORKFLOW_NAME)
-def _factory() -> TraceScoreWorkflow:
-    """输入：无。输出：workflow 实例。预期行为：导入本模块即完成自注册。"""
-    return TraceScoreWorkflow()
