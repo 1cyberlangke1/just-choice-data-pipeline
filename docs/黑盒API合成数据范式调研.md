@@ -339,7 +339,6 @@ LLM-as-judge 的公开问题：位置偏置、对同一输出的回答不一致�
 ## 9. 实跑记录：小批量真端点合成（2026-09-25）
 
 拿 `mail` workflow（特征注入式）在真端点上跑小批量，把踩到的坑记下来。
-脚本 `tmp/smoke_mail.py`、配置 `tmp/backends.toml`（都不入库）。
 
 ### 9.1 端点与模型实测
 
@@ -550,7 +549,7 @@ smoke-9 的 8 条样本全被拒，其中 7 条的拒绝码是 `E_ASSEMBLE：全
 | 语义去重工具（SemHash） | https://github.com/minishlab/semhash |
 | 合成数据的多样性塌缩风险 | https://proceedings.mlr.press/v202/van-breugel23a/van-breugel23a.pdf |
 | batch runner 的限速 / 重试 / 死信 / 断点四件套 | https://github.com/Tajaddin/async-llm-batcher |
-| JEV 三大原语（choice / noul / score）与出题守则 | https://docs.typesafe.ai/ ；本地整理见 `tmp/docs/TypeSafe_Jev_研究文档.md` |
+| JEV 三大原语（choice / noul / score）与出题守则 | https://docs.typesafe.ai/ |
 
 检索时只拿到摘要、未留存直链的条目（此处只记标题，复现时请自行检索）：
 

@@ -207,6 +207,99 @@ def test_backend_manifest_records_which_model_served_the_batch() -> None:
     assert "calls" not in plain
 
 
+def test_merge_call_rows_keeps_the_calls_from_the_earlier_invocation() -> None:
+    """输入：上次落盘的流水、本次空流水。输出：合并后的流水。
+
+    预期行为：对同一个 run 再跑一次（一个任务都没重跑）**不许把上次的调用记录冲掉**——
+    实测 `sourceselect-5x-zh` 就是这么被冲掉的：`calls-train.jsonl` 有 161 行，
+    而 manifest 里的 `calls` 记成空表，两份账打架。
+    """
+    old = [{"task_id": "t-1", "provider": "nim", "model": "m", "key_fingerprint": "abcd1234"}]
+    assert pipeline.merge_call_rows(old, []) == old
+
+
+def test_merge_call_rows_prefers_the_latest_attempt_of_one_task() -> None:
+    """输入：同一个 `task_id` 的两条记录。输出：合并后的流水。
+
+    预期行为：`task_id` 是「一个生成任务」的稳定名字，重试过的那一次才算数（后写覆盖先写）；
+    输出按 `task_id` 排序，与后端自己的流水排序一致，写出来逐字节可复现。
+    """
+    old = [{"task_id": "t-2", "attempts": 1}, {"task_id": "t-1", "attempts": 1}]
+    merged = pipeline.merge_call_rows(old, [{"task_id": "t-2", "attempts": 2}])
+    assert [row["task_id"] for row in merged] == ["t-1", "t-2"]
+    assert merged[1]["attempts"] == 2
+
+
+def test_calls_summary_counts_every_model_and_key() -> None:
+    """输入：一份调用流水。输出：`{"models": ..., "keys": ...}`。
+
+    预期行为：与 `LlmBackend.call_stats` 同口径（每家 provider / 模型、每把 key 各出了多少条），
+    键名排序固定；没有 key 指纹的行只进 `models`，不编造一个空 key。
+    """
+    rows = [
+        {"provider": "nim", "model": "a", "key_fingerprint": "bbbb1111"},
+        {"provider": "nim", "model": "a", "key_fingerprint": "aaaa0000"},
+        {"provider": "gemini", "model": "b", "key_fingerprint": ""},
+    ]
+    assert pipeline.calls_summary(rows) == {
+        "models": {"gemini/b": 1, "nim/a": 2},
+        "keys": {"aaaa0000": 1, "bbbb1111": 1},
+    }
+
+
+class RecordingBackend(StubBackend):
+    """假后端：像 `LLMBackend` 那样记逐条调用流水（`call_log`）与来源计数（`call_stats`）。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[dict[str, JsonValue]] = []
+
+    def generate(self, task: object) -> None:
+        """输入：一个任务。输出：None。预期行为：先记 task_id，再记一行流水。"""
+        super().generate(task)
+        self.rows.append(
+            {
+                "task_id": task.task_id,
+                "provider": "nim",
+                "model": "fake-model",
+                "key_fingerprint": "abcd1234",
+            }
+        )
+
+    def call_log(self) -> list[dict[str, JsonValue]]:
+        """输入：无。输出：逐条流水（副本，按 `task_id` 排序）。"""
+        return sorted(self.rows, key=lambda row: str(row["task_id"]))
+
+    def call_stats(self) -> dict[str, JsonValue]:
+        """输入：无。输出：来源计数。预期行为：从流水现算，口径与真后端一致。"""
+        return pipeline.calls_summary(self.call_log())
+
+
+def test_resumed_run_keeps_the_manifest_calls(tmp_path: Path, monkeypatch: object) -> None:
+    """输入：同一个 run 跑两遍，第二遍换一个全新的后端对象（模拟进程重启）。输出：两遍的产物。
+
+    预期行为：第二遍一个任务都不会重跑（进度日志说两个序号都完成了），所以内存里的流水是空的；
+    但 `calls-train.jsonl` 与 manifest 里的 `calls` 必须**仍是第一遍那一份**——续跑不能把
+    溯源记录清零，也不能让两份账对不上。
+    """
+    monkeypatch.setattr(pipeline, "load", lambda name: BackendWorkflow())
+    config = pipeline.RunConfig(
+        workflow="fake_llm", out_root=tmp_path, run_id="r1", backend=RecordingBackend()
+    )
+    first = pipeline.run(config)
+    before = (first.run_dir / "calls-train.jsonl").read_text(encoding="utf-8")
+    first_calls = json.loads(
+        (first.run_dir / "manifest-train.json").read_text(encoding="utf-8")
+    )["backend"]["calls"]
+    assert first_calls == {"models": {"nim/fake-model": 2}, "keys": {"abcd1234": 2}}
+    second = pipeline.run(config)
+    assert (second.run_dir / "calls-train.jsonl").read_text(encoding="utf-8") == before
+    second_calls = json.loads(
+        (second.run_dir / "manifest-train.json").read_text(encoding="utf-8")
+    )["backend"]["calls"]
+    assert second_calls == first_calls
+
+
 def test_load_backend_empty_path_returns_none() -> None:
     """输入：空路径。输出：None。
 
@@ -901,7 +994,7 @@ def test_language_gate_rejects_prose_in_the_wrong_language(
     输出：两次 `RunResult`。
     预期行为：zh 那次全合格；en 那次**一条都不入库**，拒绝理由点名「与声明的语言对不上」
     以及出问题的字段名。语言闸就该在生成期挡住写歪语言的那一条，而不是等审计事后点名
-    ——`docs/项目现状.md` 里那个「生成期不拦」的洞就是这一条。
+    ——`docs_local/项目现状.md` 里那个「生成期不拦」的洞就是这一条。
     """
     monkeypatch.setattr(pipeline, "load", lambda name: ProseWorkflow())
     ok = pipeline.run(

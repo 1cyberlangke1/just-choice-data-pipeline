@@ -169,7 +169,7 @@ def test_code_heavy_text_is_flagged_so_callers_must_not_feed_it() -> None:
 def test_thresholds_match_the_measured_products() -> None:
     """输入：无。输出：无。
 
-    预期行为：阈值与 `docs/可靠合成数据范式.md` 里记的实测数字一致（只统计真机产物）。
+    预期行为：阈值与 `docs_local/可靠合成数据范式.md` 里记的实测数字一致（只统计真机产物）。
     en 侧按**字母**：正常最大 0.084（`browser`，元素名是中文固定词表）、坏样本 0.577 / 0.770。
     zh 侧按**词**（2026-10-02 改，理由见 `jc.language` 模块文档）：正常最小 0.333
     （`causechain` 的日志行）、真阳性 0.000（`adblock` 的 `Sponsored by ABC`）。

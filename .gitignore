@@ -68,6 +68,7 @@ build-*/
 # AI AGENT 本地笔记（不入库）
 AGENTS.md
 PLAN.md
+docs_local/
 handoff.md
 HANDOFF.md
 FEATURES.md

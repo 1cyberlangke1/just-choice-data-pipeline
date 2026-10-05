@@ -740,15 +740,22 @@ def run(config: RunConfig) -> RunResult:
         raise RuntimeError(f"答案分布超出容差 {config.balance_tolerance}：{detail}")
     # 按切分命名，避免一个 run 里跑多个切分时互相覆盖
     call_log = getattr(config.backend, "call_log", None) if config.backend is not None else None
+    calls: dict[str, JsonValue] | None = None
     if callable(call_log):
-        rows = call_log()
+        # 续跑不许把上次的调用流水冲掉：内存计数只有本次的，流水是累积的，先并再写。
+        # manifest 里的 `calls` 也从并好的流水现算，两份账永远同源。
+        sidecar = run_dir / f"calls-{config.split}.jsonl"
+        rows = merge_call_rows(_call_rows(sidecar), call_log())
         if rows:
-            jsonio.write_jsonl(run_dir / f"calls-{config.split}.jsonl", rows)
+            jsonio.write_jsonl(sidecar, rows)
+            calls = calls_summary(rows)
     (run_dir / f"stats-{config.split}.md").write_text(
         render_stats_md(stats, config, workflow), encoding="utf-8"
     )
     (run_dir / f"manifest-{config.split}.json").write_text(
-        jsonio.dumps_pretty(manifest(config, stats, workflow, cases)), encoding="utf-8", newline="\n"
+        jsonio.dumps_pretty(manifest(config, stats, workflow, cases, calls)),
+        encoding="utf-8",
+        newline="\n",
     )
     result = RunResult(run_dir=run_dir, accepted=len(accepted_rows), rejected=rejected, stats=stats)
     if aborted is not None:
@@ -795,16 +802,66 @@ def _accumulate(
     stats["questions_per_sample"].append(len(sample["questions"]))
 
 
-def backend_manifest(config: RunConfig) -> dict[str, JsonValue]:
+def _call_rows(path: Path) -> list[dict[str, JsonValue]]:
+    """输入：`calls-<split>.jsonl` 的路径。输出：上次落盘的调用流水（没有文件就是空表）。
+
+    预期行为：文件不存在、是空文件、或某行不是对象，都当空表跳过，**不抛异常**——
+    第一次跑这个 run 时就是这种情况。
+    """
+    if not path.exists():
+        return []
+    return [row for _, row in jsonio.iter_jsonl(path) if isinstance(row, dict)]
+
+
+def merge_call_rows(
+    old: list[dict[str, JsonValue]], fresh: list[dict[str, JsonValue]]
+) -> list[dict[str, JsonValue]]:
+    """输入：上次落盘的调用流水、本次的调用流水。输出：合并后的流水。
+
+    预期行为：**续跑（或对同一个 run 再跑一次）不许把上次的调用记录冲掉**——同一个 run
+    的 `calls-*.jsonl` 与 manifest 里的 `calls` 必须是同一份账。`task_id` 是「一个生成任务」
+    的稳定名字，同名的后写覆盖先写（重试过的那一次才是真的那次）；输出按 `task_id` 排序，
+    与后端 `call_log()` 自己的排序一致，写出来逐字节可复现。
+    """
+    merged = {str(row["task_id"]): row for row in old}
+    for row in fresh:
+        merged[str(row["task_id"])] = row
+    return [merged[key] for key in sorted(merged)]
+
+
+def calls_summary(rows: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
+    """输入：调用流水。输出：`{"models": {...}, "keys": {...}}`，与 `LlmBackend.call_stats` 同口径。
+
+    预期行为：每家 provider / 模型、每把 key 各出了多少条，键名排序固定。**从流水现算**而不是
+    读后端的内存计数，是为了让 manifest 与 `calls-*.jsonl` 永远是同一份账——续跑时内存计数
+    只覆盖本次，流水是累积的，两者会打架（实测 `sourceselect-5x-zh`：流水 161 行、manifest 记成空表）。
+    """
+    models: dict[str, int] = {}
+    keys: dict[str, int] = {}
+    for row in rows:
+        name = f"{row.get('provider')}/{row.get('model')}"
+        models[name] = models.get(name, 0) + 1
+        fingerprint = str(row.get("key_fingerprint") or "")
+        if fingerprint:
+            keys[fingerprint] = keys.get(fingerprint, 0) + 1
+    return {"models": dict(sorted(models.items())), "keys": dict(sorted(keys.items()))}
+
+
+def backend_manifest(
+    config: RunConfig, calls: dict[str, JsonValue] | None = None
+) -> dict[str, JsonValue]:
     """把后端记账写进 manifest（溯源用）。
 
-    输入：运行配置。输出：`{name, starting_mode, calls?}`；没有后端时返回 `{}`。
+    输入：运行配置、（可选）从调用流水现算的来源计数。输出：`{name, starting_mode, calls?}`；
+    没有后端时返回 `{}`。
     预期行为：只记后端名字与能力探测结论，**绝不记 key**——key 只在 key 池里，
     对外只暴露 sha256 前 8 位（PLAN 3.1.3）。
 
     后端能报来源时（`call_stats`）额外记 `calls`：这一批**实际**是哪家 provider / 哪个模型 /
     哪把 key 出了多少条。`allow_mixed_providers` 允许一批里混多家模型，不记就没人知道
     这批数据混了来源；假后端没有这个方法，如实少记一项，不编造。
+    调用方给了 `calls` 就**以它为准**（那是与 `calls-*.jsonl` 同源的累积账），否则退回后端
+    自己报的内存计数。
     """
     backend = config.backend
     if backend is None:
@@ -818,7 +875,9 @@ def backend_manifest(config: RunConfig) -> dict[str, JsonValue]:
         "starting_mode": effective or (caps.starting_mode() if caps is not None else ""),
     }
     call_stats = getattr(backend, "call_stats", None)
-    if callable(call_stats):
+    if calls is not None:
+        info["calls"] = calls
+    elif callable(call_stats):
         info["calls"] = call_stats()
     configured = getattr(backend, "providers", None)
     if isinstance(configured, list):
@@ -829,12 +888,21 @@ def backend_manifest(config: RunConfig) -> dict[str, JsonValue]:
 
 
 def manifest(
-    config: RunConfig, stats: dict[str, JsonValue], workflow: Workflow, cases: list[JsonValue]
+    config: RunConfig,
+    stats: dict[str, JsonValue],
+    workflow: Workflow,
+    cases: list[JsonValue],
+    calls: dict[str, JsonValue] | None = None,
 ) -> dict[str, JsonValue]:
-    """生成 manifest（溯源用）：配置、workflow 声明、case 矩阵规模、统计摘要。"""
+    """生成 manifest（溯源用）：配置、workflow 声明、case 矩阵规模、统计摘要。
+
+    输入：运行配置、统计、workflow、case 矩阵、（可选）来源计数。输出：manifest 字典。
+    预期行为：`calls` 传进来就用它（调用方从累积的调用流水现算，续跑也保得住），
+    不传就退回后端自己报的内存计数。
+    """
     return {
         "run_id": config.resolved_run_id(),
-        "backend": backend_manifest(config),
+        "backend": backend_manifest(config, calls),
         "workflow": workflow.name,
         "workflow_version": workflow.version,
         "kinds": sorted(workflow.kinds),
