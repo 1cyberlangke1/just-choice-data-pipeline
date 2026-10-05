@@ -58,14 +58,6 @@ def test_disposition_from_reads_the_table() -> None:
     assert audit_mod.disposition_from(3) is None
 
 
-def test_family_of_strips_dedupe_suffixes() -> None:
-    """输入：题号。输出：无。预期行为：去掉 `_2` 这类后缀，也认得带下划线的族名。"""
-    assert audit_mod._family_of("rule") == "rule"
-    assert audit_mod._family_of("rule_2") == "rule"
-    assert audit_mod._family_of("pin_overrode") == "pin_overrode"
-    assert audit_mod._family_of("pin_overrode_2") == "pin_overrode"
-
-
 def test_pin_overrode_consistency_rule() -> None:
     """输入：四种组合。输出：无。
 

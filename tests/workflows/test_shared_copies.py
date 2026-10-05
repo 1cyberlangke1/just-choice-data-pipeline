@@ -10,7 +10,9 @@ workflow 测试包里的 275 个逐字重复的测试函数收成 72 条用例�
 from __future__ import annotations
 
 import importlib
+import json
 import random
+import re
 from pathlib import Path
 from types import ModuleType
 from typing import Final
@@ -36,6 +38,18 @@ def module_of(name: str, dotted: str, *attrs: str) -> ModuleType:
     missing = [attr for attr in attrs if not hasattr(module, attr)]
     assert not missing, f"{name}.{dotted} 缺 {missing}"
     return module
+
+
+def _lang_pairs(names: tuple[str, ...], dotted: str, attr: str) -> tuple[tuple[str, str], ...]:
+    """输入：几家 workflow 名、测试模块尾名（如 `test_locales`）、语言表的名字。输出：(家, 语言) 组合。
+
+    预期行为：语言表从各家原处现场取（收集期就取，`parametrize` 等不到函数体）；不另抄一份语言清单。
+    """
+    return tuple(
+        (name, lang)
+        for name in names
+        for lang in getattr(module_of(name, dotted, attr), attr)
+    )
 
 
 #: 7 家逐字相同的「choice 答案与文本不自洽会被审计抓出来」：家 -> (题号, 计数器) 表。
@@ -1825,3 +1839,3132 @@ def test_audit_flags_an_unparsable_state(tmp_path: Path, name: str) -> None:
     report, missing = mod.WORKFLOW.audit(run_dir, ("train",), "zh")
     assert any("反解不出来" in item for item in missing)
     assert report["train"]["label_mismatch"] >= 1
+
+
+# ================================================================================================
+# 以下由跨文件重复组收成（生成脚本：tmp/_merge_a.py）
+# ================================================================================================
+
+
+#: 3 家同款——输入：一种语言。输出：无。
+TEST_TAG_TABLE_LINES_UP_WITH_FEATURES: Final[tuple[str, ...]] = ('adblock', 'logtriage', 'tracescore')
+
+
+@pytest.mark.parametrize("name", TEST_TAG_TABLE_LINES_UP_WITH_FEATURES)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_tag_table_lines_up_with_features(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：判据表的键与 `TAG_IDS` 一一对应，每条三个字段都非空、判据名与表行两两不同，
+    而且表行里**编号排在分隔符前面**（解析就是按这个切回编号的）。
+    """
+    m = module_of(name, 'test_locales', 'features', 'locales', 'render')
+    features, locales, render = m.features, m.locales, m.render
+    loc = locales.load(lang)
+    table = loc["tag"]
+    assert isinstance(table, dict)
+    assert sorted(table) == sorted(features.TAG_IDS)
+    for tag in features.TAG_IDS:
+        entry = render.tag_copy(loc, tag)
+        for key in ("name", "rule", "avoid"):
+            assert str(entry[key]).strip(), f"{lang}.{tag}.{key}"
+    names = [str(table[tag]["name"]) for tag in features.TAG_IDS]
+    assert len(set(names)) == len(names)
+    sep = str(loc["state"]["tag_sep"])
+    lines = [render.tag_line(loc, tag) for tag in features.TAG_IDS]
+    assert len(set(lines)) == len(lines)
+    for tag, line in zip(features.TAG_IDS, lines, strict=True):
+        assert line.partition(sep)[0] == tag
+
+
+#: 4 家同款——输入：全空间的 48 组 case。输出：无。
+TEST_TWO_LABEL_PATHS_AGREE_ON_EVERY_FAITHFUL_TEXT: Final[tuple[str, ...]] = ('logtriage', 'memorygate', 'promptinject', 'tracescore')
+
+
+@pytest.mark.parametrize("name", TEST_TWO_LABEL_PATHS_AGREE_ON_EVERY_FAITHFUL_TEXT)
+def test_two_label_paths_agree_on_every_faithful_text(name: str) -> None:
+    """输入：全空间的 48 组 case。输出：无。
+
+    预期行为：「构造侧从计划推」与「审计侧从文本重推」两条路走出来的标签逐条相同——
+    日志兑现了计划，两条路就不该打架。
+    """
+    m = module_of(name, 'test_features', 'features', 'text_of')
+    features, text_of = m.features, m.text_of
+    cases = features.build_cases(512)
+    assert len(cases) == 48  # 16 组命中 × 3 种通道
+    for case in cases:
+        text = text_of(case)
+        assert features.hits_of(text) == case.hits, case.describe()
+        assert features.observed_labels(text).hits == features.label_for(
+            features.plan_for(case, 0)
+        ).hits
+
+
+#: 5 家同款——输入：整段贴 / 改了一个词的两种轨迹。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_PASTED_RULES_ONLY_FLAGS_VERBATIM_TEXT_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'adblock': ('A4', '隐形或极小', '隐形极小'),
+    'chatgate': ('C1', '行不行', '行不行呀'),
+    'logtriage': ('N1', 'healthz', 'healthzzz'),
+    'tracescore': ('S1', 'pytest', 'pytestx'),
+    'turntake': ('T4', '等一下', '等两下'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_PASTED_RULES_ONLY_FLAGS_VERBATIM_TEXT_VALUES)
+def test_pasted_rules_only_flags_verbatim_text(name: str) -> None:
+    """输入：整段贴 / 改了一个词的两种轨迹。输出：无。
+
+    预期行为：只认**逐字相同**的整段判据原文——改一个词就不再算，否则正常产物会被误伤。
+    """
+    _v0, _v1, _v2 = TEST_PASTED_RULES_ONLY_FLAGS_VERBATIM_TEXT_VALUES[name]
+    m = module_of(name, 'test_render', 'locales', 'BASE', 'render')
+    locales, BASE, render = m.locales, m.BASE, m.render
+    loc = locales.load("zh")
+    rule = str(render.tag_copy(loc, _v0)["rule"])
+    assert render.pasted_rules(rule, loc) == [rule]
+    # 换掉的是**夹在中间**的那个词：把末尾的词加长反而仍包含原串（子串匹配不要求到结尾），
+    # 那样这条断言就测了个寂寞。
+    assert render.pasted_rules(rule.replace(_v1, _v2), loc) == []
+    assert render.pasted_rules(BASE, loc) == []
+
+
+#: 2 家同款——输入：把一条**计划是「公网可达」**的样本的 `exposure:` 那一行换成内网。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_A_REWRITTEN_LINE_IS_CAUGHT_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'alertrisk': ('R1', 'exposure: reachable=internal -- 只有内网能访问', 'exposure:', 'fact_bad', 'highs_bad'),
+    'depcheck': ('D1', 'license: MIT', 'license:', 'flag_bad', 'combo_bad'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_A_REWRITTEN_LINE_IS_CAUGHT_VALUES)
+def test_a_rewritten_line_is_caught(name: str, tmp_path: Path) -> None:
+    """输入：把一条**计划是「公网可达」**的样本的 `exposure:` 那一行换成内网。输出：无。
+
+    预期行为：`fact_bad` / `grade_bad` / `highs_bad` / `act_bad` 里至少有一个报出来——审计走的是
+    「从文本重推标签」这条独立路径，把形状擦掉之后重推出来的命中组合就与题面答案对不上了。
+    """
+    _v0, _v1, _v2, _v3, _v4 = TEST_A_REWRITTEN_LINE_IS_CAUGHT_VALUES[name]
+    m = module_of(name, 'test_audit', '_run', '_rows', '_write', '_audit', 'features', 'render')
+    _run, _rows, _write, _audit, features, render = m._run, m._rows, m._write, m._audit, m.features, m.render
+    run_dir = _run(tmp_path, "t-rewrite")
+    rows = _rows(run_dir)
+    target = next(
+        row
+        for row in rows
+        if _v0 in features.hit_set(render.parse_state(row["state"]).text or "")
+    )
+    lines = [
+        _v1
+        if line.strip().startswith(_v2)
+        else line
+        for line in str(target["state"]).splitlines()
+    ]
+    target["state"] = "\n".join(lines)
+    _write(run_dir, rows)
+    report, _ = _audit(run_dir)
+    counts = report["train"]
+    assert counts[_v3] + counts["grade_bad"] + counts[_v4] + counts["act_bad"] > 0
+
+
+#: 2 家同款——输入：六种形态不对的反解草稿。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_TRACE_SKIPS_DRAFTS_IT_CANNOT_READ_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'alertrisk': ('R9', '不认识的因子编号'),
+    'depcheck': ('D9', '不认识的标记编号'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_TRACE_SKIPS_DRAFTS_IT_CANNOT_READ_VALUES)
+def test_trace_skips_drafts_it_cannot_read(name: str) -> None:
+    """输入：六种形态不对的反解草稿。输出：无。
+
+    预期行为：都记「没判成」（`skipped=True`）——那是反解格式没对齐，不是数据本身错。
+
+    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
+    """
+    _v0, _v1 = TEST_TRACE_SKIPS_DRAFTS_IT_CANNOT_READ_VALUES[name]
+    m = module_of(name, 'test_judges', 'faithful', 'CASE', 'judges', 'StubBackend')
+    faithful, CASE, judges, StubBackend = m.faithful, m.CASE, m.judges, m.StubBackend
+    bad: list[str] = []
+    for data, needle in [
+        ({}, "缺 tags"),
+        ({"tags": "不是列表", "level": 3}, "缺 tags"),
+        ({"tags": ["不是对象"], "level": 3}, "不是「编号 + 引文」对象"),
+        ({"tags": [{"tag": _v0, "quote": "x"}], "level": 3}, _v1),
+        ({"tags": [], "level": 9}, "1~5 的整数"),
+        ({"tags": [], "level": "三"}, "1~5 的整数"),
+    ]:
+        try:
+            spec, sample = faithful(CASE)
+            verdict = judges.TraceJudge(StubBackend(data), "zh").judge(sample, spec)
+            assert verdict.skipped and verdict.ok
+            assert needle in verdict.reason
+        except AssertionError as exc:
+            bad.append(f"{(data, needle)!r}: {exc}")
+    assert not bad, "\n".join(bad)
+
+
+#: 2 家同款——输入：一种语言。输出：无。
+TEST_FACT_TABLE_LINES_UP_WITH_FEATURES: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_FACT_TABLE_LINES_UP_WITH_FEATURES)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_fact_table_lines_up_with_features(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：因子表的键与 `TAG_IDS` 一一对应，每条三个字段都非空、因子名与表行两两不同，
+    而且表行里**编号排在分隔符前面**（解析就是按这个切回编号的）。
+    """
+    m = module_of(name, 'test_locales', 'features', 'locales', 'render')
+    features, locales, render = m.features, m.locales, m.render
+    loc = locales.load(lang)
+    table = loc["fact"]
+    assert isinstance(table, dict)
+    assert sorted(table) == sorted(features.TAG_IDS)
+    for tag in features.TAG_IDS:
+        entry = render.fact_copy(loc, tag)
+        for key in ("name", "rule", "avoid"):
+            assert str(entry[key]).strip(), f"{lang}.{tag}.{key}"
+    names = [str(table[tag]["name"]) for tag in features.TAG_IDS]
+    assert len(set(names)) == len(names)
+    sep = str(loc["state"]["tag_sep"])
+    lines = [render.fact_line(loc, tag) for tag in features.TAG_IDS]
+    assert len(set(lines)) == len(lines)
+    for tag, line in zip(features.TAG_IDS, lines, strict=True):
+        assert line.partition(sep)[0] == tag
+
+
+#: 3 家同款——输入：一份语言文件。输出：无。
+TEST_LABELS_ARE_NOT_MUTUAL_PREFIXES: Final[tuple[str, ...]] = ('clipcut', 'planstep', 'quoteread')
+
+
+@pytest.mark.parametrize(("name", "lang"), _lang_pairs(TEST_LABELS_ARE_NOT_MUTUAL_PREFIXES, "test_locales", "LANGS"))
+def test_labels_are_not_mutual_prefixes(name: str, lang: str) -> None:
+    """输入：一份语言文件。输出：无。
+
+    预期行为：抬头与区块抬头两两**不互为前缀**——反解靠最长前缀认标签，互为前缀时短的
+    会把长的吃掉（「片段筛选请求」被认成「片段筛选请求号」）。
+    """
+    m = module_of(name, 'test_locales', 'LANGS', 'parse', 'locales')
+    LANGS, parse, locales = m.LANGS, m.parse, m.locales
+    tables = parse.tables_of(locales.load(lang))
+    labels = [*tables.request, *tables.sections]
+    for left in labels:
+        for right in labels:
+            if left != right:
+                assert not right.startswith(left), f"{lang}: {left!r} / {right!r}"
+
+
+#: 3 家同款——输入：几种引文。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_QUOTE_HOLDS_NEEDS_BOTH_THE_QUOTE_AND_THE_CRITERION_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'logtriage': ('N1', 'N1', 'N1', 'N1', 'N1', 'N1', 'N1', 'N1', 'N4', 'N1', '事务已回滚', 'N9', '事务已回滚'),
+    'memorygate': ('M1', 'M1', 'M1', 'M1', 'M1', 'M1', 'M1', 'M1', 'M4', 'M1', '项目组', 'M9', '项目组'),
+    'tracescore': ('S1', 'S1', 'S1', 'S1', 'S1', 'S1', 'S1', 'S1', 'S4', 'S1', '收工。', 'S9', '收工。'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_QUOTE_HOLDS_NEEDS_BOTH_THE_QUOTE_AND_THE_CRITERION_VALUES)
+def test_quote_holds_needs_both_the_quote_and_the_criterion(name: str) -> None:
+    """输入：几种引文。输出：无。
+
+    预期行为：引文得原样在日志里、且自己满足那条判据；空白差异不算抄错。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5, _v6, _v7, _v8, _v9, _v10, _v11, _v12 = TEST_QUOTE_HOLDS_NEEDS_BOTH_THE_QUOTE_AND_THE_CRITERION_VALUES[name]
+    m = module_of(name, 'test_judges', 'BASE', 'FRAGMENTS', 'judges', 'quote_for')
+    BASE, FRAGMENTS, judges, quote_for = m.BASE, m.FRAGMENTS, m.judges, m.quote_for
+    body = BASE + FRAGMENTS[_v0]
+    assert judges.quote_holds(_v1, quote_for(_v2), body)
+    # 引文首尾多带了换行：折叠之后一致，照样算抄对了（模型常这么答）。
+    assert judges.quote_holds(_v3, f"\n{quote_for(_v4)}\n", body)
+    assert judges.quote_holds(_v5, json.dumps([quote_for(_v6)]), body)  # 引文被装进 JSON 数组字符串（范式 §9.88）
+    assert not judges.quote_holds(_v7, quote_for(_v8), body)  # 抄不出原文
+    assert not judges.quote_holds(_v9, _v10, body)  # 抄出来了但不合判据
+    assert not judges.quote_holds(_v11, _v12, body)  # 不认识的编号
+
+
+#: 2 家同款——输入：一份语言文件。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_META_HAS_THE_EIGHT_STRUCTURAL_KEYS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': ('tasks', 'rules', 'cell_sep', 'deps_sep', 'deps_prefix', 'deps_none'),
+    'sentiment': ('topic', 'words', 'turns', 'rules', 'cell_sep', 'word_sep'),
+}
+
+
+@pytest.mark.parametrize(("name", "lang"), _lang_pairs(TEST_META_HAS_THE_EIGHT_STRUCTURAL_KEYS_VALUES, "test_locales", "LANGS"))
+def test_meta_has_the_eight_structural_keys(name: str, lang: str) -> None:
+    """输入：一份语言文件。输出：无。
+
+    预期行为：`[meta]` 里抬头 / 两个区块抬头 / 格分隔符 / 前置分隔符 / 前置前缀 / 无前置
+    写法 / 规则行前缀齐全——渲染要按它们拼行，缺一个就直接 KeyError。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5 = TEST_META_HAS_THE_EIGHT_STRUCTURAL_KEYS_VALUES[name]
+    m = module_of(name, 'test_locales', 'LANGS', 'locales')
+    LANGS, locales = m.LANGS, m.locales
+    meta = locales.load(lang)["meta"]
+    assert isinstance(meta, dict)
+    assert set(meta) == {
+        "request",
+        _v0,
+        _v1,
+        _v2,
+        _v3,
+        _v4,
+        _v5,
+        "rules_prefix",
+    }
+
+
+#: 2 家同款——输入：同一屏记录、两套句面。输出：无。
+TEST_PHRASING_ONLY_CHANGES_THE_WORDING: Final[tuple[str, ...]] = ('bench', 'sim')
+
+
+@pytest.mark.parametrize("name", TEST_PHRASING_ONLY_CHANGES_THE_WORDING)
+def test_phrasing_only_changes_the_wording(name: str) -> None:
+    """输入：同一屏记录、两套句面。输出：无。
+
+    预期行为：题族、答案、选项**完全一样**，只有问句措辞不同——句面是留出维，但留出它
+    不会把任何一族的分布压歪。
+    """
+    m = module_of(name, 'test_questions', '_make_spec', 'LOC', 'questions')
+    _make_spec, LOC, questions = m._make_spec, m.LOC, m.questions
+    spec = _make_spec(layout="l2")
+    first = questions.build(spec.rows, spec, LOC, 0)
+    second = questions.build(spec.rows, spec, LOC, 1)
+    assert [item.family for item in first] == [item.family for item in second]
+    assert [item.answer for item in first] == [item.answer for item in second]
+    assert [item.question["criteria"] for item in first] == [
+        item.question["criteria"] for item in second
+    ]
+    assert any(
+        left.question["instructions"] != right.question["instructions"]
+        for left, right in zip(first, second, strict=True)
+    )
+
+
+#: 3 家同款——输入：多写一条不该命中的片段。输出：RunResult。
+TEST_ADDING_A_SPARE_FRAGMENT_ONLY_SPARES_THE_FULL_HITS: Final[tuple[str, ...]] = ('adblock', 'chatgate', 'promptinject')
+
+
+@pytest.mark.parametrize("name", TEST_ADDING_A_SPARE_FRAGMENT_ONLY_SPARES_THE_FULL_HITS)
+def test_adding_a_spare_fragment_only_spares_the_full_hits(name: str, tmp_path: Path) -> None:
+    """输入：多写一条不该命中的片段。输出：RunResult。
+
+    预期行为：四条全中的 case 没有「多余的一条」可加，其余全被拦下。
+    """
+    conftest = importlib.import_module(f"tests.workflows.{name}.conftest")
+    fake_backend = conftest.FakeBackend
+    m = module_of(name, 'test_pipeline', 'FakeBackend', 'make_config', 'cases_of', 'features')
+    FakeBackend, make_config, cases_of, features = m.FakeBackend, m.make_config, m.cases_of, m.features
+    unaffected = sum(
+        1 for case in cases_of("train") if len(case.tags()) == len(features.TAG_IDS)
+    )
+    result = pipeline.run(make_config(tmp_path, "p3-extra", fake_backend(extra_fragment=True)))
+    assert result.accepted == unaffected
+    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
+
+
+#: 3 家同款——输入：少写一条该命中的形状。输出：RunResult。
+TEST_DROPPING_A_FRAGMENT_ONLY_SPARES_THE_CASES_WITHOUT_ONE: Final[tuple[str, ...]] = ('adblock', 'chatgate', 'promptinject')
+
+
+@pytest.mark.parametrize("name", TEST_DROPPING_A_FRAGMENT_ONLY_SPARES_THE_CASES_WITHOUT_ONE)
+def test_dropping_a_fragment_only_spares_the_cases_without_one(name: str, tmp_path: Path) -> None:
+    """输入：少写一条该命中的形状。输出：RunResult。
+
+    预期行为：只有「本来就一条都不命中」的那些 case 能活下来（没有形状可少写）。
+    """
+    conftest = importlib.import_module(f"tests.workflows.{name}.conftest")
+    fake_backend = conftest.FakeBackend
+    m = module_of(name, 'test_pipeline', 'FakeBackend', 'make_config', 'cases_of')
+    FakeBackend, make_config, cases_of = m.FakeBackend, m.make_config, m.cases_of
+    unaffected = sum(1 for case in cases_of("train") if not case.tags())
+    result = pipeline.run(make_config(tmp_path, "p3-drop", fake_backend(drop_fragment=True)))
+    assert result.accepted == unaffected
+    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
+
+
+#: 3 家同款——输入：无。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_SOURCES_ARE_THREE_DISTINCT_SHAPES_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'logtriage': ('app', 'infra', 'access'),
+    'promptinject': ('web', 'tool', 'file'),
+    'tracescore': ('cli', 'editor', 'chat'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_SOURCES_ARE_THREE_DISTINCT_SHAPES_VALUES)
+def test_sources_are_three_distinct_shapes(name: str) -> None:
+    """输入：无。输出：无。
+
+    预期行为：三个通道键两两不同，且**全空间里每种通道都被枚举到**——留出维只砍取值，
+    不该把别的取值一起砍掉（`build_cases` 默认维度表覆盖 `SOURCES`）。
+    """
+    _v0, _v1, _v2 = TEST_SOURCES_ARE_THREE_DISTINCT_SHAPES_VALUES[name]
+    m = module_of(name, 'test_features', 'features')
+    features = m.features
+    assert features.SOURCES == (_v0, _v1, _v2)
+    assert len(set(features.SOURCES)) == len(features.SOURCES)
+    assert features.DIMS["source"] == features.SOURCES
+    cases = features.build_cases(512)
+    assert {case.source for case in cases} == set(features.SOURCES)
+
+
+#: 3 家同款——输入：两种语言 × 一段 state。输出：无。
+TEST_STATE_PRINTS_EACH_CRITERION_RULE: Final[tuple[str, ...]] = ('logtriage', 'memorygate', 'tracescore')
+
+
+@pytest.mark.parametrize("name", TEST_STATE_PRINTS_EACH_CRITERION_RULE)
+def test_state_prints_each_criterion_rule(name: str) -> None:
+    """输入：两种语言 × 一段 state。输出：无。
+
+    预期行为：判据表每行都带上该判据的**原文**——只印判据名时，反解模型认不出「已自愈的重试与
+    降级」指的是什么形状（范式 §9.44，在 `memorygate` 上量过 1/8 → 8/8）。
+    """
+    m = module_of(name, 'test_render', 'locales', 'features', 'render', 'text_of', 'CASE')
+    locales, features, render, text_of, CASE = m.locales, m.features, m.render, m.text_of, m.CASE
+    for lang in locales.available():
+        loc = locales.load(lang)
+        state = render.to_state(render.ContentDraft(text=text_of(CASE)), loc)
+        for tag in features.TAG_IDS:
+            assert str(render.tag_copy(loc, tag)["rule"]) in state
+
+
+#: 2 家同款——输入：一种语言 × 全空间 48 组 case。输出：无。
+TEST_PROMPTS_AND_QUESTIONS_LEAVE_NO_PLACEHOLDER: Final[tuple[str, ...]] = ('adblock', 'guardrail')
+
+
+@pytest.mark.parametrize("name", TEST_PROMPTS_AND_QUESTIONS_LEAVE_NO_PLACEHOLDER)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_prompts_and_questions_leave_no_placeholder(name: str, lang: str) -> None:
+    """输入：一种语言 × 全空间 48 组 case。输出：无。
+
+    预期行为：提示词、反解提示词、题面与选项渲染完之后**一个花括号都不剩**——漏填会在 `format`
+    上抛错，而多写的花括号会原样漏给模型，让它以为那是要填的槽。
+    """
+    m = module_of(name, 'test_locales', 'locales', 'features', 'judges', 'render', 'questions')
+    locales, features, judges, render, questions = m.locales, m.features, m.judges, m.render, m.questions
+    loc = locales.load(lang)
+    for case in features.build_cases(512):
+        prompt = render.build_prompt(loc, case)
+        assert "{" not in prompt and "}" not in prompt, case.describe()
+        for item in questions.build(features.plan_for(case, 0), loc, 0):
+            instructions = str(item.question["instructions"])
+            assert "{" not in instructions and "}" not in instructions
+    trace = judges.build_trace_prompt("[state]", loc)
+    assert "{" not in trace and "}" not in trace
+
+
+#: 2 家同款——输入：一种语言。输出：无。
+TEST_RULE_AND_AVOID_COPY_NEVER_CARRIES_BRACES: Final[tuple[str, ...]] = ('sqlreview', 'subqa')
+
+
+@pytest.mark.parametrize("name", TEST_RULE_AND_AVOID_COPY_NEVER_CARRIES_BRACES)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_rule_and_avoid_copy_never_carries_braces(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：判据原文与反面文案里**一个花括号都不许有**——这两段会被 `build_prompt` 拼进
+    提示词，而花括号是填槽标记（`test_prompts_and_questions_leave_no_placeholder` 会扫
+    「一个都不剩」）。`subqa` 上踩过一次：判据原文里写了那个花括号指令的具体形状，提示词的
+    填槽自检当场把它当成没填的槽报出来。要举例就写「一对花括号里夹着反斜杠开头的短代码」这种
+    说法，别把花括号本身写进去。
+    """
+    m = module_of(name, 'test_locales', 'features', 'locales', 'render')
+    features, locales, render = m.features, m.locales, m.render
+    loc = locales.load(lang)
+    for tag in features.TAG_IDS:
+        entry = render.tag_copy(loc, tag)
+        for key in ("rule", "avoid"):
+            text = str(entry[key])
+            assert "{" not in text and "}" not in text, f"{lang}.{tag}.{key}: {text!r}"
+
+
+#: 2 家同款——输入：全空间 24 组 case × 两种语言。输出：无。
+TEST_CHOICE_OPTIONS_NEVER_DUPLICATE: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_CHOICE_OPTIONS_NEVER_DUPLICATE)
+def test_choice_options_never_duplicate(name: str) -> None:
+    """输入：全空间 24 组 case × 两种语言。输出：无。
+
+    预期行为：两族 choice 的选项描述两两不同——两句话一样，考生没法分辨，是构造 bug。
+    """
+    m = module_of(name, 'test_questions', 'locales', 'features', 'questions')
+    locales, features, questions = m.locales, m.features, m.questions
+    for lang in locales.available():
+        loc = locales.load(lang)
+        for case in features.build_cases(512):
+            for item in questions.build(features.plan_for(case, 0), loc, 0):
+                if item.question["type"] != "choice":
+                    continue
+                criteria = item.question["criteria"]
+                assert isinstance(criteria, dict)
+                values = [str(value) for value in criteria.values()]
+                assert len(set(values)) == len(values), f"{lang}/{case.describe()}/{item.family}"
+
+
+#: 2 家同款——输入：无。输出：题族清单。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FAMILIES_ARE_THE_FOUR_KNOWN_ONES_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'clipcut': ('keep_count', 'first_kept', 'blocked_any', 'dup_any', 'keep_count', 'first_kept', 'blocked_any', 'dup_any'),
+    'quoteread': ('tier', 'leader', 'alert', 'divergent', 'tier', 'leader', 'alert', 'divergent'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FAMILIES_ARE_THE_FOUR_KNOWN_ONES_VALUES)
+def test_families_are_the_four_known_ones(name: str) -> None:
+    """输入：无。输出：题族清单。
+
+    预期行为：四个题族、顺序稳定（先段数、再位置、最后两个布尔），三张分类表正好把四族分完
+    ——多一族少一族都会让下面的「答案在选项里」漏查。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5, _v6, _v7 = TEST_FAMILIES_ARE_THE_FOUR_KNOWN_ONES_VALUES[name]
+    m = module_of(name, 'test_questions', 'questions')
+    questions = m.questions
+    assert questions.FAMILIES == (_v0, _v1, _v2, _v3)
+    assert questions.SCORE_FAMILIES == (_v4,)
+    assert questions.CHOICE_FAMILIES == (_v5,)
+    assert questions.NOUL_FAMILIES == (_v6, _v7)
+    assert set(questions.FAMILIES) == (
+        set(questions.CHOICE_FAMILIES)
+        | set(questions.SCORE_FAMILIES)
+        | set(questions.NOUL_FAMILIES)
+    )
+
+
+#: 2 家同款——输入：一组特征、语言字典。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_PROMPT_LISTS_ONLY_THE_TEXT_DIMENSIONS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'compact': ('这一块是什么', '有没有承载持久事实', '轮次位置', '是否钉住', '剩余预算'),
+    'routing': ('这条工单是什么问题', '它有多急', '客户等级', '合规标记', '产品域'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_PROMPT_LISTS_ONLY_THE_TEXT_DIMENSIONS_VALUES)
+def test_prompt_lists_only_the_text_dimensions(name: str) -> None:
+    """输入：一组特征、语言字典。输出：无。
+
+    预期行为：提示词只提由文本承载的两维，绝不提轮次位置 / 是否钉住 / 剩余预算——
+    提了模型就会把它们写进正文，与「本块位置」那一行抢同一件事（范式 §9.13）。
+    """
+    _v0, _v1, _v2, _v3, _v4 = TEST_PROMPT_LISTS_ONLY_THE_TEXT_DIMENSIONS_VALUES[name]
+    m = module_of(name, 'test_render', 'TAGS', 'locales', 'render')
+    TAGS, locales, render = m.TAGS, m.locales, m.render
+    loc = locales.load("zh")
+    prompt = render.build_prompt(TAGS, loc, 0)
+    feature_block = prompt.split("\n\n")[1]
+    assert _v0 in feature_block
+    assert _v1 in feature_block
+    assert _v2 not in feature_block
+    assert _v3 not in feature_block
+    assert _v4 not in feature_block
+    assert "{" not in prompt
+
+
+#: 3 家同款——输入：一种语言。输出：无。预期行为：写出去再读回来，判据表与日志一字不差。
+TEST_STATE_ROUND_TRIPS: Final[tuple[str, ...]] = ('logtriage', 'memorygate', 'tracescore')
+
+
+@pytest.mark.parametrize("name", TEST_STATE_ROUND_TRIPS)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_state_round_trips(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。预期行为：写出去再读回来，判据表与日志一字不差。
+    """
+    m = module_of(name, 'test_render', 'text_of', 'CASE', 'locales', 'render', 'features')
+    text_of, CASE, locales, render, features = m.text_of, m.CASE, m.locales, m.render, m.features
+    loc = locales.load(lang)
+    text = text_of(CASE)
+    state = render.to_state(render.ContentDraft(text=text), loc)
+    parsed = render.parse_with(state, loc)
+    assert parsed.tags == features.TAG_IDS
+    assert parsed.text == text
+    assert render.detect_locale(state) == lang
+
+
+#: 3 家同款——输入：正文里出现一行「像判据表」的内容。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_CONTENT_MENTIONING_A_RULE_DOES_NOT_BREAK_THE_PARSE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'logtriage': ('\n- N9：这一行是正文，不是判据表', '- N9：这一行是正文，不是判据表'),
+    'memorygate': ('\n- M9：这一行是正文，不是判据表', '- M9：这一行是正文，不是判据表'),
+    'tracescore': ('\n- S9：这一行是正文，不是信号表', '- S9：这一行是正文，不是信号表'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_CONTENT_MENTIONING_A_RULE_DOES_NOT_BREAK_THE_PARSE_VALUES)
+def test_content_mentioning_a_rule_does_not_break_the_parse(name: str) -> None:
+    """输入：正文里出现一行「像判据表」的内容。输出：无。
+
+    预期行为：日志抬头之后的一切都当正文——否则堆栈里出现一行 `- N9：假的` 就会把判据表数歪。
+    """
+    _v0, _v1 = TEST_CONTENT_MENTIONING_A_RULE_DOES_NOT_BREAK_THE_PARSE_VALUES[name]
+    m = module_of(name, 'test_render', 'locales', 'text_of', 'CASE', 'render', 'features')
+    locales, text_of, CASE, render, features = m.locales, m.text_of, m.CASE, m.render, m.features
+    loc = locales.load("zh")
+    text = text_of(CASE) + _v0
+    parsed = render.parse_with(render.to_state(render.ContentDraft(text=text), loc), loc)
+    assert parsed.tags == features.TAG_IDS
+    assert _v1 in str(parsed.text)
+
+
+#: 2 家同款——输入：无。输出：题族清单。（与 `test_families_are_the_four_known_ones` 同名不同形：字面量个数不一样，拆成两份）
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FAMILIES_ARE_THE_FOUR_KNOWN_ONES_2_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'sentiment': ('tone', 'pivot', 'drop', 'rebound', 'tone', 'pivot', 'drop', 'rebound'),
+    'siftrank': ('agg_top', 'pair_order', 'cut_size', 'stable', 'agg_top', 'pair_order', 'cut_size', 'stable'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FAMILIES_ARE_THE_FOUR_KNOWN_ONES_2_VALUES)
+def test_families_are_the_four_known_ones_2(name: str) -> None:
+    """输入：无。输出：题族清单。
+
+    预期行为：四个题族、顺序稳定（先整段倾向、再转折位置、再落差、最后回升），三张分类表
+    正好把四族分完——多一族少一族都会让下面的「答案在选项里」漏查。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5, _v6, _v7 = TEST_FAMILIES_ARE_THE_FOUR_KNOWN_ONES_2_VALUES[name]
+    m = module_of(name, 'test_questions', 'questions')
+    questions = m.questions
+    assert questions.FAMILIES == (_v0, _v1, _v2, _v3)
+    assert questions.CHOICE_FAMILIES == (_v4, _v5)
+    assert questions.SCORE_FAMILIES == (_v6,)
+    assert questions.NOUL_FAMILIES == (_v7,)
+    assert set(questions.FAMILIES) == (
+        set(questions.CHOICE_FAMILIES)
+        | set(questions.SCORE_FAMILIES)
+        | set(questions.NOUL_FAMILIES)
+    )
+
+
+#: 2 家同款——输入：四个切分的配置。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_SPLIT_SIZES_ADD_UP_TO_THE_TRAINING_SIDE_MATRIX_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'cachereuse': ('cachereuse', 3, 4, 2),
+    'match': ('match', 7, 12, 3),
+}
+
+
+@pytest.mark.parametrize("name", TEST_SPLIT_SIZES_ADD_UP_TO_THE_TRAINING_SIDE_MATRIX_VALUES)
+def test_split_sizes_add_up_to_the_training_side_matrix(name: str) -> None:
+    """输入：四个切分的配置。输出：无。
+
+    预期行为：三个同分布切分都非空（切片按**位置**而不是桶号过滤，否则哈希方差会让 val
+    只剩个位数），且加起来正好等于训练侧取值表的全枚举：3 步数 × 4 档 × 2 分叉原因
+    × 2 写法 × 2 来源。
+    """
+    _v0, _v1, _v2, _v3 = TEST_SPLIT_SIZES_ADD_UP_TO_THE_TRAINING_SIDE_MATRIX_VALUES[name]
+    workflow = workflow_mod.load(_v0)
+    sizes = {
+        split: len(workflow.build_cases(workflow.config_for(split)))
+        for split in workflow.split_names()
+    }
+    assert min(sizes.values()) > 0
+    assert sum(sizes[split] for split in ("train", "val", "test_iid")) == _v1 * _v2 * 2 * _v3 * 2
+
+
+#: 2 家同款——输入：一种语言。输出：无。
+TEST_FORMAT_SPEC_ONLY_OFFERS_PLACEHOLDERS: Final[tuple[str, ...]] = ('debugstep', 'sqlreview')
+
+
+@pytest.mark.parametrize("name", TEST_FORMAT_SPEC_ONLY_OFFERS_PLACEHOLDERS)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_format_spec_only_offers_placeholders(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：格式规格那五行**只有占位符、没有一个能整段照抄的成品**——每一行的取值都得模型自己
+    编，规格里只印键名与 `<...>`；行数正好五个结构键。
+    """
+    m = module_of(name, 'test_render', 'locales', 'render', 'features')
+    locales, render, features = m.locales, m.render, m.features
+    loc = locales.load(lang)
+    lines = render.format_lines(loc)
+    assert len(lines) == len(features.KEY_LINES)
+    for key, line in zip(features.KEY_LINES, lines, strict=True):
+        assert line.startswith(render.LINE_PREFIX)
+        assert key in line.lower(), f"{lang}.{key}"
+        assert "<" in line and ">" in line, f"{lang}.{key}"
+
+
+#: 3 家同款——输入：留出侧（`decoy=dashed`）却不写诱饵。输出：RunResult。预期行为：整批都被拦下。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_MISSING_DECOY_ON_THE_OOD_SPLIT_IS_REJECTED_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'guardrail': ('g3-decoy',),
+    'posttriage': ('p3-decoy',),
+    'receiptcat': ('p3-decoy',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_MISSING_DECOY_ON_THE_OOD_SPLIT_IS_REJECTED_VALUES)
+def test_missing_decoy_on_the_ood_split_is_rejected(name: str, tmp_path: Path) -> None:
+    """输入：留出侧（`decoy=dashed`）却不写诱饵。输出：RunResult。预期行为：整批都被拦下。
+    """
+    _v0, = TEST_MISSING_DECOY_ON_THE_OOD_SPLIT_IS_REJECTED_VALUES[name]
+    conftest = importlib.import_module(f"tests.workflows.{name}.conftest")
+    fake_backend = conftest.FakeBackend
+    m = module_of(name, 'test_pipeline', 'FakeBackend', 'make_config')
+    FakeBackend, make_config = m.FakeBackend, m.make_config
+    result = pipeline.run(
+        make_config(tmp_path, _v0, fake_backend(decoy_missing=True), split="test_ood")
+    )
+    assert result.accepted == 0
+    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
+
+
+#: 2 家同款——输入：几种引文。输出：无。（与 `test_quote_holds_needs_both_the_quote_and_the_criterion` 同名不同形：字面量个数不一样，拆成两份）
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_QUOTE_HOLDS_NEEDS_BOTH_THE_QUOTE_AND_THE_CRITERION_2_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'adblock': ('A1', 'A4', 'A1', 'A1', 'A1', 'A1', 'A1', 'A1', 'A1', 'A4', 'A1', 'A9'),
+    'turntake': ('T1', 'T4', 'T1', 'T1', 'T1', 'T1', 'T1', 'T1', 'T1', 'T4', 'T1', 'T9'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_QUOTE_HOLDS_NEEDS_BOTH_THE_QUOTE_AND_THE_CRITERION_2_VALUES)
+def test_quote_holds_needs_both_the_quote_and_the_criterion_2(name: str) -> None:
+    """输入：几种引文。输出：无。
+
+    预期行为：引文得原样在片段里、且自己满足那条判据；空白差异不算抄错。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5, _v6, _v7, _v8, _v9, _v10, _v11 = TEST_QUOTE_HOLDS_NEEDS_BOTH_THE_QUOTE_AND_THE_CRITERION_2_VALUES[name]
+    m = module_of(name, 'test_judges', 'text_of', 'judges', 'quote_for')
+    text_of, judges, quote_for = m.text_of, m.judges, m.quote_for
+    body = text_of((_v0, _v1))
+    assert judges.quote_holds(_v2, quote_for(_v3), body)
+    # 引文首尾多带了换行：折叠之后一致，照样算抄对了（模型常这么答）。
+    assert judges.quote_holds(_v4, f"\n{quote_for(_v5)}\n", body)
+    assert judges.quote_holds(_v6, json.dumps([quote_for(_v7)]), body)  # 引文被装进 JSON 数组字符串（范式 §9.88）
+    assert not judges.quote_holds(_v8, quote_for(_v9), body)  # 抄出来了但不合判据
+    assert not judges.quote_holds(_v10, "会议室还是老地方", body)  # 抄出来了但不合判据
+    assert not judges.quote_holds(_v11, "会议室还是老地方", body)  # 不认识的编号
+
+
+#: 2 家同款——输入：把一条 `grade`（score）的等级下标改掉。输出：无。
+TEST_SCORE_ANSWER_MISMATCH_IS_CAUGHT: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_SCORE_ANSWER_MISMATCH_IS_CAUGHT)
+def test_score_answer_mismatch_is_caught(name: str, tmp_path: Path) -> None:
+    """输入：把一条 `grade`（score）的等级下标改掉。输出：无。
+
+    预期行为：`grade_bad` 报 1——审计拿答案下标取回等级描述，再与按文本查矩阵算出来的那一档比。
+    """
+    m = module_of(name, 'test_audit', '_run', '_rows', '_write', '_audit', 'features', 'BAD_LABELS')
+    _run, _rows, _write, _audit, features, BAD_LABELS = m._run, m._rows, m._write, m._audit, m.features, m.BAD_LABELS
+    run_dir = _run(tmp_path, "t-grade")
+    rows = _rows(run_dir)
+    answer = rows[0]["answers"]["grade"]
+    answer["score"] = (answer["score"] + 1) % len(features.LEVELS)
+    _write(run_dir, rows)
+    report, missing = _audit(run_dir)
+    assert report["train"]["grade_bad"] == 1
+    assert any(BAD_LABELS["grade_bad"] in item for item in missing)
+
+
+#: 2 家同款——输入：一种语言。输出：无。（与 `test_rule_and_avoid_copy_never_carries_braces` 同名不同形：字面量个数不一样，拆成两份）
+TEST_RULE_AND_AVOID_COPY_NEVER_CARRIES_BRACES_2: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_RULE_AND_AVOID_COPY_NEVER_CARRIES_BRACES_2)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_rule_and_avoid_copy_never_carries_braces_2(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：因子原文与反面文案里**一个花括号都不许有**——这两段会被 `build_prompt` 拼进提示词，
+    而花括号是填槽标记（`test_prompts_and_questions_leave_no_placeholder` 会扫「一个都不剩」）。
+    """
+    m = module_of(name, 'test_locales', 'features', 'locales', 'render')
+    features, locales, render = m.features, m.locales, m.render
+    loc = locales.load(lang)
+    for tag in features.TAG_IDS:
+        entry = render.fact_copy(loc, tag)
+        for key in ("rule", "avoid"):
+            text = str(entry[key])
+            assert "{" not in text and "}" not in text, f"{lang}.{tag}.{key}: {text!r}"
+
+
+#: 2 家同款——输入：一种语言。输出：无。
+TEST_FACT_LINES_LINE_UP_WITH_FEATURES: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_FACT_LINES_LINE_UP_WITH_FEATURES)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_fact_lines_line_up_with_features(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：三条因子行两两不同、编号排在分隔符前面（解析就是按这个切回编号的）、判据原文在里面。
+    """
+    m = module_of(name, 'test_render', 'locales', 'features', 'render')
+    locales, features, render = m.locales, m.features, m.render
+    loc = locales.load(lang)
+    sep = str(loc["state"]["tag_sep"])
+    lines = [render.fact_line(loc, tag) for tag in features.TAG_IDS]
+    assert len(set(lines)) == len(lines)
+    for tag, line in zip(features.TAG_IDS, lines, strict=True):
+        assert line.partition(sep)[0] == tag
+        assert str(render.fact_copy(loc, tag)["rule"]) in line
+
+
+#: 2 家同款——输入：一个语言。输出：无。
+TEST_BANNED_PHRASES_ARE_THE_TABLE_NAMES: Final[tuple[str, ...]] = ('review', 'rubric')
+
+
+@pytest.mark.parametrize("name", TEST_BANNED_PHRASES_ARE_THE_TABLE_NAMES)
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_banned_phrases_are_the_table_names(name: str, lang: str) -> None:
+    """输入：一个语言。输出：无。
+
+    预期行为：禁写清单里就是那几个表名——正文是一段代码，收进 `test` / `size` 这类
+    标识符会大面积误伤（见 `render.banned_echo` 的口径）。
+    """
+    m = module_of(name, 'test_locales', 'locales', 'render')
+    locales, render = m.locales, m.render
+    loc = locales.load(lang)
+    banned = [str(item) for item in loc["banned_intent_phrases"]]
+    assert banned
+    # 比对时统一小写：英文的段落名首字母大写，而禁写清单按小写匹配（`banned_echo` 也是）
+    titles = {str(loc["meta"][key]).lower() for key in render.SECTION_KEYS}
+    assert {item.lower() for item in banned} == titles
+
+
+#: 2 家同款——输入：一种语言。输出：无。
+TEST_NOTE_SPEC_FORBIDS_RESTATING_THE_FORMAT: Final[tuple[str, ...]] = ('sqlreview', 'subqa')
+
+
+@pytest.mark.parametrize("name", TEST_NOTE_SPEC_FORBIDS_RESTATING_THE_FORMAT)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_note_spec_forbids_restating_the_format(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：`Note:` 那一行的规格里**明说不要复述格式与要求**。真机上量到过：模型把备注写成
+    「译文保留了音效标记，时间码保持零时长以便闪现提醒」这种复述合成规格的句子（`sq-10b` zh 侧
+    9 条里 3 条、en 侧 10 条里 2 条）。备注是这一族两段自然语言正文之一，写成复述规格的句子之后
+    整条样本读起来就是「写手在照着规格交作业」，而不是一对真字幕。
+    """
+    m = module_of(name, 'test_render', 'locales')
+    locales = m.locales
+    loc = locales.load(lang)
+    spec = str(loc["prompt"]["format"]["note"])
+    assert "格式" in spec or "format" in spec.lower()
+    assert "不要" in spec or "do **not**" in spec.lower()
+
+
+#: 3 家同款——输入：无。输出：无。
+TEST_EVERY_TAG_APPEARS_EIGHT_TIMES: Final[tuple[str, ...]] = ('adblock', 'promptinject', 'tracescore')
+
+
+@pytest.mark.parametrize("name", TEST_EVERY_TAG_APPEARS_EIGHT_TIMES)
+def test_every_tag_appears_eight_times(name: str) -> None:
+    """输入：无。输出：无。
+
+    预期行为：每条判据在 16 组里各出现 8 次——这是 `flag` 那一族的答案按构造就是 50% 的原因。
+    """
+    m = module_of(name, 'test_features', 'features')
+    features = m.features
+    for tag in features.TAG_IDS:
+        hits = sum(1 for value in features.HIT_SETS if tag in features.parse_hits(value))
+        assert hits == 8, tag
+
+
+#: 3 家同款——输入：全空间 48 组 case 的忠实样本。输出：无。预期行为：一条都不报。
+TEST_HYGIENE_ACCEPTS_EVERY_FAITHFUL_SAMPLE: Final[tuple[str, ...]] = ('adblock', 'chatgate', 'guardrail')
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_ACCEPTS_EVERY_FAITHFUL_SAMPLE)
+def test_hygiene_accepts_every_faithful_sample(name: str) -> None:
+    """输入：全空间 48 组 case 的忠实样本。输出：无。预期行为：一条都不报。
+    """
+    m = module_of(name, 'test_judges', 'CASES', 'judges', 'faithful', 'CASE')
+    CASES, judges, faithful, CASE = m.CASES, m.judges, m.faithful, m.CASE
+    judge = judges.HygieneJudge("zh")
+    for case in CASES:
+        spec, sample = faithful(case)
+        verdict = judge.judge(sample, spec)
+        assert verdict.ok and not verdict.skipped, f"{case.describe()}: {verdict.reason}"
+    assert "兑现" in judge.judge(*reversed(faithful(CASE))).reason
+
+
+#: 2 家同款——输入：一种语言。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FORMAT_SPEC_OFFERS_NO_COPYABLE_VALUE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'alertrisk': ('hosts=\\d', 'reachable=public', 'auth=none'),
+    'depcheck': ('count=[1-9]', 'AGPL-3.0-only', '0.9.1'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FORMAT_SPEC_OFFERS_NO_COPYABLE_VALUE_VALUES)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_format_spec_offers_no_copyable_value(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：格式规格里**不许出现填好的成品**——给一个带数字的 `hosts=`、或者给一个真的
+    `reachable=public`，模型照抄下去正好取到那一档（范式 §9.52）。规格只印键名与 `<...>` 占位符。
+    """
+    _v0, _v1, _v2 = TEST_FORMAT_SPEC_OFFERS_NO_COPYABLE_VALUE_VALUES[name]
+    m = module_of(name, 'test_locales', 'locales', 'render')
+    locales, render = m.locales, m.render
+    loc = locales.load(lang)
+    for line in render.format_lines(loc):
+        assert not re.search(_v0, line), line
+        assert _v1 not in line, line
+        assert _v2 not in line, line
+
+
+#: 2 家同款——输入：一组特征。输出：无。
+TEST_ONLY_THE_SCORE_AND_NOUL_FAMILIES_ARE_UNSHUFFLED: Final[tuple[str, ...]] = ('browser', 'compact')
+
+
+@pytest.mark.parametrize("name", TEST_ONLY_THE_SCORE_AND_NOUL_FAMILIES_ARE_UNSHUFFLED)
+def test_only_the_score_and_noul_families_are_unshuffled(name: str) -> None:
+    """输入：一组特征。输出：无。
+
+    预期行为：有序阶梯与布尔题不打乱（打乱破坏语义），三个 choice 题族都允许打乱
+    （防「答案总在第 n 个」的位置捷径）。
+    """
+    m = module_of(name, 'test_questions', 'by_family', 'questions')
+    by_family, questions = m.by_family, m.questions
+    families = by_family()
+    for family in questions.FAMILIES:
+        if family in questions.SCORE_FAMILIES or family in questions.NOUL_FAMILIES:
+            assert families[family].shuffle is False
+        else:
+            assert families[family].shuffle is True
+
+
+#: 2 家同款——输入：三个问法编号。输出：无。预期行为：同一族的题面在三个编号上都取得到。
+TEST_PHRASINGS_ROTATE: Final[tuple[str, ...]] = ('browser', 'compact')
+
+
+@pytest.mark.parametrize("name", TEST_PHRASINGS_ROTATE)
+def test_phrasings_rotate(name: str) -> None:
+    """输入：三个问法编号。输出：无。预期行为：同一族的题面在三个编号上都取得到。
+    """
+    m = module_of(name, 'test_questions', 'questions', 'TAGS', 'locales')
+    questions, TAGS, locales = m.questions, m.TAGS, m.locales
+    for family in questions.FAMILIES:
+        texts = {
+            next(
+                item.question["instructions"]
+                for item in questions.build(TAGS, locales.load("zh"), phrasing)
+                if item.family == family
+            )
+            for phrasing in (0, 1, 2)
+        }
+        assert len(texts) == 3, family
+
+
+#: 2 家同款——输入：每种语言的判据原文。输出：无。
+TEST_POLICY_PRINTS_EVERY_TABLE: Final[tuple[str, ...]] = ('elementpick', 'skillpick')
+
+
+@pytest.mark.parametrize(("name", "lang"), _lang_pairs(TEST_POLICY_PRINTS_EVERY_TABLE, "test_locales", "LANGS"))
+def test_policy_prints_every_table(name: str, lang: str) -> None:
+    """输入：每种语言的判据原文。输出：无。
+
+    预期行为：六个角色、两档可见性、两档可点性都在判据里印出来——考生只能从题面读规则，
+    漏印一项就等于把那一族的答案变成不可解。
+    """
+    m = module_of(name, 'test_locales', 'VOCAB_TABLES', 'LANGS', 'locales')
+    VOCAB_TABLES, LANGS, locales = m.VOCAB_TABLES, m.LANGS, m.locales
+    loc = locales.load(lang)
+    policy = str(loc["policy"]["text"])
+    for table in VOCAB_TABLES:
+        for text in loc[table].values():
+            assert str(text) in policy, (lang, table, text)
+
+
+#: 3 家同款——输入：两门语言的字段名写成一样。输出：无。预期行为：报人话（合并表有歧义）。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_MERGED_REJECTS_COLLIDING_LABELS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'elementpick': ('meta', 'screen_label', 'meta', 'screen_label'),
+    'sim': ('label', 'request', 'label', 'request'),
+    'skillpick': ('meta', 'tag_label', 'meta', 'tag_label'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_MERGED_REJECTS_COLLIDING_LABELS_VALUES)
+def test_merged_rejects_colliding_labels(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """输入：两门语言的字段名写成一样。输出：无。预期行为：报人话（合并表有歧义）。
+    """
+    _v0, _v1, _v2, _v3 = TEST_MERGED_REJECTS_COLLIDING_LABELS_VALUES[name]
+    m = module_of(name, 'test_render_parse', '_patched_merged', 'parse')
+    _patched_merged, parse = m._patched_merged, m.parse
+    _patched_merged(
+        monkeypatch,
+        lambda en, zh: en[_v0].update({_v1: zh[_v2][_v3]}),
+    )
+    with pytest.raises(ValueError, match="在多种语言里都出现"):
+        parse.merged()
+
+
+#: 2 家同款——输入：语言文件。输出：无。
+TEST_META_PUNCTUATION_COMES_FROM_THE_LOCALE: Final[tuple[str, ...]] = ('hybrid', 'invoice')
+
+
+@pytest.mark.parametrize(("name", "lang"), _lang_pairs(TEST_META_PUNCTUATION_COMES_FROM_THE_LOCALE, "test_locales", "LOCALES"))
+def test_meta_punctuation_comes_from_the_locale(name: str, lang: str) -> None:
+    """输入：语言文件。输出：无。
+
+    预期行为：冒号与分隔符由语言文件给；英文里不能有中日韩标点——
+    否则英文日程会带着「：」，看着就不像英文数据。
+    """
+    m = module_of(name, 'test_locales', 'LOCALES', 'locales')
+    LOCALES, locales = m.LOCALES, m.locales
+    loc = locales.load(lang)
+    assert loc["meta"]["colon"] and loc["meta"]["sep"]
+    if lang == "en":
+        for key in ("colon", "sep"):
+            assert not (set("：；。") & set(loc["meta"][key]))
+
+
+#: 2 家同款——输入：一种语言。输出：无。
+TEST_AVOID_LISTS_TRIP_EXACTLY_THEIR_OWN_TAG: Final[tuple[str, ...]] = ('logtriage', 'tracescore')
+
+
+@pytest.mark.parametrize("name", TEST_AVOID_LISTS_TRIP_EXACTLY_THEIR_OWN_TAG)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_avoid_lists_trip_exactly_their_own_tag(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。
+
+    预期行为：每条判据的「不许出现」文案**只**命中它自己那一条——它是提示词里给模型看的反面
+    清单，同时也写进 state 的判据表，同时踩中两条就会把模型往错的方向带（范式 §9.45 起，
+    提示词里唯一的具体文字就是判据原文与这份反面清单，所以它更要钉住）。
+    """
+    m = module_of(name, 'test_locales', 'features', 'locales', 'render')
+    features, locales, render = m.features, m.locales, m.render
+    loc = locales.load(lang)
+    for tag in features.TAG_IDS:
+        avoid = str(render.tag_copy(loc, tag)["avoid"])
+        assert features.hit_set(avoid) == (tag,), f"{lang}.{tag}: {avoid!r}"
+
+
+#: 2 家同款——输入：一条规格。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_INSTRUCTIONS_CARRY_THE_WHOLE_RULE_BLOCK_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': (4,),
+    'sentiment': ('interview',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_INSTRUCTIONS_CARRY_THE_WHOLE_RULE_BLOCK_VALUES)
+def test_instructions_carry_the_whole_rule_block(name: str) -> None:
+    """输入：一条规格。输出：无。
+
+    预期行为：四道题的题面都自带**四条判据原文**（与 state 里那一段同源）——只读 state 与
+    题面的读者必须能自己把答案算出来，判据藏在生成器里等于没给。
+    """
+    _v0, = TEST_INSTRUCTIONS_CARRY_THE_WHOLE_RULE_BLOCK_VALUES[name]
+    m = module_of(name, 'test_questions', 'locales', 'questions', '_make_spec')
+    locales, questions, _make_spec = m.locales, m.questions, m._make_spec
+    loc = locales.load("zh")
+    rules = questions.rules_block(loc)
+    for line in loc["rules"]["lines"]:
+        assert str(line) in rules
+    for item in questions.build(_make_spec(2, _v0), loc, 0, random.Random(0)):
+        assert rules in str(item.question["instructions"]), item.family
+
+
+#: 2 家同款——输入：一种语言。输出：无。预期行为：两张表都覆盖四个档位，动作文案两两不同。
+TEST_ROUTE_AND_THRESHOLD_TABLES_LINE_UP_WITH_FEATURES: Final[tuple[str, ...]] = ('posttriage', 'tracescore')
+
+
+@pytest.mark.parametrize("name", TEST_ROUTE_AND_THRESHOLD_TABLES_LINE_UP_WITH_FEATURES)
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_route_and_threshold_tables_line_up_with_features(name: str, lang: str) -> None:
+    """输入：一种语言。输出：无。预期行为：两张表都覆盖四个档位，动作文案两两不同。
+    """
+    m = module_of(name, 'test_locales', 'locales', 'features')
+    locales, features = m.locales, m.features
+    loc = locales.load(lang)
+    options = loc["fam"]["route"]["opt"]
+    assert isinstance(options, dict)
+    assert sorted(options) == sorted(features.ROUTE_LEVELS)
+    assert len({str(value) for value in options.values()}) == len(options)
+    thresholds = loc["state"]["threshold"]
+    assert isinstance(thresholds, dict)
+    assert sorted(thresholds) == sorted(features.ROUTE_LEVELS)
+    assert len({str(value) for value in thresholds.values()}) == len(thresholds)
+
+
+#: 2 家同款——输入：四个切分。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_ID_AND_OOD_TOGETHER_COVER_EVERY_COMPATIBLE_CASE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'toolgate': ('toolgate', 10000),
+    'verify': ('verify', 1000),
+}
+
+
+@pytest.mark.parametrize("name", TEST_ID_AND_OOD_TOGETHER_COVER_EVERY_COMPATIBLE_CASE_VALUES)
+def test_id_and_ood_together_cover_every_compatible_case(name: str) -> None:
+    """输入：四个切分。输出：无。
+
+    预期行为：ID 侧 100 组 + OOD 侧 86 组**恰好**等于全部 186 个相容组合——
+    留出不是「少给组合」，是把同一批组合换个切分，一个都不丢。
+    """
+    _v0, _v1 = TEST_ID_AND_OOD_TOGETHER_COVER_EVERY_COMPATIBLE_CASE_VALUES[name]
+    m = module_of(name, 'test_pipeline', 'features')
+    features = m.features
+    workflow = workflow_mod.load(_v0)
+    seen: set[tuple[tuple[str, str], ...]] = set()
+    for split in workflow.split_names():
+        for case in workflow.build_cases(workflow.config_for(split)):
+            seen.add(tuple(case.as_dict().items()))
+    assert seen == {tuple(case.as_dict().items()) for case in features.build_cases(_v1)}
+
+
+#: 2 家同款——输入：全空间 24 组 case。输出：无。预期行为：`act` 的答案是等级查档位表算出来的那一档。
+TEST_ACT_ANSWERS_FOLLOW_THE_LEVEL_TABLE: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_ACT_ANSWERS_FOLLOW_THE_LEVEL_TABLE)
+def test_act_answers_follow_the_level_table(name: str) -> None:
+    """输入：全空间 24 组 case。输出：无。预期行为：`act` 的答案是等级查档位表算出来的那一档。
+    """
+    m = module_of(name, 'test_questions', 'locales', 'features', 'questions')
+    locales, features, questions = m.locales, m.features, m.questions
+    loc = locales.load("zh")
+    for case in features.build_cases(512):
+        plan = features.plan_for(case, 0)
+        item = next(q for q in questions.build(plan, loc, 0) if q.family == "act")
+        assert item.answer == features.act_for(plan.level)
+        criteria = item.question["criteria"]
+        assert isinstance(criteria, dict)
+        assert criteria[item.answer] == questions.act_option(loc, item.answer)
+        assert sorted(criteria) == sorted(features.ACTS)
+
+
+#: 2 家同款——输入：档位下标越界的产物。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_AUDIT_FLAGS_AN_OUT_OF_RANGE_SCORE_INDEX_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'bench': ('count',),
+    'sim': ('gain',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_AUDIT_FLAGS_AN_OUT_OF_RANGE_SCORE_INDEX_VALUES)
+def test_audit_flags_an_out_of_range_score_index(name: str, tmp_path: Path) -> None:
+    """输入：档位下标越界的产物。输出：无。
+
+    预期行为：score 也查下标（条数只有六档、差距只有两档），越界同样记一笔「编号越界」。
+    """
+    _v0, = TEST_AUDIT_FLAGS_AN_OUT_OF_RANGE_SCORE_INDEX_VALUES[name]
+    m = module_of(name, 'test_edges', '_sample_row', 'WF')
+    _sample_row, WF = m._sample_row, m.WF
+    row = _sample_row()
+    row["answers"][_v0]["score"] = 9
+    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
+    report, missing = WF.audit(tmp_path, ("train",), "zh")
+    assert report["train"]["index_bad"] == 1
+    assert any("编号越界" in item for item in missing)
+
+
+#: 2 家同款——输入：维度表与全空间枚举。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FULL_SPACE_DROPS_EXACTLY_THE_TWO_FORBIDDEN_PAIRS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'compact': (180, 144),
+    'review': (144, 108),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FULL_SPACE_DROPS_EXACTLY_THE_TWO_FORBIDDEN_PAIRS_VALUES)
+def test_full_space_drops_exactly_the_two_forbidden_pairs(name: str) -> None:
+    """输入：维度表与全空间枚举。输出：无。
+
+    预期行为：5×2×3×2×3 = 180 组；两对禁用对各砍掉 3×2×3 = 18 组
+    （`工具输出 × 持久事实`、`系统提示词 × 没有持久事实`），正好剩 144 组。
+    """
+    _v0, _v1 = TEST_FULL_SPACE_DROPS_EXACTLY_THE_TWO_FORBIDDEN_PAIRS_VALUES[name]
+    m = module_of(name, 'test_features', 'features', 'all_tags')
+    features, all_tags = m.features, m.all_tags
+    total = 1
+    for values in features.DIMS.values():
+        total *= len(values)
+    assert total == _v0
+    assert len(all_tags()) == _v1
+
+
+#: 2 家同款——输入：一个禁用对（正反两种写法）。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_ALLOW_PAIR_IS_ORDER_FREE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'compact': ('fact', 'fact', 'kind', 'tool_output', 'kind', 'tool_output', 'fact', 'fact', 'fact', 'chatter', 'kind', 'system', 'kind', 'system', 'fact', 'chatter', 'fact', 'chatter', 'kind', 'tool_output', 'fact', 'fact', 'kind', 'user', 'fact', 'chatter', 'kind', 'user'),
+    'review': ('secret', 'yes', 'change_kind', 'deleted', 'change_kind', 'deleted', 'secret', 'yes', 'debug', 'yes', 'change_kind', 'deleted', 'change_kind', 'deleted', 'debug', 'yes', 'secret', 'yes', 'change_kind', 'modified', 'secret', 'no', 'change_kind', 'deleted', 'debug', 'yes', 'size', 'small'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_ALLOW_PAIR_IS_ORDER_FREE_VALUES)
+def test_allow_pair_is_order_free(name: str) -> None:
+    """输入：一个禁用对（正反两种写法）。输出：无。
+
+    预期行为：归一化按 `DIMS` 的声明顺序做，所以换顺序也一样被否掉——按字符串比大小
+    会漏掉一半写法，那是这个函数最容易写错的地方。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5, _v6, _v7, _v8, _v9, _v10, _v11, _v12, _v13, _v14, _v15, _v16, _v17, _v18, _v19, _v20, _v21, _v22, _v23, _v24, _v25, _v26, _v27 = TEST_ALLOW_PAIR_IS_ORDER_FREE_VALUES[name]
+    m = module_of(name, 'test_features', 'features')
+    features = m.features
+    assert not features.allow_pair(_v0, _v1, _v2, _v3)
+    assert not features.allow_pair(_v4, _v5, _v6, _v7)
+    assert not features.allow_pair(_v8, _v9, _v10, _v11)
+    assert not features.allow_pair(_v12, _v13, _v14, _v15)
+    assert features.allow_pair(_v16, _v17, _v18, _v19)
+    assert features.allow_pair(_v20, _v21, _v22, _v23)
+    assert features.allow_pair(_v24, _v25, _v26, _v27)
+
+
+#: 3 家同款——输入：两门语言把同一个动作写成同一个词。输出：无。预期行为：报人话。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_MERGED_REJECTS_COLLIDING_VOCABULARIES_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'elementpick': ('label', 'save', 'label', 'save'),
+    'sim': ('action', 'advance', 'action', 'advance'),
+    'skillpick': ('tag', 'read_code', 'tag', 'read_code'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_MERGED_REJECTS_COLLIDING_VOCABULARIES_VALUES)
+def test_merged_rejects_colliding_vocabularies(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """输入：两门语言把同一个动作写成同一个词。输出：无。预期行为：报人话。
+    """
+    _v0, _v1, _v2, _v3 = TEST_MERGED_REJECTS_COLLIDING_VOCABULARIES_VALUES[name]
+    m = module_of(name, 'test_render_parse', '_patched_merged', 'parse')
+    _patched_merged, parse = m._patched_merged, m.parse
+    _patched_merged(
+        monkeypatch,
+        lambda en, zh: en[_v0].update({_v1: zh[_v2][_v3]}),
+    )
+    with pytest.raises(ValueError, match="在多种语言里都出现"):
+        parse.merged()
+
+
+#: 2 家同款——输入：全部特征组合。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_EVERY_CASE_ASKS_EVERY_FAMILY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'modelroute': (48,),
+    'shell': (32,),
+}
+
+
+@pytest.mark.parametrize(("name", "lang"), _lang_pairs(TEST_EVERY_CASE_ASKS_EVERY_FAMILY_VALUES, "test_questions", "LOCALES"))
+def test_every_case_asks_every_family(name: str, lang: str) -> None:
+    """输入：全部特征组合。输出：无。
+
+    预期行为：五个题族对**任何**组合都问得出来——本 workflow 没有条件题族，
+    所以每条样本的题族数恒定。
+    """
+    _v0, = TEST_EVERY_CASE_ASKS_EVERY_FAMILY_VALUES[name]
+    m = module_of(name, 'test_questions', 'LOCALES', 'features', 'questions', '_build')
+    LOCALES, features, questions, _build = m.LOCALES, m.features, m.questions, m._build
+    cases = features.build_cases(_v0)
+    assert cases
+    for case in cases:
+        assert [item.family for item in _build(case, lang)] == list(questions.FAMILIES)
+
+
+#: 2 家同款——输入：全空间组合。输出：无。
+TEST_EVERY_COMPATIBLE_COMBINATION_CAN_BE_WRITTEN: Final[tuple[str, ...]] = ('review', 'rubric')
+
+
+@pytest.mark.parametrize("name", TEST_EVERY_COMPATIBLE_COMBINATION_CAN_BE_WRITTEN)
+def test_every_compatible_combination_can_be_written(name: str) -> None:
+    """输入：全空间组合。输出：无。
+
+    预期行为：假后端能给每一格写出相称的改动，而且**过得了渲染期的形状检查**——
+    夹具缺格或区间定错会让「正文承载两维」这条前提在测试里悄悄失效。
+    """
+    m = module_of(name, 'test_features', 'all_tags', 'locales', 'body_for', 'render')
+    all_tags, locales, body_for, render = m.all_tags, m.locales, m.body_for, m.render
+    loc = locales.load("zh")
+    for tags in all_tags():
+        body = body_for(tags.as_dict())
+        assert body.strip()
+        render.check_draft({"body": body}, tags, loc)
+
+
+#: 3 家同款——输入：两个互为前缀的候选标签。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FIELD_VALUE_PREFERS_THE_LONGEST_LABEL_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'elementpick': ('屏号：S-1', '屏', '屏号', 'S-1', '屏：S-1', '屏', '屏号', 'S-1'),
+    'sim': ('单号：S-1', '单', '单号', 'S-1', '单：S-1', '单', '单号', 'S-1'),
+    'skillpick': ('标签号：Q-1', '标签', '标签号', 'Q-1', '标签：Q-1', '标签', '标签号', 'Q-1'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FIELD_VALUE_PREFERS_THE_LONGEST_LABEL_VALUES)
+def test_field_value_prefers_the_longest_label(name: str) -> None:
+    """输入：两个互为前缀的候选标签。输出：无。
+
+    预期行为：取最长的那个——否则「屏」会把「屏号」那一格提前吃掉。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5, _v6, _v7 = TEST_FIELD_VALUE_PREFERS_THE_LONGEST_LABEL_VALUES[name]
+    m = module_of(name, 'test_render_parse', 'read_field_value')
+    read_field_value = m.read_field_value
+    assert read_field_value(_v0, (_v1, _v2)) == _v3
+    assert read_field_value(_v4, (_v5, _v6)) == _v7
+
+
+#: 3 家同款——输入：把两个角色写成同一个原文。输出：无。预期行为：报人话（反解会认错键）。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_LABELS_OF_REJECTS_TWO_KEYS_SHARING_ONE_TEXT_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'elementpick': ('role', 'role', 'role', 'toggle', 'role', 'button'),
+    'sim': ('cost', 'cost', 'cost', 'c2', 'cost', 'c1'),
+    'skillpick': ('scope', 'scope', 'scope', 'write', 'scope', 'read'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_LABELS_OF_REJECTS_TWO_KEYS_SHARING_ONE_TEXT_VALUES)
+def test_labels_of_rejects_two_keys_sharing_one_text(name: str) -> None:
+    """输入：把两个角色写成同一个原文。输出：无。预期行为：报人话（反解会认错键）。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5 = TEST_LABELS_OF_REJECTS_TWO_KEYS_SHARING_ONE_TEXT_VALUES[name]
+    m = module_of(name, 'test_render_parse', 'locales', 'parse')
+    locales, parse = m.locales, m.parse
+    loc = dict(locales.load("zh"))
+    loc[_v0] = dict(loc[_v1])
+    loc[_v2][_v3] = loc[_v4][_v5]
+    with pytest.raises(ValueError, match="共用同一个原文"):
+        parse.labels_of(loc)
+
+
+#: 2 家同款——输入：state 读不出来的产物。输出：无。
+TEST_AUDIT_FLAGS_A_STATE_IT_CANNOT_READ: Final[tuple[str, ...]] = ('bench', 'functions')
+
+
+@pytest.mark.parametrize("name", TEST_AUDIT_FLAGS_A_STATE_IT_CANNOT_READ)
+def test_audit_flags_a_state_it_cannot_read(name: str, tmp_path: Path) -> None:
+    """输入：state 读不出来的产物。输出：无。
+
+    预期行为：记一条「反解不出来」而不是静默跳过——静默跳过会把一条坏样本算成好样本。
+    """
+    m = module_of(name, 'test_edges', '_sample_row', 'WF')
+    _sample_row, WF = m._sample_row, m.WF
+    row = _sample_row()
+    row["state"] = "今天天气不错。"
+    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
+    report, missing = WF.audit(tmp_path, ("train",), "zh")
+    assert report["train"]["label_mismatch"] == 1
+    assert any("反解不出来" in item for item in missing)
+
+
+#: 2 家同款——输入：反解答了一个不存在的判据编号。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_TRACE_SKIPS_AN_UNKNOWN_TAG_ID_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'adblock': ('不认识的判据编号',),
+    'tracescore': ('不认识的信号编号',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_TRACE_SKIPS_AN_UNKNOWN_TAG_ID_VALUES)
+def test_trace_skips_an_unknown_tag_id(name: str) -> None:
+    """输入：反解答了一个不存在的判据编号。输出：无。
+
+    预期行为：记成「没判成」——那是反解格式没对齐，不是这条数据错。
+    """
+    _v0, = TEST_TRACE_SKIPS_AN_UNKNOWN_TAG_ID_VALUES[name]
+    m = module_of(name, 'test_judges', 'faithful', 'CASE', 'judges', '_UnknownIdBackend')
+    faithful, CASE, judges, _UnknownIdBackend = m.faithful, m.CASE, m.judges, m._UnknownIdBackend
+    spec, sample = faithful(CASE)
+    verdict = judges.TraceJudge(_UnknownIdBackend(), "zh").judge(sample, spec)
+    assert verdict.skipped and verdict.ok
+    assert _v0 in verdict.reason
+
+
+#: 2 家同款——输入：无。输出：无。预期行为：四条 noul，一条判据一道，答案与真值一致。
+TEST_FLAG_FAMILY_IS_ONE_NOUL_PER_TAG: Final[tuple[str, ...]] = ('adblock', 'tracescore')
+
+
+@pytest.mark.parametrize("name", TEST_FLAG_FAMILY_IS_ONE_NOUL_PER_TAG)
+def test_flag_family_is_one_noul_per_tag(name: str) -> None:
+    """输入：无。输出：无。预期行为：四条 noul，一条判据一道，答案与真值一致。
+    """
+    m = module_of(name, 'test_questions', 'CASE', 'features', 'questions', 'locales')
+    CASE, features, questions, locales = m.CASE, m.features, m.questions, m.locales
+    plan = features.plan_for(CASE, 0)
+    out = questions.build(plan, locales.load("zh"), 0)
+    flags = [item for item in out if item.family == "flag"]
+    assert len(flags) == len(features.TAG_IDS)
+    for tag, item in zip(features.TAG_IDS, flags, strict=True):
+        assert item.question["type"] == "noul"
+        assert item.answer is (tag in plan.hits)
+
+
+#: 2 家同款——输入：全空间 8 种命中组合。输出：无。
+TEST_EVERY_COMBINATION_IS_REACHABLE_BY_ITS_PACKET: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_EVERY_COMBINATION_IS_REACHABLE_BY_ITS_PACKET)
+def test_every_combination_is_reachable_by_its_packet(name: str) -> None:
+    """输入：全空间 8 种命中组合。输出：无。
+
+    预期行为：`packet_of` 造出来的记录按字面重算，得到的正好是那一组——两条路径（计划 / 文本）
+    在这一层就已经对得上，后面 `check_draft` 与审计才有意义。
+    """
+    m = module_of(name, 'test_features', 'features', 'packet_of')
+    features, packet_of = m.features, m.packet_of
+    for value in features.HIT_SETS:
+        tags = features.parse_hits(value)
+        assert features.hits_of(packet_of(tags)) == value, value
+
+
+#: 2 家同款——输入：五个等级。输出：无。预期行为：最后一档吃掉 4 / 5 两级。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_ACT_FOR_COLLAPSES_THE_TOP_LEVELS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'alertrisk': ('monitor', 'ticket', 'patch_now', 'isolate', 'isolate'),
+    'depcheck': ('approve', 'watch', 'review', 'replace', 'replace'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_ACT_FOR_COLLAPSES_THE_TOP_LEVELS_VALUES)
+def test_act_for_collapses_the_top_levels(name: str) -> None:
+    """输入：五个等级。输出：无。预期行为：最后一档吃掉 4 / 5 两级。
+    """
+    _v0, _v1, _v2, _v3, _v4 = TEST_ACT_FOR_COLLAPSES_THE_TOP_LEVELS_VALUES[name]
+    m = module_of(name, 'test_features', 'features')
+    features = m.features
+    assert [features.act_for(level) for level in features.LEVELS] == [
+        _v0,
+        _v1,
+        _v2,
+        _v3,
+        _v4,
+    ]
+
+
+#: 3 家同款——输入：带围栏 / 多行 / 空那句话的 state。输出：无。预期行为：都判不通过。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_HYGIENE_CATCHES_LEFTOVERS_MULTILINE_AND_EMPTY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'browser': ('【用户请求】', '```\n【用户请求】', 'request', 'request'),
+    'compact': ('【本块内容】', '```\n【本块内容】', 'content', 'content'),
+    'routing': ('【工单正文】', '```\n【工单正文】', 'body', 'body'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_CATCHES_LEFTOVERS_MULTILINE_AND_EMPTY_VALUES)
+def test_hygiene_catches_leftovers_multiline_and_empty(name: str) -> None:
+    """输入：带围栏 / 多行 / 空那句话的 state。输出：无。预期行为：都判不通过。
+    """
+    _v0, _v1, _v2, _v3 = TEST_HYGIENE_CATCHES_LEFTOVERS_MULTILINE_AND_EMPTY_VALUES[name]
+    m = module_of(name, 'test_judges', 'judges', 'sample', 'state_of')
+    judges, sample, state_of = m.judges, m.sample, m.state_of
+    judge = judges.HygieneJudge("zh")
+    assert not judge.judge(sample(state_of().replace(_v0, _v1))).ok
+    assert not judge.judge(sample(state_of({_v2: "第一行\n第二行"}))).ok
+    assert not judge.judge(sample(state_of({_v3: "   "}))).ok
+
+
+#: 2 家同款——输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_BUILD_RETURNS_ONE_QUESTION_PER_FAMILY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'cachereuse': ('reuse_band', 'reuse_half'),
+    'siftrank': ('cut_size', 'stable'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_BUILD_RETURNS_ONE_QUESTION_PER_FAMILY_VALUES)
+def test_build_returns_one_question_per_family(name: str) -> None:
+    """输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。
+    """
+    _v0, _v1 = TEST_BUILD_RETURNS_ONE_QUESTION_PER_FAMILY_VALUES[name]
+    m = module_of(name, 'test_questions', 'LOC', 'questions', '_make_spec')
+    LOC, questions, _make_spec = m.LOC, m.questions, m._make_spec
+    built = questions.build(_make_spec(1), LOC, 0, random.Random(0))
+    assert [item.family for item in built] == list(questions.FAMILIES)
+    types = {item.family: item.question["type"] for item in built}
+    for family in questions.CHOICE_FAMILIES:
+        assert types[family] == "choice"
+    assert types[_v0] == "score"
+    assert types[_v1] == "noul"
+
+
+#: 3 家同款——输入：兑现计划的样本。输出：无。预期行为：通过。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FRAME_ACCEPTS_A_FAITHFUL_SAMPLE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'citation': ('一致',),
+    'guardrail': ('骨架',),
+    'posttriage': ('骨架',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FRAME_ACCEPTS_A_FAITHFUL_SAMPLE_VALUES)
+def test_frame_accepts_a_faithful_sample(name: str) -> None:
+    """输入：兑现计划的样本。输出：无。预期行为：通过。
+    """
+    _v0, = TEST_FRAME_ACCEPTS_A_FAITHFUL_SAMPLE_VALUES[name]
+    m = module_of(name, 'test_judges', 'faithful', 'CASE', 'judges')
+    faithful, CASE, judges = m.faithful, m.CASE, m.judges
+    spec, sample = faithful(CASE)
+    verdict = judges.FrameJudge("zh").judge(sample, spec)
+    assert verdict.ok and not verdict.skipped
+    assert _v0 in verdict.reason
+
+
+#: 2 家同款——输入：两份语言文件。输出：无。预期行为：标签原文互不重叠（合并表才不炸）。
+TEST_LANGUAGES_DO_NOT_SHARE_LABELS: Final[tuple[str, ...]] = ('clipcut', 'planstep')
+
+
+@pytest.mark.parametrize("name", TEST_LANGUAGES_DO_NOT_SHARE_LABELS)
+def test_languages_do_not_share_labels(name: str) -> None:
+    """输入：两份语言文件。输出：无。预期行为：标签原文互不重叠（合并表才不炸）。
+    """
+    m = module_of(name, 'test_locales', 'parse', 'locales')
+    parse, locales = m.parse, m.locales
+    zh = parse.tables_of(locales.load("zh"))
+    en = parse.tables_of(locales.load("en"))
+    assert not set(zh.request) & set(en.request)
+    assert not set(zh.sections) & set(en.sections)
+    merged = parse.merged_tables()
+    assert set(merged.request) == set(zh.request) | set(en.request)
+    assert set(merged.sections) == set(zh.sections) | set(en.sections)
+
+
+#: 2 家同款——输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。（与 `test_build_returns_one_question_per_family` 同名不同形：字面量个数不一样，拆成两份）
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_BUILD_RETURNS_ONE_QUESTION_PER_FAMILY_2_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'clipcut': ('keep_count', 'first_kept', 'blocked_any', 'dup_any'),
+    'quoteread': ('tier', 'leader', 'alert', 'divergent'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_BUILD_RETURNS_ONE_QUESTION_PER_FAMILY_2_VALUES)
+def test_build_returns_one_question_per_family_2(name: str) -> None:
+    """输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。
+    """
+    _v0, _v1, _v2, _v3 = TEST_BUILD_RETURNS_ONE_QUESTION_PER_FAMILY_2_VALUES[name]
+    m = module_of(name, 'test_questions', 'LOC', 'questions', '_make_spec')
+    LOC, questions, _make_spec = m.LOC, m.questions, m._make_spec
+    built = questions.build(_make_spec(1), LOC, 0, random.Random(0))
+    assert [item.family for item in built] == list(questions.FAMILIES)
+    types = {item.family: item.question["type"] for item in built}
+    assert types[_v0] == "score"
+    assert types[_v1] == "choice"
+    assert types[_v2] == "noul"
+    assert types[_v3] == "noul"
+
+
+#: 2 家同款——输入：两语言 `dims` 表。输出：无。
+TEST_PROMPT_ONLY_COVERS_THE_TEXT_DIMENSIONS: Final[tuple[str, ...]] = ('compact', 'routing')
+
+
+@pytest.mark.parametrize("name", TEST_PROMPT_ONLY_COVERS_THE_TEXT_DIMENSIONS)
+def test_prompt_only_covers_the_text_dimensions(name: str) -> None:
+    """输入：两语言 `dims` 表。输出：无。
+
+    预期行为：`dims` 里只有由文本承载的两维——多一维就会让提示词把「本块位置」那一行
+    管的事也写进正文，两边一冲突这道题就有歧义了（范式 §9.13）。
+    """
+    m = module_of(name, 'test_locales', 'locales', 'render')
+    locales, render = m.locales, m.render
+    for lang in locales.available():
+        loc = locales.load(lang)
+        assert list(loc["dims"]) == list(render.DIM_ORDER)
+
+
+#: 3 家同款——输入：带围栏 / 多行 / 空修法的 state。输出：无。预期行为：都判不通过。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_HYGIENE_CATCHES_LEFTOVERS_AND_MULTILINE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'findtriage': ('【审查发现】', '```\n【审查发现】', 'finding', 'fix'),
+    'search': ('【标题】', '```\n【标题】', 'title', 'title'),
+    'sourceselect': ('【查询】', '```\n【查询】', 'query', 'query'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_CATCHES_LEFTOVERS_AND_MULTILINE_VALUES)
+def test_hygiene_catches_leftovers_and_multiline(name: str) -> None:
+    """输入：带围栏 / 多行 / 空修法的 state。输出：无。预期行为：都判不通过。
+    """
+    _v0, _v1, _v2, _v3 = TEST_HYGIENE_CATCHES_LEFTOVERS_AND_MULTILINE_VALUES[name]
+    m = module_of(name, 'test_judges', 'judges', 'sample', 'state_of')
+    judges, sample, state_of = m.judges, m.sample, m.state_of
+    judge = judges.HygieneJudge("zh")
+    assert not judge.judge(sample(state_of().replace(_v0, _v1))).ok
+    assert not judge.judge(sample(state_of({_v2: "第一行\n第二行"}))).ok
+    assert not judge.judge(sample(state_of({_v3: "   "}))).ok
+
+
+#: 2 家同款——输入：英文 state。输出：Verdict。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_HYGIENE_JUDGE_READS_THE_MARKER_FROM_THE_LOCALE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'modelroute': ('request', 'summarize the log'),
+    'verify': ('claim', 'fixed the flaky retry'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_JUDGE_READS_THE_MARKER_FROM_THE_LOCALE_VALUES)
+def test_hygiene_judge_reads_the_marker_from_the_locale(name: str) -> None:
+    """输入：英文 state。输出：Verdict。
+
+    预期行为：认得出 `[Request]` 那一段，代码里没写死中文——换个语言照样认。
+    """
+    _v0, _v1 = TEST_HYGIENE_JUDGE_READS_THE_MARKER_FROM_THE_LOCALE_VALUES[name]
+    m = module_of(name, 'test_judges', 'CASE', 'locales', 'render', 'judges_mod')
+    CASE, locales, render, judges_mod = m.CASE, m.locales, m.render, m.judges_mod
+    loc = locales.load("en")
+    state = render.to_state({_v0: _v1}, CASE, loc)
+    assert judges_mod.HygieneJudge("en").judge({"state": state}).ok is True
+    assert judges_mod.HygieneJudge("en").judge({"state": state + "\n```"}).ok is False
+
+
+#: 2 家同款——输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。（与 `test_build_returns_one_question_per_family` 同名不同形：字面量个数不一样，拆成两份）
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_BUILD_RETURNS_ONE_QUESTION_PER_FAMILY_3_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': (2, 'remaining', 'score', 'next', 'rounds', 'unlocks'),
+    'sentiment': ('review', 'tone', 'choice', 'pivot', 'drop', 'rebound'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_BUILD_RETURNS_ONE_QUESTION_PER_FAMILY_3_VALUES)
+def test_build_returns_one_question_per_family_3(name: str) -> None:
+    """输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5 = TEST_BUILD_RETURNS_ONE_QUESTION_PER_FAMILY_3_VALUES[name]
+    m = module_of(name, 'test_questions', 'LOC', 'questions', '_make_spec')
+    LOC, questions, _make_spec = m.LOC, m.questions, m._make_spec
+    built = questions.build(_make_spec(3, _v0), LOC, 0, random.Random(0))
+    assert [item.family for item in built] == list(questions.FAMILIES)
+    types = {item.family: item.question["type"] for item in built}
+    assert types[_v1] == _v2
+    assert types[_v3] == "choice"
+    assert types[_v4] == "score"
+    assert types[_v5] == "noul"
+
+
+#: 2 家同款——输入：缺右括号 / 格数不对 / 认不出的格 的局面行。输出：无。预期行为：都报人话。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_PARSE_CELLS_REPORTS_HARD_DAMAGE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'sim': ('1 前进 · 耗 1 · 收益 2 · 冷却 0', '[1] 前进 · 耗 1 · 收益 2', 'action', '[1] 不存在 · 耗 1 · 收益 2 · 冷却 0'),
+    'skillpick': ('1 读代码 · 只读 · 代码', '[1] 读代码 · 只读', 'tag', '[1] 不存在 · 只读 · 代码'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_PARSE_CELLS_REPORTS_HARD_DAMAGE_VALUES)
+def test_parse_cells_reports_hard_damage(name: str) -> None:
+    """输入：缺右括号 / 格数不对 / 认不出的格 的局面行。输出：无。预期行为：都报人话。
+    """
+    _v0, _v1, _v2, _v3 = TEST_PARSE_CELLS_REPORTS_HARD_DAMAGE_VALUES[name]
+    m = module_of(name, 'test_render_parse', 'parse', 'locales')
+    parse, locales = m.parse, m.locales
+    labels = parse.labels_of(locales.load("zh"))
+    with pytest.raises(ValueError, match="右方括号"):
+        parse._parse_cells(_v0, labels)
+    with pytest.raises(ValueError, match="格"):
+        parse._parse_cells(_v1, labels)
+    with pytest.raises(ValueError, match=_v2):
+        parse._parse_cells(_v3, labels)
+
+
+#: 2 家同款——输入：整个 train 切分跑一遍。输出：RunResult。预期行为：零拒绝、各族的答案均衡全绿。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FULL_TRAIN_RUN_IS_BALANCED_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'adblock': ('p4-full',),
+    'guardrail': ('g4-full',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FULL_TRAIN_RUN_IS_BALANCED_VALUES)
+def test_full_train_run_is_balanced(name: str, tmp_path: Path) -> None:
+    """输入：整个 train 切分跑一遍。输出：RunResult。预期行为：零拒绝、各族的答案均衡全绿。
+    """
+    _v0, = TEST_FULL_TRAIN_RUN_IS_BALANCED_VALUES[name]
+    conftest = importlib.import_module(f"tests.workflows.{name}.conftest")
+    fake_backend = conftest.FakeBackend
+    m = module_of(name, 'test_pipeline', 'FakeBackend', 'make_config', 'cases_of')
+    FakeBackend, make_config, cases_of = m.FakeBackend, m.make_config, m.cases_of
+    result = pipeline.run(make_config(tmp_path, _v0, fake_backend(), limit=0))
+    assert result.rejected == []
+    assert result.accepted == len(cases_of("train", limit=0))
+    assert [item["ok"] for item in result.stats["balance"]] == [True] * len(
+        result.stats["balance"]
+    )
+
+
+#: 2 家同款——输入：zh / en 各一段 state。输出：无。预期行为：各自认回自己的语言，认不出的给 None。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_DETECT_LOCALE_TELLS_THE_TWO_LANGUAGES_APART_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'alertrisk': ('R1', 'R1'),
+    'depcheck': ('D1', 'D1'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_DETECT_LOCALE_TELLS_THE_TWO_LANGUAGES_APART_VALUES)
+def test_detect_locale_tells_the_two_languages_apart(name: str) -> None:
+    """输入：zh / en 各一段 state。输出：无。预期行为：各自认回自己的语言，认不出的给 None。
+    """
+    _v0, _v1 = TEST_DETECT_LOCALE_TELLS_THE_TWO_LANGUAGES_APART_VALUES[name]
+    m = module_of(name, 'test_render', 'render', 'draft_of', 'packet_of', 'locales')
+    render, draft_of, packet_of, locales = m.render, m.draft_of, m.packet_of, m.locales
+    zh = render.to_state(draft_of(packet_of((_v0,), "zh")), locales.load("zh"))
+    en = render.to_state(draft_of(packet_of((_v1,), "en")), locales.load("en"))
+    assert render.detect_locale(zh) == "zh"
+    assert render.detect_locale(en) == "en"
+    assert render.detect_locale("这里什么抬头都没有") is None
+    assert render.detect_locale(None) is None
+
+
+#: 2 家同款——输入：两个判别器名 / 一个不存在的名字。输出：无。预期行为：都报人话。
+TEST_MAKE_JUDGES_BUILDS_BOTH_AND_REJECTS_UNKNOWN_NAMES: Final[tuple[str, ...]] = ('bench', 'elementpick')
+
+
+@pytest.mark.parametrize("name", TEST_MAKE_JUDGES_BUILDS_BOTH_AND_REJECTS_UNKNOWN_NAMES)
+def test_make_judges_builds_both_and_rejects_unknown_names(name: str) -> None:
+    """输入：两个判别器名 / 一个不存在的名字。输出：无。预期行为：都报人话。
+    """
+    m = module_of(name, 'test_api', 'WF', 'judges')
+    WF, judges = m.WF, m.judges
+    built = WF.make_judges(("roundtrip", "label"), "zh")
+    assert [judge.name for judge in built] == ["roundtrip", "label"]
+    assert all(
+        isinstance(judge, (judges.RoundtripJudge, judges.LabelJudge)) for judge in built
+    )
+    with pytest.raises(KeyError, match="未知判别器"):
+        WF.make_judges(("nope",), "zh")
+
+
+#: 2 家同款——输入：两语言文案。输出：无。预期行为：每题族三种问法，`pick` 在三个编号上都取得到。
+TEST_EVERY_FAMILY_HAS_THREE_PHRASINGS: Final[tuple[str, ...]] = ('browser', 'findtriage')
+
+
+@pytest.mark.parametrize("name", TEST_EVERY_FAMILY_HAS_THREE_PHRASINGS)
+def test_every_family_has_three_phrasings(name: str) -> None:
+    """输入：两语言文案。输出：无。预期行为：每题族三种问法，`pick` 在三个编号上都取得到。
+    """
+    m = module_of(name, 'test_locales', 'locales', 'questions')
+    locales, questions = m.locales, m.questions
+    for lang in locales.available():
+        loc = locales.load(lang)
+        for family in questions.FAMILIES:
+            assert len(loc["fam"][family]["q"]) >= 3
+            for phrasing in (0, 1, 2):
+                assert locales.pick(loc["fam"][family]["q"], phrasing)
+
+
+#: 2 家同款——输入：choice 的答案编号越界。输出：无。预期行为：报「编号越界」，不抛 IndexError。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_CHECK_SAMPLE_CATCHES_AN_OUT_OF_RANGE_INDEX_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'clipcut': ('first_kept',),
+    'quoteread': ('leader',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_CHECK_SAMPLE_CATCHES_AN_OUT_OF_RANGE_INDEX_VALUES)
+def test_check_sample_catches_an_out_of_range_index(name: str) -> None:
+    """输入：choice 的答案编号越界。输出：无。预期行为：报「编号越界」，不抛 IndexError。
+    """
+    _v0, = TEST_CHECK_SAMPLE_CATCHES_AN_OUT_OF_RANGE_INDEX_VALUES[name]
+    m = module_of(name, 'test_judges', 'sample_of', 'facts_of', 'LOC', '_make_spec', 'judges')
+    sample_of, facts_of, LOC, _make_spec, judges = m.sample_of, m.facts_of, m.LOC, m._make_spec, m.judges
+    sample = sample_of(_make_spec(4))
+    facts = facts_of(sample)
+    qid = next(name for name in sample["questions"] if name.startswith(_v0))
+    sample["answers"][qid]["choice"] = 99
+    problems = judges.check_sample(sample, facts, LOC)
+    assert problems and "编号越界" in problems[0]
+
+
+#: 2 家同款——输入：答案被改错的样本。输出：Verdict。预期行为：判不通过，理由点名那一题。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_LABEL_JUDGE_CATCHES_A_WRONG_ANSWER_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'clipcut': ('dup_any',),
+    'quoteread': ('divergent',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_LABEL_JUDGE_CATCHES_A_WRONG_ANSWER_VALUES)
+def test_label_judge_catches_a_wrong_answer(name: str) -> None:
+    """输入：答案被改错的样本。输出：Verdict。预期行为：判不通过，理由点名那一题。
+    """
+    _v0, = TEST_LABEL_JUDGE_CATCHES_A_WRONG_ANSWER_VALUES[name]
+    m = module_of(name, 'test_judges', 'sample_of', '_make_spec', 'judges')
+    sample_of, _make_spec, judges = m.sample_of, m._make_spec, m.judges
+    sample = sample_of(_make_spec(10))
+    qid = next(name for name in sample["questions"] if name.startswith(_v0))
+    sample["answers"][qid]["noul"] = not bool(sample["answers"][qid]["noul"])
+    verdict = judges.LabelJudge(locale="zh").judge(sample)
+    assert verdict.ok is False
+    assert qid in verdict.reason
+
+
+#: 2 家同款——输入：带堆栈的日志（多行）。输出：无。预期行为：多行原样保住。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_MULTILINE_CONTENT_ROUND_TRIPS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'logtriage': ('\n  at handler.py:41\n  at main.py:7',),
+    'tracescore': ('\n$ pytest -q\n2 failed, 8 passed\n  at handler.py:41',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_MULTILINE_CONTENT_ROUND_TRIPS_VALUES)
+def test_multiline_content_round_trips(name: str) -> None:
+    """输入：带堆栈的日志（多行）。输出：无。预期行为：多行原样保住。
+    """
+    _v0, = TEST_MULTILINE_CONTENT_ROUND_TRIPS_VALUES[name]
+    m = module_of(name, 'test_render', 'locales', 'text_of', 'CASE', 'render', 'features')
+    locales, text_of, CASE, render, features = m.locales, m.text_of, m.CASE, m.render, m.features
+    loc = locales.load("zh")
+    text = text_of(CASE) + _v0
+    state = render.to_state(render.ContentDraft(text=text), loc)
+    parsed = render.parse_with(state, loc)
+    assert parsed.text == text
+    assert parsed.tags == features.TAG_IDS
+
+
+#: 2 家同款——问法编号越界要回绕，不许报错也不许给出空串。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_PHRASING_INDEX_WRAPS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'modelroute': ('route', 1, 1),
+    'shell': ('verdict', 0, 0),
+}
+
+
+@pytest.mark.parametrize(("name", "lang"), _lang_pairs(TEST_PHRASING_INDEX_WRAPS_VALUES, "test_questions", "LOCALES"))
+def test_phrasing_index_wraps(name: str, lang: str) -> None:
+    """问法编号越界要回绕，不许报错也不许给出空串。
+    """
+    _v0, _v1, _v2 = TEST_PHRASING_INDEX_WRAPS_VALUES[name]
+    m = module_of(name, 'test_questions', 'LOCALES', 'locales', 'CASE', 'questions')
+    LOCALES, locales, CASE, questions = m.LOCALES, m.locales, m.CASE, m.questions
+    loc = locales.load(lang)
+    count = len(loc["fam"][_v0]["q"])
+    assert questions.build(CASE, loc, phrasing=count + 1)[_v1].question["instructions"] == (
+        questions.build(CASE, loc, phrasing=1)[_v2].question["instructions"]
+    )
+
+
+#: 2 家同款——输入：同一个 spec 出两次题。输出：无。预期行为：逐字段一致，RNG 不参与。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_BUILD_IS_PURE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': (3,),
+    'sentiment': ('neighbors',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_BUILD_IS_PURE_VALUES)
+def test_build_is_pure(name: str) -> None:
+    """输入：同一个 spec 出两次题。输出：无。预期行为：逐字段一致，RNG 不参与。
+    """
+    _v0, = TEST_BUILD_IS_PURE_VALUES[name]
+    m = module_of(name, 'test_questions', '_make_spec', 'LOC', 'questions')
+    _make_spec, LOC, questions = m._make_spec, m.LOC, m.questions
+    spec = _make_spec(7, _v0)
+    first = questions.build(spec, LOC, 1, random.Random(1))
+    second = questions.build(spec, LOC, 1, random.Random(999))
+    assert [item.family for item in first] == [item.family for item in second]
+    assert [item.question for item in first] == [item.question for item in second]
+    assert [item.answer for item in first] == [item.answer for item in second]
+
+
+#: 3 家同款——输入：正文里正常提到段落名。输出：无。预期行为：不算泄漏——只认「段落名 + 冒号」开头。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_LABEL_LEAK_ONLY_READS_THE_LINE_START_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'modelroute': ('这个请求：请把日志压成摘要', '', '请求：把日志压成摘要', '请求'),
+    'toolgate': ('调用意图：读一下', '调用意图', '他说的调用意图是读一下', ''),
+    'verify': ('这个声明：把空指针修掉了', '', '声明：把空指针修掉了', '声明'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_LABEL_LEAK_ONLY_READS_THE_LINE_START_VALUES)
+def test_label_leak_only_reads_the_line_start(name: str) -> None:
+    """输入：正文里正常提到段落名。输出：无。预期行为：不算泄漏——只认「段落名 + 冒号」开头。
+    """
+    _v0, _v1, _v2, _v3 = TEST_LABEL_LEAK_ONLY_READS_THE_LINE_START_VALUES[name]
+    m = module_of(name, 'test_render', 'locales', 'render')
+    locales, render = m.locales, m.render
+    loc = locales.load("zh")
+    assert render.label_leak(_v0, loc) == _v1
+    assert render.label_leak(_v2, loc) == _v3
+
+
+#: 2 家同款——输入：把键名写在句子中间的记录。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_MISSING_KEYS_NEEDS_THE_COLON_ON_ITS_OWN_LINE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'alertrisk': ('impact: hosts=3\nexposure: 见 rule: 那一行\nexploit: auth=required\ndetail: 一句', 'rule'),
+    'depcheck': ('license: MIT\nstatus: 见 package: 那一行\nadvisories: count=0\nversion: 1.2.3\nnote: 一句', 'package'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_MISSING_KEYS_NEEDS_THE_COLON_ON_ITS_OWN_LINE_VALUES)
+def test_missing_keys_needs_the_colon_on_its_own_line(name: str) -> None:
+    """输入：把键名写在句子中间的记录。输出：无。
+
+    预期行为：算缺——判据是钉在**行首**的，键不单独成行时那三条正则连定位都定不到。
+    """
+    _v0, _v1 = TEST_MISSING_KEYS_NEEDS_THE_COLON_ON_ITS_OWN_LINE_VALUES[name]
+    m = module_of(name, 'test_features', 'features')
+    features = m.features
+    text = _v0
+    assert _v1 in features.missing_keys(text)
+
+
+#: 2 家同款——输入：以标签开头但没有分隔符的一行。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FIELD_VALUE_NEEDS_A_SEPARATOR_RIGHT_AFTER_THE_LABEL_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'elementpick': ('元素清单', '元素', '动作'),
+    'skillpick': ('技能选择单', '技能', '标签'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FIELD_VALUE_NEEDS_A_SEPARATOR_RIGHT_AFTER_THE_LABEL_VALUES)
+def test_field_value_needs_a_separator_right_after_the_label(name: str) -> None:
+    """输入：以标签开头但没有分隔符的一行。输出：无。
+
+    预期行为：不算这一格——标题行确实以「元素」开头，收紧才不会误认。
+    """
+    _v0, _v1, _v2 = TEST_FIELD_VALUE_NEEDS_A_SEPARATOR_RIGHT_AFTER_THE_LABEL_VALUES[name]
+    m = module_of(name, 'test_render_parse', 'read_field_value')
+    read_field_value = m.read_field_value
+    assert read_field_value(_v0, (_v1,)) is None
+    assert read_field_value("今天天气不错。", (_v2,)) is None
+
+
+#: 2 家同款——输入：改动记录被整段删掉。输出：无。预期行为：判不通过。
+TEST_HYGIENE_CATCHES_A_MISSING_TABLE: Final[tuple[str, ...]] = ('findtriage', 'sourceselect')
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_CATCHES_A_MISSING_TABLE)
+def test_hygiene_catches_a_missing_table(name: str) -> None:
+    """输入：改动记录被整段删掉。输出：无。预期行为：判不通过。
+    """
+    m = module_of(name, 'test_judges', 'state_of', 'PLAN', 'locales', 'render', 'sample', 'judges')
+    state_of, PLAN, locales, render, sample, judges = m.state_of, m.PLAN, m.locales, m.render, m.sample, m.judges
+    loc = locales.load("zh")
+    state = state_of()
+    for line in render.table_lines(PLAN, loc):
+        state = state.replace(f"{line}\n", "")
+    assert not judges.HygieneJudge("zh").judge(sample(state)).ok
+
+
+#: 2 家同款——输入：两条不同规格。输出：无。预期行为：渲染与反解的 id 各自稳定、互不相同。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_TASK_IDS_ARE_UNIQUE_AND_RECOMPUTABLE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'findtriage': ('findtriage-train-0000003-render', 'findtriage-train-0000003-trace'),
+    'sourceselect': ('sourceselect-train-0000003-render', 'sourceselect-train-0000003-trace'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_TASK_IDS_ARE_UNIQUE_AND_RECOMPUTABLE_VALUES)
+def test_task_ids_are_unique_and_recomputable(name: str) -> None:
+    """输入：两条不同规格。输出：无。预期行为：渲染与反解的 id 各自稳定、互不相同。
+    """
+    _v0, _v1 = TEST_TASK_IDS_ARE_UNIQUE_AND_RECOMPUTABLE_VALUES[name]
+    m = module_of(name, 'test_spec', 'make')
+    make = m.make
+    one, two = make(seq=3), make(seq=4)
+    assert one.render_task_id == _v0
+    assert one.trace_task_id == _v1
+    assert one.render_task_id != two.render_task_id
+    assert one.render_task_id != one.trace_task_id
+
+
+#: 2 家同款——输入：认不出正文的 state。输出：无。预期行为：不通过（条款表与正文都不对）。
+TEST_FRAME_REJECTS_A_STATE_WITHOUT_A_CONTENT_BLOCK: Final[tuple[str, ...]] = ('guardrail', 'posttriage')
+
+
+@pytest.mark.parametrize("name", TEST_FRAME_REJECTS_A_STATE_WITHOUT_A_CONTENT_BLOCK)
+def test_frame_rejects_a_state_without_a_content_block(name: str) -> None:
+    """输入：认不出正文的 state。输出：无。预期行为：不通过（条款表与正文都不对）。
+    """
+    m = module_of(name, 'test_judges', 'faithful', 'CASE', 'spec_for', 'judges')
+    faithful, CASE, spec_for, judges = m.faithful, m.CASE, m.spec_for, m.judges
+    _, sample = faithful(CASE)
+    sample["state"] = "这里什么抬头都没有"
+    verdict = judges.FrameJudge("zh").judge(sample, spec_for(CASE))
+    assert not verdict.ok
+    assert "正文" in verdict.reason
+
+
+#: 2 家同款——输入：引文被反解装进 JSON 数组字符串（范式 §9.88）。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_QUOTE_HOLDS_ACCEPTS_A_QUOTE_WRAPPED_IN_A_JSON_ARRAY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'guardrail': ('P1', 'P1'),
+    'posttriage': ('S1', 'S1'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_QUOTE_HOLDS_ACCEPTS_A_QUOTE_WRAPPED_IN_A_JSON_ARRAY_VALUES)
+def test_quote_holds_accepts_a_quote_wrapped_in_a_json_array(name: str) -> None:
+    """输入：引文被反解装进 JSON 数组字符串（范式 §9.88）。输出：无。
+
+    预期行为：拆成候选之后照旧算站得住——模型把「抄几段」当成了「交数组」只是打包方式不同，
+    不该把一条真命中丢成误报（存量那 20 条就是这么丢的）。
+    """
+    _v0, _v1 = TEST_QUOTE_HOLDS_ACCEPTS_A_QUOTE_WRAPPED_IN_A_JSON_ARRAY_VALUES[name]
+    m = module_of(name, 'test_judges', 'judges', 'text_of', 'CASE', 'quote_for')
+    judges, text_of, CASE, quote_for = m.judges, m.text_of, m.CASE, m.quote_for
+    assert judges.quote_holds(_v0, json.dumps([quote_for(_v1)]), text_of(CASE))
+
+
+#: 2 家同款——state 不是文本就放过：那不是「格式残留」，是上游接线错了。
+TEST_HYGIENE_JUDGE_SKIPS_A_NON_TEXT_STATE: Final[tuple[str, ...]] = ('modelroute', 'shell')
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_JUDGE_SKIPS_A_NON_TEXT_STATE)
+def test_hygiene_judge_skips_a_non_text_state(name: str) -> None:
+    """state 不是文本就放过：那不是「格式残留」，是上游接线错了。
+
+    输入：state 是个字典。输出：Verdict。预期行为：通过且理由写明「不是文本」——
+    本 workflow 的渲染器只产字符串，这条分支是产物侧的兜底（与 mail 的 hygiene 同口径）。
+    """
+    m = module_of(name, 'test_judges', 'judges_mod')
+    judges_mod = m.judges_mod
+    verdict = judges_mod.HygieneJudge("zh").judge({"state": {"not": "text"}})
+    assert verdict.ok is True
+    assert "不是文本" in verdict.reason
+
+
+#: 2 家同款——输入：真样本。输出：无。预期行为：零问题——判别器不误判。
+TEST_CHECK_SAMPLE_PASSES_FOR_GENUINE_SAMPLES: Final[tuple[str, ...]] = ('planstep', 'sentiment')
+
+
+@pytest.mark.parametrize("name", TEST_CHECK_SAMPLE_PASSES_FOR_GENUINE_SAMPLES)
+@pytest.mark.parametrize("lang", ("zh", "en"))
+def test_check_sample_passes_for_genuine_samples(name: str, lang: str) -> None:
+    """输入：真样本。输出：无。预期行为：零问题——判别器不误判。
+    """
+    m = module_of(name, 'test_judges', 'ALL_CASES', 'locales', 'sample_of', 'judges', 'parsed_of')
+    ALL_CASES, locales, sample_of, judges, parsed_of = m.ALL_CASES, m.locales, m.sample_of, m.judges, m.parsed_of
+    loc = locales.load(lang)
+    for case in ALL_CASES[:12]:
+        sample = sample_of(case, lang)
+        assert judges.check_sample(sample, judges.facts_of(parsed_of(sample, lang)), loc) == []
+
+
+#: 2 家同款——输入：抬头被改。输出：无。预期行为：请求号对不上就报出来。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_ROUNDTRIP_DIFF_CATCHES_A_BROKEN_REQUEST_ID_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': (1, 'P-000000'),
+    'sentiment': ('neighbors', 'E-000000'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_ROUNDTRIP_DIFF_CATCHES_A_BROKEN_REQUEST_ID_VALUES)
+def test_roundtrip_diff_catches_a_broken_request_id(name: str) -> None:
+    """输入：抬头被改。输出：无。预期行为：请求号对不上就报出来。
+    """
+    _v0, _v1 = TEST_ROUNDTRIP_DIFF_CATCHES_A_BROKEN_REQUEST_ID_VALUES[name]
+    m = module_of(name, 'test_judges', '_make_spec', 'locales', 'parse', 'render', 'judges')
+    _make_spec, locales, parse, render, judges = m._make_spec, m.locales, m.parse, m.render, m.judges
+    loc = locales.load("zh")
+    spec = _make_spec(2, _v0)
+    text = render.build(spec, loc).replace(spec.query_id, _v1)
+    parsed = parse.parse_state(text, parse.tables_of(loc))
+    assert any("请求号" in item for item in judges.roundtrip_diff(spec, parsed, loc))
+
+
+#: 2 家同款——输入：一份语言文件。输出：无。预期行为：判据原文非空、每一条都不是空串。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_RULES_LINES_ARE_NOT_EMPTY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': (4,),
+    'sentiment': (5,),
+}
+
+
+@pytest.mark.parametrize(("name", "lang"), _lang_pairs(TEST_RULES_LINES_ARE_NOT_EMPTY_VALUES, "test_locales", "LANGS"))
+def test_rules_lines_are_not_empty(name: str, lang: str) -> None:
+    """输入：一份语言文件。输出：无。预期行为：判据原文非空、每一条都不是空串。
+    """
+    _v0, = TEST_RULES_LINES_ARE_NOT_EMPTY_VALUES[name]
+    m = module_of(name, 'test_locales', 'LANGS', 'locales')
+    LANGS, locales = m.LANGS, m.locales
+    lines = locales.load(lang)["rules"]["lines"]
+    assert len(lines) >= _v0, lang
+    for line in lines:
+        assert str(line).strip(), lang
+
+
+#: 2 家同款——输入：含表名的文本。输出：无。预期行为：命中，且大小写不敏感。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_BANNED_ECHO_FINDS_TABLE_NAMES_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'review': ('+ x = 1  # 见改动清单', '改动清单', '+ x = 1', '+ x = 1  # see Change Manifest', 'change manifest'),
+    'rubric': ('line one 见评分单', '评分单', 'line one', 'see the Score Sheet', 'score sheet'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_BANNED_ECHO_FINDS_TABLE_NAMES_VALUES)
+def test_banned_echo_finds_table_names(name: str) -> None:
+    """输入：含表名的文本。输出：无。预期行为：命中，且大小写不敏感。
+    """
+    _v0, _v1, _v2, _v3, _v4 = TEST_BANNED_ECHO_FINDS_TABLE_NAMES_VALUES[name]
+    m = module_of(name, 'test_render', 'locales', 'render')
+    locales, render = m.locales, m.render
+    zh = locales.load("zh")
+    en = locales.load("en")
+    assert render.banned_echo(_v0, zh) == [_v1]
+    assert render.banned_echo(_v2, zh) == []
+    assert render.banned_echo(_v3, en) == [_v4]
+
+
+#: 2 家同款——输入：完整记录、少两行的记录。输出：无。预期行为：只报缺掉的那几个键。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_MISSING_KEYS_FINDS_ONLY_ABSENT_ONES_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'alertrisk': ('rule', 'exploit', 'rule', 'exploit'),
+    'depcheck': ('package', 'status', 'package', 'status'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_MISSING_KEYS_FINDS_ONLY_ABSENT_ONES_VALUES)
+def test_missing_keys_finds_only_absent_ones(name: str) -> None:
+    """输入：完整记录、少两行的记录。输出：无。预期行为：只报缺掉的那几个键。
+    """
+    _v0, _v1, _v2, _v3 = TEST_MISSING_KEYS_FINDS_ONLY_ABSENT_ONES_VALUES[name]
+    m = module_of(name, 'test_features', 'render_lines', 'BASE_LINES', 'features')
+    render_lines, BASE_LINES, features = m.render_lines, m.BASE_LINES, m.features
+    full = render_lines(BASE_LINES)
+    assert features.missing_keys(full) == ()
+    lines = {key: value for key, value in BASE_LINES.items() if key not in {_v0, _v1}}
+    assert set(features.missing_keys(render_lines(lines))) == {_v2, _v3}
+
+
+#: 3 家同款——输入：没有规格。输出：无。预期行为：记「没判成」。
+TEST_TRACE_SKIPS_WITHOUT_A_SPEC: Final[tuple[str, ...]] = ('alertrisk', 'causechain', 'citation')
+
+
+@pytest.mark.parametrize("name", TEST_TRACE_SKIPS_WITHOUT_A_SPEC)
+def test_trace_skips_without_a_spec(name: str) -> None:
+    """输入：没有规格。输出：无。预期行为：记「没判成」。
+    """
+    m = module_of(name, 'test_judges', 'faithful', 'CASE', 'judges', 'FakeBackend')
+    faithful, CASE, judges, FakeBackend = m.faithful, m.CASE, m.judges, m.FakeBackend
+    _, sample = faithful(CASE)
+    assert judges.TraceJudge(FakeBackend(), "zh").judge(sample, None).skipped
+
+
+#: 2 家同款——输入：两个描述一样的选项 / 答案不在选项里。输出：无。预期行为：都报人话。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_CHOICE_REJECTS_DUPLICATE_DESCRIPTIONS_AND_UNKNOWN_ANSWERS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'bench': ('第 1 个', '第 2 个'),
+    'sim': ('甲', '乙'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_CHOICE_REJECTS_DUPLICATE_DESCRIPTIONS_AND_UNKNOWN_ANSWERS_VALUES)
+def test_choice_rejects_duplicate_descriptions_and_unknown_answers(name: str) -> None:
+    """输入：两个描述一样的选项 / 答案不在选项里。输出：无。预期行为：都报人话。
+    """
+    _v0, _v1 = TEST_CHOICE_REJECTS_DUPLICATE_DESCRIPTIONS_AND_UNKNOWN_ANSWERS_VALUES[name]
+    m = module_of(name, 'test_questions', 'questions')
+    questions = m.questions
+    with pytest.raises(ValueError, match="选项描述重复"):
+        questions._choice("best", "题面", {"a": "同一个", "b": "同一个"}, "a")
+    with pytest.raises(ValueError, match="不在选项里"):
+        questions._choice("best", "题面", {"a": _v0, "b": _v1}, "c")
+
+
+#: 3 家同款——输入：没有真值规格 / 没有后端。输出：无。预期行为：都记成跳过。
+TEST_TRACE_SKIPS_WITHOUT_SPEC_OR_BACKEND: Final[tuple[str, ...]] = ('browser', 'findtriage', 'sourceselect')
+
+
+@pytest.mark.parametrize("name", TEST_TRACE_SKIPS_WITHOUT_SPEC_OR_BACKEND)
+def test_trace_skips_without_spec_or_backend(name: str) -> None:
+    """输入：没有真值规格 / 没有后端。输出：无。预期行为：都记成跳过。
+    """
+    conftest = importlib.import_module(f"tests.workflows.{name}.conftest")
+    fake_backend = conftest.FakeBackend
+    m = module_of(name, 'test_judges', 'FakeBackend', 'sample', 'spec', 'state_of', 'judges')
+    FakeBackend, sample, spec, state_of, judges = m.FakeBackend, m.sample, m.spec, m.state_of, m.judges
+    assert judges.TraceJudge(fake_backend(), "zh").judge(sample(state_of())).skipped
+    assert judges.TraceJudge(None, "zh").judge(sample(state_of()), spec()).skipped
+
+
+#: 3 家同款——输入：任意特征。输出：无。预期行为：七个题族对任何组合都问得出来。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FAMILIES_FOR_RETURNS_THE_FULL_TABLE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'browser': (1024,),
+    'compact': (1024,),
+    'routing': (2048,),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FAMILIES_FOR_RETURNS_THE_FULL_TABLE_VALUES)
+def test_families_for_returns_the_full_table(name: str) -> None:
+    """输入：任意特征。输出：无。预期行为：七个题族对任何组合都问得出来。
+    """
+    _v0, = TEST_FAMILIES_FOR_RETURNS_THE_FULL_TABLE_VALUES[name]
+    m = module_of(name, 'test_questions', 'features', 'questions')
+    features, questions = m.features, m.questions
+    for tags in features.build_cases(_v0):
+        assert questions.families_for(tags) == questions.FAMILIES
+
+
+#: 2 家同款——输入：编号越界的 choice 答案。输出：无。预期行为：报越界而不是抛 IndexError。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_LABEL_JUDGE_CATCHES_AN_OUT_OF_RANGE_INDEX_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'cachereuse': (12, 'diff_kind'),
+    'match': (8, 'variant_count'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_LABEL_JUDGE_CATCHES_AN_OUT_OF_RANGE_INDEX_VALUES)
+def test_label_judge_catches_an_out_of_range_index(name: str) -> None:
+    """输入：编号越界的 choice 答案。输出：无。预期行为：报越界而不是抛 IndexError。
+    """
+    _v0, _v1 = TEST_LABEL_JUDGE_CATCHES_AN_OUT_OF_RANGE_INDEX_VALUES[name]
+    m = module_of(name, 'test_judges', 'sample_of', '_make_spec', 'judges')
+    sample_of, _make_spec, judges = m.sample_of, m._make_spec, m.judges
+    sample = sample_of(_make_spec(_v0))
+    sample["answers"][_v1]["choice"] = 99
+    verdict = judges.LabelJudge().judge(sample)
+    assert not verdict.ok and "越界" in verdict.reason
+
+
+#: 2 家同款——输入：题目题型被改成契约外的值。输出：无。预期行为：报未知题型。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_LABEL_JUDGE_CATCHES_AN_UNKNOWN_QUESTION_TYPE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'cachereuse': (13, 'diff_kind', 'ranking'),
+    'match': (9, 'band', 'multi'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_LABEL_JUDGE_CATCHES_AN_UNKNOWN_QUESTION_TYPE_VALUES)
+def test_label_judge_catches_an_unknown_question_type(name: str) -> None:
+    """输入：题目题型被改成契约外的值。输出：无。预期行为：报未知题型。
+    """
+    _v0, _v1, _v2 = TEST_LABEL_JUDGE_CATCHES_AN_UNKNOWN_QUESTION_TYPE_VALUES[name]
+    m = module_of(name, 'test_judges', 'sample_of', '_make_spec', 'judges')
+    sample_of, _make_spec, judges = m.sample_of, m._make_spec, m.judges
+    sample = sample_of(_make_spec(_v0))
+    sample["questions"][_v1]["type"] = _v2
+    verdict = judges.LabelJudge().judge(sample)
+    assert not verdict.ok and "未知题型" in verdict.reason
+
+
+#: 2 家同款——输入：反解说反话的假后端。输出：无。预期行为：不通过，理由里两种说法都列出来。
+TEST_TRACE_REJECTS_A_LYING_BACKEND: Final[tuple[str, ...]] = ('citation', 'rerank')
+
+
+@pytest.mark.parametrize("name", TEST_TRACE_REJECTS_A_LYING_BACKEND)
+def test_trace_rejects_a_lying_backend(name: str) -> None:
+    """输入：反解说反话的假后端。输出：无。预期行为：不通过，理由里两种说法都列出来。
+    """
+    m = module_of(name, 'test_judges', 'faithful', 'CASE', 'judges', 'FakeBackend')
+    faithful, CASE, judges, FakeBackend = m.faithful, m.CASE, m.judges, m.FakeBackend
+    spec, sample = faithful(CASE)
+    verdict = judges.TraceJudge(FakeBackend(trace_lies=True), "zh").judge(sample, spec)
+    assert not verdict.ok and not verdict.skipped
+    assert "计划" in verdict.reason and "反解" in verdict.reason
+
+
+#: 3 家同款——输入：只有两行的 state。输出：无。预期行为：报「太短」，不给一个空片段表。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_PARSE_REJECTS_A_SHORT_STATE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'clipcut': ('片段筛选请求号 K-000000\n[片段表]\n',),
+    'quoteread': ('行情读数请求号 Q-000000\n[读数表]\n',),
+    'siftrank': ('排序请求号：S-000000\n排序提示：随便\n',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_PARSE_REJECTS_A_SHORT_STATE_VALUES)
+def test_parse_rejects_a_short_state(name: str) -> None:
+    """输入：只有两行的 state。输出：无。预期行为：报「太短」，不给一个空片段表。
+    """
+    _v0, = TEST_PARSE_REJECTS_A_SHORT_STATE_VALUES[name]
+    m = module_of(name, 'test_render_parse', 'parse')
+    parse = m.parse
+    with pytest.raises(ValueError, match="太短"):
+        parse.parse_state(_v0, parse.merged_tables())
+
+
+#: 2 家同款——输入：题号。输出：无。预期行为：去掉 `_2` 这类后缀，也认得带下划线的族名。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FAMILY_OF_STRIPS_DEDUPE_SUFFIXES_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'compact': ('rule', 'rule', 'rule_2', 'rule', 'pin_overrode', 'pin_overrode', 'pin_overrode_2', 'pin_overrode'),
+    'routing': ('queue', 'queue', 'queue_2', 'queue', 'needs_human', 'needs_human', 'needs_human_2', 'needs_human'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FAMILY_OF_STRIPS_DEDUPE_SUFFIXES_VALUES)
+def test_family_of_strips_dedupe_suffixes(name: str) -> None:
+    """输入：题号。输出：无。预期行为：去掉 `_2` 这类后缀，也认得带下划线的族名。
+    """
+    _v0, _v1, _v2, _v3, _v4, _v5, _v6, _v7 = TEST_FAMILY_OF_STRIPS_DEDUPE_SUFFIXES_VALUES[name]
+    m = module_of(name, 'test_audit', 'audit_mod')
+    audit_mod = m.audit_mod
+    assert audit_mod._family_of(_v0) == _v1
+    assert audit_mod._family_of(_v2) == _v3
+    assert audit_mod._family_of(_v4) == _v5
+    assert audit_mod._family_of(_v6) == _v7
+
+
+#: 2 家同款——输入：三种坏草稿。输出：无。预期行为：都抛 ValueError。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_CHECK_DRAFT_REJECTS_BLANK_MULTILINE_AND_FENCES_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'compact': ('content', 'content', 'content'),
+    'routing': ('body', 'body', 'body'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_CHECK_DRAFT_REJECTS_BLANK_MULTILINE_AND_FENCES_VALUES)
+def test_check_draft_rejects_blank_multiline_and_fences(name: str) -> None:
+    """输入：三种坏草稿。输出：无。预期行为：都抛 ValueError。
+    """
+    _v0, _v1, _v2 = TEST_CHECK_DRAFT_REJECTS_BLANK_MULTILINE_AND_FENCES_VALUES[name]
+    m = module_of(name, 'test_render', 'locales', 'GOOD', 'render')
+    locales, GOOD, render = m.locales, m.GOOD, m.render
+    loc = locales.load("zh")
+    for bad in ("   ", f"{GOOD[_v0]}\n第二行", f"```{GOOD[_v1]}```"):
+        with pytest.raises(ValueError):
+            render.check_draft({_v2: bad}, loc)
+
+
+#: 3 家同款——输入：两行同名的会话。输出：无。预期行为：只取第一行，取不到给空串。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_LINE_VALUE_READS_THE_FIRST_MATCHING_LINE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'debugstep': ('Note: 第一行\nNote: 第二行', 'Note: 第一行', 'stack'),
+    'sqlreview': ('note: 第一行\nnote: 第二行', 'note: 第一行', 'statement'),
+    'subqa': ('Note: 第一行\nNote: 第二行', 'Note: 第一行', 'target'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_LINE_VALUE_READS_THE_FIRST_MATCHING_LINE_VALUES)
+def test_line_value_reads_the_first_matching_line(name: str) -> None:
+    """输入：两行同名的会话。输出：无。预期行为：只取第一行，取不到给空串。
+    """
+    _v0, _v1, _v2 = TEST_LINE_VALUE_READS_THE_FIRST_MATCHING_LINE_VALUES[name]
+    m = module_of(name, 'test_features', 'features')
+    features = m.features
+    assert features.line_value(_v0, "note") == "第一行"
+    assert features.line_value(_v1, _v2) == ""
+
+
+#: 2 家同款——输入：描述重复的选项 / 答案不在选项里。输出：无。预期行为：都报人话。（与 `test_choice_rejects_duplicate_descriptions_and_unknown_answers` 同名不同形：字面量个数不一样，拆成两份）
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_CHOICE_REJECTS_DUPLICATE_DESCRIPTIONS_AND_UNKNOWN_ANSWERS_2_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'elementpick': ('target', 'target'),
+    'skillpick': ('pick', 'pick'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_CHOICE_REJECTS_DUPLICATE_DESCRIPTIONS_AND_UNKNOWN_ANSWERS_2_VALUES)
+def test_choice_rejects_duplicate_descriptions_and_unknown_answers_2(name: str) -> None:
+    """输入：描述重复的选项 / 答案不在选项里。输出：无。预期行为：都报人话。
+    """
+    _v0, _v1 = TEST_CHOICE_REJECTS_DUPLICATE_DESCRIPTIONS_AND_UNKNOWN_ANSWERS_2_VALUES[name]
+    m = module_of(name, 'test_questions', 'questions')
+    questions = m.questions
+    with pytest.raises(ValueError, match="选项描述重复"):
+        questions._choice(_v0, "题面", {"s1": "一样", "s2": "一样"}, "s1")
+    with pytest.raises(ValueError, match="不在选项里"):
+        questions._choice(_v1, "题面", {"s1": "甲"}, "s2")
+
+
+#: 3 家同款——输入：题号。输出：无。预期行为：去掉 `_2` 这类后缀。（与 `test_family_of_strips_dedupe_suffixes` 同名不同形：字面量个数不一样，拆成两份）
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FAMILY_OF_STRIPS_DEDUPE_SUFFIXES_2_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'findtriage': ('triage', 'triage', 'triage_2', 'triage'),
+    'search': ('rule', 'rule', 'rule_2', 'rule'),
+    'sourceselect': ('pick', 'pick', 'pick_2', 'pick'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FAMILY_OF_STRIPS_DEDUPE_SUFFIXES_2_VALUES)
+def test_family_of_strips_dedupe_suffixes_2(name: str) -> None:
+    """输入：题号。输出：无。预期行为：去掉 `_2` 这类后缀。
+    """
+    _v0, _v1, _v2, _v3 = TEST_FAMILY_OF_STRIPS_DEDUPE_SUFFIXES_2_VALUES[name]
+    m = module_of(name, 'test_audit', 'audit_mod')
+    audit_mod = m.audit_mod
+    assert audit_mod._family_of(_v0) == _v1
+    assert audit_mod._family_of(_v2) == _v3
+
+
+#: 2 家同款——输入：序号断档 / 改动种类不认识的表。输出：无。预期行为：整张表判为解不出来。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_ROWS_OF_REJECTS_A_BROKEN_TABLE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'findtriage': ('untouched', 'maybe'),
+    'sourceselect': ('official', 'vip'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_ROWS_OF_REJECTS_A_BROKEN_TABLE_VALUES)
+def test_rows_of_rejects_a_broken_table(name: str) -> None:
+    """输入：序号断档 / 改动种类不认识的表。输出：无。预期行为：整张表判为解不出来。
+    """
+    _v0, _v1 = TEST_ROWS_OF_REJECTS_A_BROKEN_TABLE_VALUES[name]
+    m = module_of(name, 'test_render_parse', 'GOOD', 'PLAN', 'locales', 'render')
+    GOOD, PLAN, locales, render = m.GOOD, m.PLAN, m.locales, m.render
+    loc = locales.load("zh")
+    state = render.to_state(GOOD, PLAN, loc)
+    assert render.rows_of(state.replace("- 2 | ", "- 7 | "), loc) == ()
+    assert render.rows_of(state.replace(_v0, _v1), loc) == ()
+
+
+#: 2 家同款——输入：清单行挂错了 tags。输出：无。预期行为：判不通过，理由点出清单行。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FRAME_CATCHES_A_SWAPPED_MANIFEST_ROW_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'review': ('- source | modified | small', '- config | modified | small', '清单行'),
+    'rubric': ('- short | prose | none', '- long | prose | none', '材料清单'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FRAME_CATCHES_A_SWAPPED_MANIFEST_ROW_VALUES)
+def test_frame_catches_a_swapped_manifest_row(name: str) -> None:
+    """输入：清单行挂错了 tags。输出：无。预期行为：判不通过，理由点出清单行。
+    """
+    _v0, _v1, _v2 = TEST_FRAME_CATCHES_A_SWAPPED_MANIFEST_ROW_VALUES[name]
+    m = module_of(name, 'test_judges', 'sample', 'spec', 'state_of', 'judges')
+    sample, spec, state_of, judges = m.sample, m.spec, m.state_of, m.judges
+    broken = state_of().replace(_v0, _v1)
+    verdict = judges.FrameJudge("zh").judge(sample(broken), spec())
+    assert not verdict.ok
+    assert _v2 in verdict.reason
+
+
+#: 2 家同款——输入：门控表少了一行。输出：无。预期行为：判不通过。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FRAME_CATCHES_A_MISSING_TABLE_ROW_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'review': ('- 0 | allow | allow | allow', '门控表'),
+    'rubric': ('- mid | accept | reject\n', '处置表'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FRAME_CATCHES_A_MISSING_TABLE_ROW_VALUES)
+def test_frame_catches_a_missing_table_row(name: str) -> None:
+    """输入：门控表少了一行。输出：无。预期行为：判不通过。
+    """
+    _v0, _v1 = TEST_FRAME_CATCHES_A_MISSING_TABLE_ROW_VALUES[name]
+    m = module_of(name, 'test_judges', 'sample', 'spec', 'state_of', 'judges')
+    sample, spec, state_of, judges = m.sample, m.spec, m.state_of, m.judges
+    broken = state_of().replace(_v0, "")
+    verdict = judges.FrameJudge("zh").judge(sample(broken), spec())
+    assert not verdict.ok
+    assert _v1 in verdict.reason
+
+
+#: 2 家同款——输入：反解草稿缺字段。输出：无。预期行为：记成「没判成」。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_TRACE_RECORDS_A_MISSING_FIELD_AS_SKIPPED_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'review': ('secret',),
+    'rubric': ('placeholders',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_TRACE_RECORDS_A_MISSING_FIELD_AS_SKIPPED_VALUES)
+def test_trace_records_a_missing_field_as_skipped(name: str) -> None:
+    """输入：反解草稿缺字段。输出：无。预期行为：记成「没判成」。
+    """
+    _v0, = TEST_TRACE_RECORDS_A_MISSING_FIELD_AS_SKIPPED_VALUES[name]
+    m = module_of(name, 'test_judges', 'FakeBackend', 'sample', 'spec', 'state_of', 'judges')
+    FakeBackend, sample, spec, state_of, judges = m.FakeBackend, m.sample, m.spec, m.state_of, m.judges
+    backend = FakeBackend(trace_data={_v0: "yes"})
+    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
+    assert verdict.ok and verdict.skipped
+    assert "缺字段" in verdict.reason
+
+
+#: 2 家同款——输入：两个描述一样的选项。输出：无。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_CHOICE_REJECTS_DUPLICATE_OPTION_DESCRIPTIONS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'functions': ('选项描述重复', 'f', '题', '同一个', '同一个'),
+    'receiptcat': ('重复', 'cat', 'q', '同', '同'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_CHOICE_REJECTS_DUPLICATE_OPTION_DESCRIPTIONS_VALUES)
+def test_choice_rejects_duplicate_option_descriptions(name: str) -> None:
+    """输入：两个描述一样的选项。输出：无。
+
+    预期行为：报错——选项看起来一样，考生没法分辨，是构造 bug。
+    """
+    _v0, _v1, _v2, _v3, _v4 = TEST_CHOICE_REJECTS_DUPLICATE_OPTION_DESCRIPTIONS_VALUES[name]
+    m = module_of(name, 'test_questions', 'questions')
+    questions = m.questions
+    with pytest.raises(ValueError, match=_v0):
+        questions._choice(_v1, _v2, {"a": _v3, "b": _v4}, "a")
+
+
+#: 2 家同款——输入：全空间 8 种命中组合。输出：无。预期行为：两种表示互相还原。
+TEST_HITS_OF_AND_PARSE_HITS_ROUND_TRIP: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_HITS_OF_AND_PARSE_HITS_ROUND_TRIP)
+def test_hits_of_and_parse_hits_round_trip(name: str) -> None:
+    """输入：全空间 8 种命中组合。输出：无。预期行为：两种表示互相还原。
+    """
+    m = module_of(name, 'test_features', 'features', 'packet_of')
+    features, packet_of = m.features, m.packet_of
+    for value in features.HIT_SETS:
+        assert features.hits_of(packet_of(features.parse_hits(value))) == value
+    assert features.parse_hits("") == ()
+
+
+#: 2 家同款——输入：含 `detail:` 的记录。输出：无。预期行为：取到冒号后面的内容，取不到给空串。（与 `test_line_value_reads_the_first_matching_line` 同名不同形：字面量个数不一样，拆成两份）
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_LINE_VALUE_READS_THE_FIRST_MATCHING_LINE_2_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'alertrisk': ('detail', '研发笔记本'),
+    'depcheck': ('note', '内部工具链'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_LINE_VALUE_READS_THE_FIRST_MATCHING_LINE_2_VALUES)
+def test_line_value_reads_the_first_matching_line_2(name: str) -> None:
+    """输入：含 `detail:` 的记录。输出：无。预期行为：取到冒号后面的内容，取不到给空串。
+    """
+    _v0, _v1 = TEST_LINE_VALUE_READS_THE_FIRST_MATCHING_LINE_2_VALUES[name]
+    m = module_of(name, 'test_features', 'render_lines', 'BASE_LINES', 'features')
+    render_lines, BASE_LINES, features = m.render_lines, m.BASE_LINES, m.features
+    text = render_lines(BASE_LINES)
+    assert features.line_value(text, _v0).startswith(_v1)
+    assert features.line_value(text, "nope") == ""
+
+
+#: 2 家同款——输入：任意命中组合。输出：无。预期行为：五行齐全（夹具自己不许漏行，否则测试会假绿）。
+TEST_LINES_OF_KEEPS_EVERY_KEY: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_LINES_OF_KEEPS_EVERY_KEY)
+def test_lines_of_keeps_every_key(name: str) -> None:
+    """输入：任意命中组合。输出：无。预期行为：五行齐全（夹具自己不许漏行，否则测试会假绿）。
+    """
+    m = module_of(name, 'test_render', 'features', 'lines_of')
+    features, lines_of = m.features, m.lines_of
+    for value in features.HIT_SETS:
+        lines = lines_of(features.parse_hits(value))
+        assert sorted(lines) == sorted(features.KEY_LINES)
+
+
+#: 2 家同款——输入：四行记录。输出：无。预期行为：报人话（少一行说明构造漏了一行）。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_BUILD_REJECTS_A_WRONG_NUMBER_OF_ROWS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'bench': ('记录应该是', 4),
+    'sim': ('局面应该是', 5),
+}
+
+
+@pytest.mark.parametrize("name", TEST_BUILD_REJECTS_A_WRONG_NUMBER_OF_ROWS_VALUES)
+def test_build_rejects_a_wrong_number_of_rows(name: str) -> None:
+    """输入：四行记录。输出：无。预期行为：报人话（少一行说明构造漏了一行）。
+    """
+    _v0, _v1 = TEST_BUILD_REJECTS_A_WRONG_NUMBER_OF_ROWS_VALUES[name]
+    m = module_of(name, 'test_questions', '_make_spec', 'LOC', 'questions')
+    _make_spec, LOC, questions = m._make_spec, m.LOC, m.questions
+    spec = _make_spec()
+    with pytest.raises(ValueError, match=_v0):
+        questions.build(spec.rows[:_v1], spec, LOC, 0)
+
+
+#: 2 家同款——输入：表外的题族。输出：无。预期行为：报人话，不静默给一个空答案。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_EXPECTED_OF_REPORTS_AN_UNKNOWN_FAMILY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'clipcut': ('keep_amount',),
+    'quoteread': ('tier_level',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_EXPECTED_OF_REPORTS_AN_UNKNOWN_FAMILY_VALUES)
+def test_expected_of_reports_an_unknown_family(name: str) -> None:
+    """输入：表外的题族。输出：无。预期行为：报人话，不静默给一个空答案。
+    """
+    _v0, = TEST_EXPECTED_OF_REPORTS_AN_UNKNOWN_FAMILY_VALUES[name]
+    m = module_of(name, 'test_judges', 'facts_of', 'sample_of', 'LOC', '_make_spec', 'judges')
+    facts_of, sample_of, LOC, _make_spec, judges = m.facts_of, m.sample_of, m.LOC, m._make_spec, m.judges
+    facts = facts_of(sample_of(_make_spec(1)))
+    with pytest.raises(ValueError, match="未知题族"):
+        judges.expected_of(_v0, facts, LOC)
+
+
+#: 2 家同款——输入：处置表被整段删掉。输出：无。预期行为：判不通过。
+TEST_FRAME_CATCHES_A_MISSING_RULE_TABLE: Final[tuple[str, ...]] = ('compact', 'search')
+
+
+@pytest.mark.parametrize("name", TEST_FRAME_CATCHES_A_MISSING_RULE_TABLE)
+def test_frame_catches_a_missing_rule_table(name: str) -> None:
+    """输入：处置表被整段删掉。输出：无。预期行为：判不通过。
+    """
+    m = module_of(name, 'test_judges', 'locales', 'state_of', 'sample', 'spec', 'judges')
+    locales, state_of, sample, spec, judges = m.locales, m.state_of, m.sample, m.spec, m.judges
+    loc = locales.load("zh")
+    head = state_of().split(locales.header(loc, loc["meta"]["rules_label"]))[0]
+    assert not judges.FrameJudge("zh").judge(sample(head), spec()).ok
+
+
+#: 2 家同款——输入：一个没写进 locale 的取值。输出：无。预期行为：抛 KeyError，不静默给空串。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FEATURE_LINE_RAISES_ON_A_MISSING_PHRASE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'compact': ('kind',),
+    'routing': ('issue',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FEATURE_LINE_RAISES_ON_A_MISSING_PHRASE_VALUES)
+def test_feature_line_raises_on_a_missing_phrase(name: str) -> None:
+    """输入：一个没写进 locale 的取值。输出：无。预期行为：抛 KeyError，不静默给空串。
+    """
+    _v0, = TEST_FEATURE_LINE_RAISES_ON_A_MISSING_PHRASE_VALUES[name]
+    m = module_of(name, 'test_locales', 'locales')
+    locales = m.locales
+    loc = locales.load("zh")
+    with pytest.raises(KeyError):
+        locales.feature_line(loc, _v0, "bogus")
+
+
+#: 2 家同款——输入：一个少填槽的模板。输出：无。预期行为：报人话（不然发出去的是读不懂的题）。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FILL_REPORTS_LEFTOVER_PLACEHOLDERS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'elementpick': ('第 {n} 个：{role}',),
+    'skillpick': ('第 {n} 个：{tag}',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FILL_REPORTS_LEFTOVER_PLACEHOLDERS_VALUES)
+def test_fill_reports_leftover_placeholders(name: str) -> None:
+    """输入：一个少填槽的模板。输出：无。预期行为：报人话（不然发出去的是读不懂的题）。
+    """
+    _v0, = TEST_FILL_REPORTS_LEFTOVER_PLACEHOLDERS_VALUES[name]
+    m = module_of(name, 'test_questions', 'questions')
+    questions = m.questions
+    assert questions._fill("第 {n} 个", n="1") == "第 1 个"
+    with pytest.raises(ValueError, match="占位符"):
+        questions._fill(_v0, n="1")
+
+
+#: 2 家同款——输入：两门语言用不同的四格分隔符。输出：无。预期行为：报人话。
+TEST_MERGED_REJECTS_MISMATCHED_SEPARATORS: Final[tuple[str, ...]] = ('elementpick', 'skillpick')
+
+
+@pytest.mark.parametrize("name", TEST_MERGED_REJECTS_MISMATCHED_SEPARATORS)
+def test_merged_rejects_mismatched_separators(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """输入：两门语言用不同的四格分隔符。输出：无。预期行为：报人话。
+    """
+    m = module_of(name, 'test_render_parse', '_patched_merged', 'parse')
+    _patched_merged, parse = m._patched_merged, m.parse
+    _patched_merged(monkeypatch, lambda en, zh: en["meta"].update({"cell_sep": " | "}))
+    with pytest.raises(ValueError, match="分隔符必须一致"):
+        parse.merged()
+
+
+#: 2 家同款——输入：一段带换行的正文。输出：无。预期行为：换行原样保留，不被当成结构行。（与 `test_multiline_content_round_trips` 同名不同形：字面量个数不一样，拆成两份）
+TEST_MULTILINE_CONTENT_ROUND_TRIPS_2: Final[tuple[str, ...]] = ('guardrail', 'promptinject')
+
+
+@pytest.mark.parametrize("name", TEST_MULTILINE_CONTENT_ROUND_TRIPS_2)
+def test_multiline_content_round_trips_2(name: str) -> None:
+    """输入：一段带换行的正文。输出：无。预期行为：换行原样保留，不被当成结构行。
+    """
+    m = module_of(name, 'test_render', 'BASE', 'render', 'locales')
+    BASE, render, locales = m.BASE, m.render, m.locales
+    text = BASE + "\n第二行也没有任何形状"
+    state = render.to_state(render.ContentDraft(text=text), locales.load("zh"))
+    assert render.parse_state(state).text == text
+
+
+#: 2 家同款——输入：全空间 48 组 case 的忠实日志。输出：无。预期行为：一条都不报错。
+TEST_CHECK_DRAFT_ACCEPTS_EVERY_FAITHFUL_TEXT: Final[tuple[str, ...]] = ('logtriage', 'tracescore')
+
+
+@pytest.mark.parametrize("name", TEST_CHECK_DRAFT_ACCEPTS_EVERY_FAITHFUL_TEXT)
+def test_check_draft_accepts_every_faithful_text(name: str) -> None:
+    """输入：全空间 48 组 case 的忠实日志。输出：无。预期行为：一条都不报错。
+    """
+    m = module_of(name, 'test_render', 'locales', 'features', 'render', 'text_of')
+    locales, features, render, text_of = m.locales, m.features, m.render, m.text_of
+    loc = locales.load("zh")
+    for case in features.build_cases(512):
+        render.check_draft(render.ContentDraft(text=text_of(case)), case, loc)
+
+
+#: 2 家同款——请求单行、无残留 → 通过。
+TEST_HYGIENE_JUDGE_ACCEPTS_A_CLEAN_STATE: Final[tuple[str, ...]] = ('modelroute', 'verify')
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_JUDGE_ACCEPTS_A_CLEAN_STATE)
+def test_hygiene_judge_accepts_a_clean_state(name: str) -> None:
+    """请求单行、无残留 → 通过。
+    """
+    m = module_of(name, 'test_judges', 'state_for', 'judges_mod')
+    state_for, judges_mod = m.state_for, m.judges_mod
+    verdict = judges_mod.HygieneJudge("zh").judge({"state": state_for()})
+    assert verdict.ok is True, verdict.reason
+    assert verdict.skipped is False
+
+
+#: 2 家同款——输入：请求开头又写了一遍「请求：」。输出：Verdict。预期行为：判不通过并点名段落名。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_HYGIENE_JUDGE_FLAGS_A_LEAKED_SECTION_NAME_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'modelroute': ('请求：帮我改代码',),
+    'verify': ('声明：把空指针修掉了',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_JUDGE_FLAGS_A_LEAKED_SECTION_NAME_VALUES)
+def test_hygiene_judge_flags_a_leaked_section_name(name: str) -> None:
+    """输入：请求开头又写了一遍「请求：」。输出：Verdict。预期行为：判不通过并点名段落名。
+    """
+    _v0, = TEST_HYGIENE_JUDGE_FLAGS_A_LEAKED_SECTION_NAME_VALUES[name]
+    m = module_of(name, 'test_judges', 'state_for', 'judges_mod')
+    state_for, judges_mod = m.state_for, m.judges_mod
+    verdict = judges_mod.HygieneJudge("zh").judge({"state": state_for(_v0)})
+    assert verdict.ok is False
+    assert "段落名" in verdict.reason
+
+
+#: 2 家同款——输入：区块抬头之前就有一行内容。输出：无。预期行为：报错——那说明渲染漏了抬头。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_PARSE_REPORTS_CONTENT_BEFORE_ANY_SECTION_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': ('计划推进请求号 P-TEST\n  1. 需求梳理 | 待开始 | 无前置\n[推进规则]\n- 规则一\n',),
+    'sentiment': ('情绪弧线请求号 E-TEST\n乱写一行\n[对话]\n  1. 客户 | 还不错\n',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_PARSE_REPORTS_CONTENT_BEFORE_ANY_SECTION_VALUES)
+def test_parse_reports_content_before_any_section(name: str) -> None:
+    """输入：区块抬头之前就有一行内容。输出：无。预期行为：报错——那说明渲染漏了抬头。
+    """
+    _v0, = TEST_PARSE_REPORTS_CONTENT_BEFORE_ANY_SECTION_VALUES[name]
+    m = module_of(name, 'test_render_parse', 'parse')
+    parse = m.parse
+    text = _v0
+    with pytest.raises(ValueError, match="任何区块抬头之前"):
+        parse.parse_state(text, parse.merged_tables())
+
+
+#: 2 家同款——输入：答对的假后端。输出：无。预期行为：通过，并把反解结果记进 raw。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_TRACE_PASSES_WHEN_THE_MODEL_READS_IT_RIGHT_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'review': ('secret', 'debug'),
+    'rubric': ('placeholders', 'citations'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_TRACE_PASSES_WHEN_THE_MODEL_READS_IT_RIGHT_VALUES)
+def test_trace_passes_when_the_model_reads_it_right(name: str) -> None:
+    """输入：答对的假后端。输出：无。预期行为：通过，并把反解结果记进 raw。
+    """
+    _v0, _v1 = TEST_TRACE_PASSES_WHEN_THE_MODEL_READS_IT_RIGHT_VALUES[name]
+    m = module_of(name, 'test_judges', 'sample', 'spec', 'state_of', 'judges', 'FakeBackend')
+    sample, spec, state_of, judges, FakeBackend = m.sample, m.spec, m.state_of, m.judges, m.FakeBackend
+    verdict = judges.TraceJudge(FakeBackend(), "zh").judge(sample(state_of()), spec())
+    assert verdict.ok and not verdict.skipped
+    assert verdict.raw["traced"] == {_v0: "yes", _v1: "no"}
+
+
+#: 2 家同款——输入：词元不在取值表里的清单行。输出：无。预期行为：当解不出来。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_MANIFEST_OF_REJECTS_UNKNOWN_TOKENS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'review': ('【改动内容】\n+ x = 1\n【改动清单】（列名）\n- source | modified | huge',),
+    'rubric': ('【待评材料】\nline one\n【材料清单】（列名）\n- huge | prose | none',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_MANIFEST_OF_REJECTS_UNKNOWN_TOKENS_VALUES)
+def test_manifest_of_rejects_unknown_tokens(name: str) -> None:
+    """输入：词元不在取值表里的清单行。输出：无。预期行为：当解不出来。
+    """
+    _v0, = TEST_MANIFEST_OF_REJECTS_UNKNOWN_TOKENS_VALUES[name]
+    m = module_of(name, 'test_render', 'locales', 'render')
+    locales, render = m.locales, m.render
+    loc = locales.load("zh")
+    state = _v0
+    assert render.manifest_of(state, loc) is None
+
+
+#: 2 家同款——输入：只有两格的清单行。输出：无。预期行为：当解不出来。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_MANIFEST_OF_REJECTS_A_ROW_WITH_THE_WRONG_CELL_COUNT_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'review': ('【改动内容】\n+ x = 1\n【改动清单】（列名）\n- source | modified',),
+    'rubric': ('【待评材料】\nline one\n【材料清单】（列名）\n- short | prose',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_MANIFEST_OF_REJECTS_A_ROW_WITH_THE_WRONG_CELL_COUNT_VALUES)
+def test_manifest_of_rejects_a_row_with_the_wrong_cell_count(name: str) -> None:
+    """输入：只有两格的清单行。输出：无。预期行为：当解不出来。
+    """
+    _v0, = TEST_MANIFEST_OF_REJECTS_A_ROW_WITH_THE_WRONG_CELL_COUNT_VALUES[name]
+    m = module_of(name, 'test_render', 'locales', 'render')
+    locales, render = m.locales, m.render
+    loc = locales.load("zh")
+    state = _v0
+    assert render.manifest_of(state, loc) is None
+
+
+#: 3 家同款——输入：正文里混进 `<br>`。输出：无。预期行为：判不通过。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_HYGIENE_CATCHES_HTML_LINE_BREAKS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'compact': ('content', '上一句<br>下一句'),
+    'review': ('body', '+ x = 1<br>'),
+    'routing': ('body', '上一句<br>下一句'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_CATCHES_HTML_LINE_BREAKS_VALUES)
+def test_hygiene_catches_html_line_breaks(name: str) -> None:
+    """输入：正文里混进 `<br>`。输出：无。预期行为：判不通过。
+    """
+    _v0, _v1 = TEST_HYGIENE_CATCHES_HTML_LINE_BREAKS_VALUES[name]
+    m = module_of(name, 'test_judges', 'sample', 'state_of', 'judges')
+    sample, state_of, judges = m.sample, m.state_of, m.judges
+    assert not judges.HygieneJudge("zh").judge(sample(state_of({_v0: _v1}))).ok
+
+
+#: 2 家同款——输入：引文里多打了空白。输出：无。预期行为：空白折叠之后仍然算抄对了。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_QUOTE_HOLDS_IGNORES_WHITESPACE_DIFFERENCES_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'alertrisk': ('R3', 'R3', 'impact:   hosts=24  -- 二十四台生产机器'),
+    'depcheck': ('D3', 'D3', 'advisories:   count=3'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_QUOTE_HOLDS_IGNORES_WHITESPACE_DIFFERENCES_VALUES)
+def test_quote_holds_ignores_whitespace_differences(name: str) -> None:
+    """输入：引文里多打了空白。输出：无。预期行为：空白折叠之后仍然算抄对了。
+    """
+    _v0, _v1, _v2 = TEST_QUOTE_HOLDS_IGNORES_WHITESPACE_DIFFERENCES_VALUES[name]
+    m = module_of(name, 'test_judges', 'packet_of', 'judges')
+    packet_of, judges = m.packet_of, m.judges
+    body = packet_of((_v0,))
+    assert judges.quote_holds(_v1, _v2, body)
+
+
+#: 2 家同款——输入：一个没填完的模板。输出：无。预期行为：报人话（题面少填一个槽比报错危险）。（与 `test_fill_reports_leftover_placeholders` 同名不同形：字面量个数不一样，拆成两份）
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FILL_REPORTS_LEFTOVER_PLACEHOLDERS_2_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'bench': ('第 {n} 题，第 1 个候选答对了吗？',),
+    'sim': ('第 {n} 个动作现在能用吗？',),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FILL_REPORTS_LEFTOVER_PLACEHOLDERS_2_VALUES)
+def test_fill_reports_leftover_placeholders_2(name: str) -> None:
+    """输入：一个没填完的模板。输出：无。预期行为：报人话（题面少填一个槽比报错危险）。
+    """
+    _v0, = TEST_FILL_REPORTS_LEFTOVER_PLACEHOLDERS_2_VALUES[name]
+    m = module_of(name, 'test_questions', 'questions')
+    questions = m.questions
+    with pytest.raises(ValueError, match="占位符"):
+        questions._fill(_v0, other="x")
+
+
+#: 2 家同款——输入：干净 state。输出：无。预期行为：通过。
+TEST_HYGIENE_PASSES_A_CLEAN_STATE: Final[tuple[str, ...]] = ('browser', 'review')
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_PASSES_A_CLEAN_STATE)
+def test_hygiene_passes_a_clean_state(name: str) -> None:
+    """输入：干净 state。输出：无。预期行为：通过。
+    """
+    m = module_of(name, 'test_judges', 'sample', 'state_of', 'judges')
+    sample, state_of, judges = m.sample, m.state_of, m.judges
+    verdict = judges.HygieneJudge("zh").judge(sample(state_of()))
+    assert verdict.ok and not verdict.skipped
+
+
+#: 2 家同款——输入：形状不对的反查表。输出：无。预期行为：报形状，不抛 AttributeError。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_TO_KEYS_REPORTS_A_BROKEN_LOOKUP_TABLE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'cachereuse': ('打开', '搜索框', 'action', 'target'),
+    'clipcut': ('开场白', '高亮', 'topic', 'flag'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_TO_KEYS_REPORTS_A_BROKEN_LOOKUP_TABLE_VALUES)
+def test_to_keys_reports_a_broken_lookup_table(name: str) -> None:
+    """输入：形状不对的反查表。输出：无。预期行为：报形状，不抛 AttributeError。
+    """
+    _v0, _v1, _v2, _v3 = TEST_TO_KEYS_REPORTS_A_BROKEN_LOOKUP_TABLE_VALUES[name]
+    m = module_of(name, 'test_judges', 'judges')
+    judges = m.judges
+    with pytest.raises(ValueError, match="反查表形状不对"):
+        judges.to_keys(((_v0, _v1),), {_v2: [], _v3: {}})
+
+
+#: 2 家同款——输入：新样本。输出：无。预期行为：零问题（审计与判别器共用这一把尺）。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_CHECK_SAMPLE_IS_SILENT_ON_A_GOOD_SAMPLE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'cachereuse': (15,),
+    'match': (22,),
+}
+
+
+@pytest.mark.parametrize("name", TEST_CHECK_SAMPLE_IS_SILENT_ON_A_GOOD_SAMPLE_VALUES)
+def test_check_sample_is_silent_on_a_good_sample(name: str) -> None:
+    """输入：新样本。输出：无。预期行为：零问题（审计与判别器共用这一把尺）。
+    """
+    _v0, = TEST_CHECK_SAMPLE_IS_SILENT_ON_A_GOOD_SAMPLE_VALUES[name]
+    m = module_of(name, 'test_judges', 'sample_of', '_make_spec', 'LOC', 'judges', 'facts_of')
+    sample_of, _make_spec, LOC, judges, facts_of = m.sample_of, m._make_spec, m.LOC, m.judges, m.facts_of
+    sample = sample_of(_make_spec(_v0))
+    assert judges.check_sample(sample, facts_of(sample), LOC) == []
+
+
+#: 2 家同款——输入：不存在的题族。输出：无。预期行为：报错（新加题族忘了实现不能静默放过）。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_EXPECTED_OF_REJECTS_UNKNOWN_FAMILY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'cachereuse': (17,),
+    'match': (19,),
+}
+
+
+@pytest.mark.parametrize("name", TEST_EXPECTED_OF_REJECTS_UNKNOWN_FAMILY_VALUES)
+def test_expected_of_rejects_unknown_family(name: str) -> None:
+    """输入：不存在的题族。输出：无。预期行为：报错（新加题族忘了实现不能静默放过）。
+    """
+    _v0, = TEST_EXPECTED_OF_REJECTS_UNKNOWN_FAMILY_VALUES[name]
+    m = module_of(name, 'test_judges', 'LOC', 'judges', 'facts_of', 'sample_of', '_make_spec')
+    LOC, judges, facts_of, sample_of, _make_spec = m.LOC, m.judges, m.facts_of, m.sample_of, m._make_spec
+    with pytest.raises(ValueError, match="未知题族"):
+        judges.expected_of("nope", facts_of(sample_of(_make_spec(_v0))), LOC)
+
+
+#: 2 家同款——输入：不存在的题族。输出：无。预期行为：报错（不然会静默返回另一族的选项）。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_OPTIONS_OF_REJECTS_UNKNOWN_FAMILY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'cachereuse': ('reuse_half', 5),
+    'match': ('nope', 3),
+}
+
+
+@pytest.mark.parametrize("name", TEST_OPTIONS_OF_REJECTS_UNKNOWN_FAMILY_VALUES)
+def test_options_of_rejects_unknown_family(name: str) -> None:
+    """输入：不存在的题族。输出：无。预期行为：报错（不然会静默返回另一族的选项）。
+    """
+    _v0, _v1 = TEST_OPTIONS_OF_REJECTS_UNKNOWN_FAMILY_VALUES[name]
+    m = module_of(name, 'test_questions', 'LOC', 'questions', '_make_spec')
+    LOC, questions, _make_spec = m.LOC, m.questions, m._make_spec
+    with pytest.raises(ValueError, match="未知题族"):
+        questions.options_of(_v0, _make_spec(_v1), LOC)
+
+
+#: 2 家同款——输入：没有规格。输出：无。预期行为：记「没判成」，不硬判。
+TEST_FRAME_SKIPS_WITHOUT_A_SPEC: Final[tuple[str, ...]] = ('causechain', 'citation')
+
+
+@pytest.mark.parametrize("name", TEST_FRAME_SKIPS_WITHOUT_A_SPEC)
+def test_frame_skips_without_a_spec(name: str) -> None:
+    """输入：没有规格。输出：无。预期行为：记「没判成」，不硬判。
+    """
+    m = module_of(name, 'test_judges', 'faithful', 'CASE', 'judges')
+    faithful, CASE, judges = m.faithful, m.CASE, m.judges
+    _, sample = faithful(CASE)
+    assert judges.FrameJudge("zh").judge(sample, None).skipped
+
+
+#: 2 家同款——输入：两个条目同名。输出：无。预期行为：报错——反解会把两个条目认成一个。
+TEST_REVERSE_REJECTS_A_DUPLICATE_NAME: Final[tuple[str, ...]] = ('clipcut', 'planstep')
+
+
+@pytest.mark.parametrize("name", TEST_REVERSE_REJECTS_A_DUPLICATE_NAME)
+def test_reverse_rejects_a_duplicate_name(name: str) -> None:
+    """输入：两个条目同名。输出：无。预期行为：报错——反解会把两个条目认成一个。
+    """
+    m = module_of(name, 'test_locales', 'locales')
+    locales = m.locales
+    with pytest.raises(ValueError, match="同时属于"):
+        locales.reverse({"a": "同名", "b": "同名"})
+
+
+#: 2 家同款——输入：表外的题族。输出：无。预期行为：报人话，不返回空选项表。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_UNKNOWN_FAMILY_HAS_NO_OPTIONS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'clipcut': ('keep_count', 4),
+    'quoteread': ('tier', 5),
+}
+
+
+@pytest.mark.parametrize("name", TEST_UNKNOWN_FAMILY_HAS_NO_OPTIONS_VALUES)
+def test_unknown_family_has_no_options(name: str) -> None:
+    """输入：表外的题族。输出：无。预期行为：报人话，不返回空选项表。
+    """
+    _v0, _v1 = TEST_UNKNOWN_FAMILY_HAS_NO_OPTIONS_VALUES[name]
+    m = module_of(name, 'test_questions', 'LOC', 'questions', '_make_spec')
+    LOC, questions, _make_spec = m.LOC, m.questions, m._make_spec
+    with pytest.raises(ValueError, match="未知题族"):
+        questions.options_of(_v0, _make_spec(_v1), LOC)
+
+
+#: 2 家同款——输入：正文里又写了一遍段落名。输出：无。预期行为：判不通过。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_HYGIENE_CATCHES_A_REPEATED_SECTION_NAME_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'compact': ('content', '本块内容：刚才那句话'),
+    'routing': ('body', '工单正文：刚才那句话'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_HYGIENE_CATCHES_A_REPEATED_SECTION_NAME_VALUES)
+def test_hygiene_catches_a_repeated_section_name(name: str) -> None:
+    """输入：正文里又写了一遍段落名。输出：无。预期行为：判不通过。
+    """
+    _v0, _v1 = TEST_HYGIENE_CATCHES_A_REPEATED_SECTION_NAME_VALUES[name]
+    m = module_of(name, 'test_judges', 'state_of', 'sample', 'judges')
+    state_of, sample, judges = m.state_of, m.sample, m.judges
+    broken = state_of({_v0: _v1})
+    assert not judges.HygieneJudge("zh").judge(sample(broken)).ok
+
+
+#: 2 家同款——输入：每种语言。输出：无。预期行为：四格分隔符一致（合并表只按一个分隔符切行）。
+TEST_CELL_SEPARATOR_IS_SHARED_ACROSS_LANGUAGES: Final[tuple[str, ...]] = ('elementpick', 'skillpick')
+
+
+@pytest.mark.parametrize(("name", "lang"), _lang_pairs(TEST_CELL_SEPARATOR_IS_SHARED_ACROSS_LANGUAGES, "test_locales", "LANGS"))
+def test_cell_separator_is_shared_across_languages(name: str, lang: str) -> None:
+    """输入：每种语言。输出：无。预期行为：四格分隔符一致（合并表只按一个分隔符切行）。
+    """
+    m = module_of(name, 'test_locales', 'LANGS', 'locales')
+    LANGS, locales = m.LANGS, m.locales
+    assert locales.load(lang)["meta"]["cell_sep"] == locales.load("zh")["meta"]["cell_sep"]
+
+
+#: 2 家同款——输入：某一行的改动种类被改掉。输出：无。预期行为：判不通过。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_FRAME_CATCHES_A_WRONG_ROW_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'findtriage': ('added', 'untouched'),
+    'sourceselect': ('official', 'community'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_FRAME_CATCHES_A_WRONG_ROW_VALUES)
+def test_frame_catches_a_wrong_row(name: str) -> None:
+    """输入：某一行的改动种类被改掉。输出：无。预期行为：判不通过。
+    """
+    _v0, _v1 = TEST_FRAME_CATCHES_A_WRONG_ROW_VALUES[name]
+    m = module_of(name, 'test_judges', 'state_of', 'sample', 'spec', 'judges')
+    state_of, sample, spec, judges = m.state_of, m.sample, m.spec, m.judges
+    broken = state_of().replace(_v0, _v1)
+    assert not judges.FrameJudge("zh").judge(sample(broken), spec()).ok
+
+
+#: 2 家同款——输入：金答案不在选项里。输出：无。预期行为：报错。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_CHOICE_REJECTS_AN_ANSWER_OUTSIDE_THE_OPTIONS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'functions': ('f', '题'),
+    'receiptcat': ('cat', 'q'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_CHOICE_REJECTS_AN_ANSWER_OUTSIDE_THE_OPTIONS_VALUES)
+def test_choice_rejects_an_answer_outside_the_options(name: str) -> None:
+    """输入：金答案不在选项里。输出：无。预期行为：报错。
+    """
+    _v0, _v1 = TEST_CHOICE_REJECTS_AN_ANSWER_OUTSIDE_THE_OPTIONS_VALUES[name]
+    m = module_of(name, 'test_questions', 'questions')
+    questions = m.questions
+    with pytest.raises(ValueError, match="不在选项里"):
+        questions._choice(_v0, _v1, {"a": "甲", "b": "乙"}, "c")
+
+
+#: 2 家同款——输入：全空间 32 组 case 的忠实正文。输出：无。预期行为：一条都不报错。（与 `test_check_draft_accepts_every_faithful_text` 同名不同形：字面量个数不一样，拆成两份）
+TEST_CHECK_DRAFT_ACCEPTS_EVERY_FAITHFUL_TEXT_2: Final[tuple[str, ...]] = ('guardrail', 'promptinject')
+
+
+@pytest.mark.parametrize("name", TEST_CHECK_DRAFT_ACCEPTS_EVERY_FAITHFUL_TEXT_2)
+def test_check_draft_accepts_every_faithful_text_2(name: str) -> None:
+    """输入：全空间 32 组 case 的忠实正文。输出：无。预期行为：一条都不报错。
+    """
+    m = module_of(name, 'test_render', 'CASES', 'render', 'text_of')
+    CASES, render, text_of = m.CASES, m.render, m.text_of
+    for case in CASES:
+        render.check_draft(render.ContentDraft(text=text_of(case)), case)
+
+
+#: 2 家同款——输入：缺通道的语言字典。输出：无。预期行为：抛 ValueError。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_SOURCE_COPY_REPORTS_A_MISSING_SHAPE_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'logtriage': ('通道 infra', 'app', '应用日志', 'infra'),
+    'tracescore': ('缺入口 editor', 'cli', '命令行代理的轨迹', 'editor'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_SOURCE_COPY_REPORTS_A_MISSING_SHAPE_VALUES)
+def test_source_copy_reports_a_missing_shape(name: str) -> None:
+    """输入：缺通道的语言字典。输出：无。预期行为：抛 ValueError。
+    """
+    _v0, _v1, _v2, _v3 = TEST_SOURCE_COPY_REPORTS_A_MISSING_SHAPE_VALUES[name]
+    m = module_of(name, 'test_render', 'render')
+    render = m.render
+    with pytest.raises(ValueError, match=_v0):
+        render.source_copy({"source": {_v1: {"desc": _v2}}}, _v3)
+
+
+#: 2 家同款——输入：state 被写坏。输出：无。预期行为：判不通过并说明反解失败，不抛异常。
+TEST_LABEL_JUDGE_REPORTS_AN_UNPARSABLE_STATE: Final[tuple[str, ...]] = ('planstep', 'sentiment')
+
+
+@pytest.mark.parametrize("name", TEST_LABEL_JUDGE_REPORTS_AN_UNPARSABLE_STATE)
+def test_label_judge_reports_an_unparsable_state(name: str) -> None:
+    """输入：state 被写坏。输出：无。预期行为：判不通过并说明反解失败，不抛异常。
+    """
+    m = module_of(name, 'test_judges', 'judges')
+    judges = m.judges
+    verdict = judges.LabelJudge(locale="zh").judge({"state": "乱写", "questions": {}, "answers": {}})
+    assert verdict.ok is False and "重算失败" in verdict.reason
+
+
+#: 2 家同款——输入：不存在的题族。输出：无。预期行为：报错——新加了题族却忘了在这儿实现，不能静默放过。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_EXPECTED_OF_REJECTS_AN_UNKNOWN_FAMILY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': ('next', 't1'),
+    'sentiment': ('tone', 'pos'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_EXPECTED_OF_REJECTS_AN_UNKNOWN_FAMILY_VALUES)
+def test_expected_of_rejects_an_unknown_family(name: str) -> None:
+    """输入：不存在的题族。输出：无。预期行为：报错——新加了题族却忘了在这儿实现，不能静默放过。
+    """
+    _v0, _v1 = TEST_EXPECTED_OF_REJECTS_AN_UNKNOWN_FAMILY_VALUES[name]
+    m = module_of(name, 'test_judges', 'LOC', 'judges')
+    LOC, judges = m.LOC, m.judges
+    with pytest.raises(ValueError, match="未知题族"):
+        judges.expected_of("nope", {_v0: _v1}, LOC)
+
+
+#: 2 家同款——输入：重算出来的选项名不在选项表里。输出：无。预期行为：报人话，不静默取空串。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_OPTION_TEXT_REPORTS_A_MISSING_OPTION_KEY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': ('next', 'next'),
+    'sentiment': ('pivot', 'pivot'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_OPTION_TEXT_REPORTS_A_MISSING_OPTION_KEY_VALUES)
+def test_option_text_reports_a_missing_option_key(name: str) -> None:
+    """输入：重算出来的选项名不在选项表里。输出：无。预期行为：报人话，不静默取空串。
+    """
+    _v0, _v1 = TEST_OPTION_TEXT_REPORTS_A_MISSING_OPTION_KEY_VALUES[name]
+    m = module_of(name, 'test_judges', 'LOC', 'judges')
+    LOC, judges = m.LOC, m.judges
+    with pytest.raises(ValueError, match="不在选项表里"):
+        judges.option_text(_v0, {_v1: "t9"}, LOC)
+
+
+#: 2 家同款——输入：score 题族。输出：无。预期行为：报错——带选项的只有 `next` 一族。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_OPTION_TEXT_REPORTS_A_FAMILY_WITHOUT_OPTIONS_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'planstep': ('remaining', 'remaining'),
+    'sentiment': ('drop', 'drop'),
+}
+
+
+@pytest.mark.parametrize("name", TEST_OPTION_TEXT_REPORTS_A_FAMILY_WITHOUT_OPTIONS_VALUES)
+def test_option_text_reports_a_family_without_options(name: str) -> None:
+    """输入：score 题族。输出：无。预期行为：报错——带选项的只有 `next` 一族。
+    """
+    _v0, _v1 = TEST_OPTION_TEXT_REPORTS_A_FAMILY_WITHOUT_OPTIONS_VALUES[name]
+    m = module_of(name, 'test_judges', 'LOC', 'judges')
+    LOC, judges = m.LOC, m.judges
+    with pytest.raises(ValueError, match="带选项的只有"):
+        judges.option_text(_v0, {_v1: 1}, LOC)
+
+
+#: 2 家同款——输入：五行骨架。输出：无。预期行为：一条判据都不取到（它是 1 级那一档要的东西）。
+TEST_THE_PLAIN_RECORD_TRIPS_NOTHING: Final[tuple[str, ...]] = ('alertrisk', 'depcheck')
+
+
+@pytest.mark.parametrize("name", TEST_THE_PLAIN_RECORD_TRIPS_NOTHING)
+def test_the_plain_record_trips_nothing(name: str) -> None:
+    """输入：五行骨架。输出：无。预期行为：一条判据都不取到（它是 1 级那一档要的东西）。
+    """
+    m = module_of(name, 'test_features', 'features', 'render_lines', 'BASE_LINES')
+    features, render_lines, BASE_LINES = m.features, m.render_lines, m.BASE_LINES
+    assert features.hit_set(render_lines(BASE_LINES)) == ()
+
+
+#: 2 家同款——输入：无。输出：无。预期行为：全空间够大，否则下面的分布尺子量不到东西。
+#: 家 -> 各家不同的字面量（按正文里出现的顺序）。
+TEST_CASE_SPACE_IS_NOT_EMPTY_VALUES: Final[dict[str, tuple[object, ...]]] = {
+    'cachereuse': (100,),
+    'siftrank': (60,),
+}
+
+
+@pytest.mark.parametrize("name", TEST_CASE_SPACE_IS_NOT_EMPTY_VALUES)
+def test_case_space_is_not_empty(name: str) -> None:
+    """输入：无。输出：无。预期行为：全空间够大，否则下面的分布尺子量不到东西。
+    """
+    _v0, = TEST_CASE_SPACE_IS_NOT_EMPTY_VALUES[name]
+    m = module_of(name, 'test_spec', 'FULL')
+    FULL = m.FULL
+    assert len(FULL) >= _v0, f"全空间只有 {len(FULL)} 个 case"

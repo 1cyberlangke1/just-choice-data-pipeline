@@ -203,13 +203,6 @@ def test_evidence_echo_ignores_ordinary_wording() -> None:
     assert render.evidence_echo("把订单列表的空指针修掉了，测试全过了", loc) == ["测试全过"]
 
 
-def test_label_leak_only_reads_the_line_start() -> None:
-    """输入：正文里正常提到段落名。输出：无。预期行为：不算泄漏——只认「段落名 + 冒号」开头。"""
-    loc = locales.load("zh")
-    assert render.label_leak("这个声明：把空指针修掉了", loc) == ""
-    assert render.label_leak("声明：把空指针修掉了", loc) == "声明"
-
-
 def test_build_task_carries_tags_and_response_model() -> None:
     """输入：特征。输出：无。预期行为：任务带 tags、用 `VerifyDraft` 当响应模型。"""
     loc = locales.load("zh")

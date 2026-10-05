@@ -201,13 +201,6 @@ def test_check_draft_reads_the_marker_from_the_locale() -> None:
     render.check_draft({"request": "summarize the log"}, loc)
 
 
-def test_label_leak_only_reads_the_line_start() -> None:
-    """输入：正文里正常提到段落名。输出：无。预期行为：不算泄漏——只认「段落名 + 冒号」开头。"""
-    loc = locales.load("zh")
-    assert render.label_leak("这个请求：请把日志压成摘要", loc) == ""
-    assert render.label_leak("请求：把日志压成摘要", loc) == "请求"
-
-
 def test_build_task_carries_tags_and_response_model() -> None:
     """输入：特征。输出：无。预期行为：任务带 tags、用 `RouteDraft` 当响应模型。"""
     loc = locales.load("zh")

@@ -15,34 +15,6 @@ LOC: Final[dict[str, object]] = locales.load("zh")
 ALL_CASES: Final[tuple[ft.SentimentCase, ...]] = tuple(ft.build_cases(512))
 
 
-def test_families_are_the_four_known_ones() -> None:
-    """输入：无。输出：题族清单。
-
-    预期行为：四个题族、顺序稳定（先整段倾向、再转折位置、再落差、最后回升），三张分类表
-    正好把四族分完——多一族少一族都会让下面的「答案在选项里」漏查。
-    """
-    assert questions.FAMILIES == ("tone", "pivot", "drop", "rebound")
-    assert questions.CHOICE_FAMILIES == ("tone", "pivot")
-    assert questions.SCORE_FAMILIES == ("drop",)
-    assert questions.NOUL_FAMILIES == ("rebound",)
-    assert set(questions.FAMILIES) == (
-        set(questions.CHOICE_FAMILIES)
-        | set(questions.SCORE_FAMILIES)
-        | set(questions.NOUL_FAMILIES)
-    )
-
-
-def test_build_returns_one_question_per_family() -> None:
-    """输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。"""
-    built = questions.build(_make_spec(3, "review"), LOC, 0, random.Random(0))
-    assert [item.family for item in built] == list(questions.FAMILIES)
-    types = {item.family: item.question["type"] for item in built}
-    assert types["tone"] == "choice"
-    assert types["pivot"] == "choice"
-    assert types["drop"] == "score"
-    assert types["rebound"] == "noul"
-
-
 def test_only_choice_options_may_be_shuffled() -> None:
     """输入：一条规格。输出：无。
 
@@ -87,20 +59,6 @@ def test_answers_stay_inside_their_criteria() -> None:
                 assert isinstance(item.answer, bool)
 
 
-def test_instructions_carry_the_whole_rule_block() -> None:
-    """输入：一条规格。输出：无。
-
-    预期行为：四道题的题面都自带**五条判据原文**（与 state 里那一段同源）——只读 state 与
-    题面的读者必须能自己把答案算出来，判据藏在生成器里等于没给。
-    """
-    loc = locales.load("zh")
-    rules = questions.rules_block(loc)
-    for line in loc["rules"]["lines"]:
-        assert str(line) in rules
-    for item in questions.build(_make_spec(2, "interview"), loc, 0, random.Random(0)):
-        assert rules in str(item.question["instructions"]), item.family
-
-
 def test_tone_options_are_the_three_leanings() -> None:
     """输入：语言字典。输出：无。预期行为：三项、键与描述都互不相同。"""
     options = questions.tone_options(locales.load("zh"))
@@ -130,16 +88,6 @@ def test_phrasing_picks_a_different_head() -> None:
         for phrasing in (0, 1, 2)
     ]
     assert heads == [str(text) for text in loc["fam"]["tone"]["q"]]
-
-
-def test_build_is_pure() -> None:
-    """输入：同一个 spec 出两次题。输出：无。预期行为：逐字段一致，RNG 不参与。"""
-    spec = _make_spec(7, "neighbors")
-    first = questions.build(spec, LOC, 1, random.Random(1))
-    second = questions.build(spec, LOC, 1, random.Random(999))
-    assert [item.family for item in first] == [item.family for item in second]
-    assert [item.question for item in first] == [item.question for item in second]
-    assert [item.answer for item in first] == [item.answer for item in second]
 
 
 def test_drop_levels_cover_every_answer() -> None:

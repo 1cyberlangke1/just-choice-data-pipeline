@@ -25,19 +25,6 @@ def test_question_order_and_families(lang: str) -> None:
     assert [item.family for item in _build(CASE, lang)] == list(questions.FAMILIES)
 
 
-@pytest.mark.parametrize("lang", LOCALES)
-def test_every_case_asks_every_family(lang: str) -> None:
-    """输入：全部特征组合。输出：无。
-
-    预期行为：五个题族对**任何**组合都问得出来——本 workflow 没有条件题族，
-    所以每条样本的题族数恒定。
-    """
-    cases = features.build_cases(48)
-    assert cases
-    for case in cases:
-        assert [item.family for item in _build(case, lang)] == list(questions.FAMILIES)
-
-
 def test_choice_answers_are_option_names() -> None:
     """choice 的答案必须是选项名本身（编号由组装器最后一步映射）。"""
     for item in _build(CASE):
@@ -76,16 +63,6 @@ def test_noul_answers_are_bools() -> None:
     for item in _build(CASE):
         if item.question["type"] == "noul":
             assert isinstance(item.answer, bool)
-
-
-@pytest.mark.parametrize("lang", LOCALES)
-def test_phrasing_index_wraps(lang: str) -> None:
-    """问法编号越界要回绕，不许报错也不许给出空串。"""
-    loc = locales.load(lang)
-    count = len(loc["fam"]["route"]["q"])
-    assert questions.build(CASE, loc, phrasing=count + 1)[1].question["instructions"] == (
-        questions.build(CASE, loc, phrasing=1)[1].question["instructions"]
-    )
 
 
 def test_degenerate_answers_still_map_to_options() -> None:

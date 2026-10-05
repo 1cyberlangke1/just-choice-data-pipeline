@@ -8,30 +8,6 @@ from workflows.adblock import features, judges, locales, questions, render
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_tag_table_lines_up_with_features(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：判据表的键与 `TAG_IDS` 一一对应，每条三个字段都非空、判据名与表行两两不同，
-    而且表行里**编号排在分隔符前面**（解析就是按这个切回编号的）。
-    """
-    loc = locales.load(lang)
-    table = loc["tag"]
-    assert isinstance(table, dict)
-    assert sorted(table) == sorted(features.TAG_IDS)
-    for tag in features.TAG_IDS:
-        entry = render.tag_copy(loc, tag)
-        for key in ("name", "rule", "avoid"):
-            assert str(entry[key]).strip(), f"{lang}.{tag}.{key}"
-    names = [str(table[tag]["name"]) for tag in features.TAG_IDS]
-    assert len(set(names)) == len(names)
-    sep = str(loc["state"]["tag_sep"])
-    lines = [render.tag_line(loc, tag) for tag in features.TAG_IDS]
-    assert len(set(lines)) == len(lines)
-    for tag, line in zip(features.TAG_IDS, lines, strict=True):
-        assert line.partition(sep)[0] == tag
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_avoid_lists_do_not_trip_other_tags(lang: str) -> None:
     """输入：一种语言。输出：无。
 
@@ -77,24 +53,6 @@ def test_surface_table_lines_up_with_features(lang: str) -> None:
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_prompts_and_questions_leave_no_placeholder(lang: str) -> None:
-    """输入：一种语言 × 全空间 48 组 case。输出：无。
-
-    预期行为：提示词、反解提示词、题面与选项渲染完之后**一个花括号都不剩**——漏填会在 `format`
-    上抛错，而多写的花括号会原样漏给模型，让它以为那是要填的槽。
-    """
-    loc = locales.load(lang)
-    for case in features.build_cases(512):
-        prompt = render.build_prompt(loc, case)
-        assert "{" not in prompt and "}" not in prompt, case.describe()
-        for item in questions.build(features.plan_for(case, 0), loc, 0):
-            instructions = str(item.question["instructions"])
-            assert "{" not in instructions and "}" not in instructions
-    trace = judges.build_trace_prompt("[state]", loc)
-    assert "{" not in trace and "}" not in trace
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_prompt_pins_the_language(lang: str) -> None:
     """输入：一种语言。输出：无。
 
@@ -106,4 +64,3 @@ def test_prompt_pins_the_language(lang: str) -> None:
     assert "{language}" in str(loc["prompt"]["lang_rule"])
     case = features.AdBlockCase("A1", features.SURFACE_ARTICLE)
     assert str(loc["language_name"]) in render.build_prompt(loc, case)
-

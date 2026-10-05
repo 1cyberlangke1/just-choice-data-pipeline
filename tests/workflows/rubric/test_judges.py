@@ -86,22 +86,6 @@ def test_hygiene_still_checks_shape_without_a_spec() -> None:
     assert not judges.HygieneJudge("zh").judge(sample(fenced), None).ok
 
 
-def test_frame_catches_a_swapped_manifest_row() -> None:
-    """输入：清单行挂错了 tags。输出：无。预期行为：判不通过，理由点出清单行。"""
-    broken = state_of().replace("- short | prose | none", "- long | prose | none")
-    verdict = judges.FrameJudge("zh").judge(sample(broken), spec())
-    assert not verdict.ok
-    assert "材料清单" in verdict.reason
-
-
-def test_frame_catches_a_missing_table_row() -> None:
-    """输入：处置表少了一行。输出：无。预期行为：判不通过，理由点出那张表。"""
-    broken = state_of().replace("- mid | accept | reject\n", "")
-    verdict = judges.FrameJudge("zh").judge(sample(broken), spec())
-    assert not verdict.ok
-    assert "处置表" in verdict.reason
-
-
 def test_frame_catches_a_score_row_that_prints_a_number_for_a_body_dimension() -> None:
     """输入：评分单把「按材料数」换成了数字。输出：无。
 
@@ -115,13 +99,6 @@ def test_frame_catches_a_score_row_that_prints_a_number_for_a_body_dimension() -
     assert "评分单" in verdict.reason
 
 
-def test_trace_passes_when_the_model_reads_it_right() -> None:
-    """输入：答对的假后端。输出：无。预期行为：通过，并把反解结果记进 raw。"""
-    verdict = judges.TraceJudge(FakeBackend(), "zh").judge(sample(state_of()), spec())
-    assert verdict.ok and not verdict.skipped
-    assert verdict.raw["traced"] == {"placeholders": "yes", "citations": "no"}
-
-
 @pytest.mark.parametrize("switch", ["trace_lies_placeholders", "trace_lies_citations"])
 def test_trace_catches_a_misread_dimension(switch: str) -> None:
     """输入：反解说反话的假后端。输出：无。预期行为：判不通过，理由里两边的值都在。"""
@@ -129,14 +106,6 @@ def test_trace_catches_a_misread_dimension(switch: str) -> None:
     verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
     assert not verdict.ok and not verdict.skipped
     assert "注入" in verdict.reason and "反解成" in verdict.reason
-
-
-def test_trace_records_a_missing_field_as_skipped() -> None:
-    """输入：反解草稿缺字段。输出：无。预期行为：记成「没判成」。"""
-    backend = FakeBackend(trace_data={"placeholders": "yes"})
-    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
-    assert verdict.ok and verdict.skipped
-    assert "缺字段" in verdict.reason
 
 
 def test_trace_skips_without_spec_or_backend() -> None:

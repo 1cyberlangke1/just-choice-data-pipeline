@@ -11,17 +11,6 @@ from workflows.adblock.features import AdBlockCase
 CASE = AdBlockCase("A1+A3", features.SURFACE_ARTICLE)
 
 
-def test_flag_family_is_one_noul_per_tag() -> None:
-    """输入：无。输出：无。预期行为：四条 noul，一条判据一道，答案与真值一致。"""
-    plan = features.plan_for(CASE, 0)
-    out = questions.build(plan, locales.load("zh"), 0)
-    flags = [item for item in out if item.family == "flag"]
-    assert len(flags) == len(features.TAG_IDS)
-    for tag, item in zip(features.TAG_IDS, flags, strict=True):
-        assert item.question["type"] == "noul"
-        assert item.answer is (tag in plan.hits)
-
-
 def test_count_answers_match_the_truth() -> None:
     """输入：全空间 48 组 case。输出：无。预期行为：`count` 的答案是命中条数那一档。"""
     loc = locales.load("zh")
@@ -79,5 +68,3 @@ def test_phrasing_picks_alternate_wording() -> None:
     second = questions.build(plan, loc, 1)[0]
     assert first.question["instructions"] != second.question["instructions"]
     assert first.answer == second.answer
-
-

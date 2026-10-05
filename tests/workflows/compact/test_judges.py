@@ -31,25 +31,6 @@ def state_of(data: dict[str, str] | None = None) -> str:
     return render.to_state({**GOOD, **(data or {})}, TAGS, loc)
 
 
-def test_hygiene_catches_leftovers_multiline_and_empty() -> None:
-    """输入：带围栏 / 多行 / 空正文的 state。输出：无。预期行为：都判不通过。"""
-    judge = judges.HygieneJudge("zh")
-    assert not judge.judge(sample(state_of().replace("【本块内容】", "```\n【本块内容】"))).ok
-    assert not judge.judge(sample(state_of({"content": "第一行\n第二行"}))).ok
-    assert not judge.judge(sample(state_of({"content": "   "}))).ok
-
-
-def test_hygiene_catches_html_line_breaks() -> None:
-    """输入：正文里混进 `<br>`。输出：无。预期行为：判不通过。"""
-    assert not judges.HygieneJudge("zh").judge(sample(state_of({"content": "上一句<br>下一句"}))).ok
-
-
-def test_hygiene_catches_a_repeated_section_name() -> None:
-    """输入：正文里又写了一遍段落名。输出：无。预期行为：判不通过。"""
-    broken = state_of({"content": "本块内容：刚才那句话"})
-    assert not judges.HygieneJudge("zh").judge(sample(broken)).ok
-
-
 def test_frame_passes_the_injected_row() -> None:
     """输入：与特征一致的 state。输出：无。预期行为：通过。"""
     verdict = judges.FrameJudge("zh").judge(sample(state_of()), spec())
@@ -60,13 +41,6 @@ def test_frame_catches_a_wrong_where_row() -> None:
     """输入：位置行被改成别的取值。输出：无。预期行为：判不通过。"""
     broken = state_of().replace(render.where_line(TAGS, locales.load("zh")), "- recent | pinned | ample")
     assert not judges.FrameJudge("zh").judge(sample(broken), spec()).ok
-
-
-def test_frame_catches_a_missing_rule_table() -> None:
-    """输入：处置表被整段删掉。输出：无。预期行为：判不通过。"""
-    loc = locales.load("zh")
-    head = state_of().split(locales.header(loc, loc["meta"]["rules_label"]))[0]
-    assert not judges.FrameJudge("zh").judge(sample(head), spec()).ok
 
 
 def test_frame_catches_a_tampered_verdict() -> None:

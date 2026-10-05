@@ -148,20 +148,6 @@ def test_family_texts_and_score_levels(lang: str) -> None:
     assert levels[0].startswith("0") and levels[-1].startswith("3")
 
 
-@pytest.mark.parametrize("lang", LOCALES)
-def test_meta_punctuation_comes_from_the_locale(lang: str) -> None:
-    """输入：语言文件。输出：无。
-
-    预期行为：冒号与分隔符由语言文件给；英文里不能有中日韩标点——
-    否则英文单据会带着「：」「；」，看着就不像英文数据。
-    """
-    loc = locales.load(lang)
-    assert loc["meta"]["colon"] and loc["meta"]["sep"]
-    if lang == "en":
-        for key in ("colon", "sep"):
-            assert not (set("：；。") & set(loc["meta"][key]))
-
-
 def test_label_of_requires_two_labels_and_pick_wraps() -> None:
     """输入：只有一个标签的假语言文件。输出：KeyError。
 

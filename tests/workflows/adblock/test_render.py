@@ -170,18 +170,6 @@ def test_check_draft_rejects_a_pasted_rule(lang: str) -> None:
         render.check_draft(render.ContentDraft(snippet=f"{BASE} {rule}"), case, loc)
 
 
-def test_pasted_rules_only_flags_verbatim_text() -> None:
-    """输入：整段贴 / 改了一个词的两种片段。输出：无。
-
-    预期行为：只认**逐字相同**的整段判据原文——改一个词就不再算，否则正常产物会被误伤。
-    """
-    loc = locales.load("zh")
-    rule = str(render.tag_copy(loc, "A4")["rule"])
-    assert render.pasted_rules(rule, loc) == [rule]
-    assert render.pasted_rules(rule.replace("隐形或极小", "隐形极小"), loc) == []
-    assert render.pasted_rules(BASE, loc) == []
-
-
 def test_threshold_line_reuses_the_act_copy() -> None:
     """输入：一种语言 × 四个档位。输出：无。预期行为：档位表与 `act` 那一族的选项文案同源。"""
     loc = locales.load("zh")

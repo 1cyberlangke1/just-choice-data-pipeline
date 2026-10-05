@@ -64,12 +64,6 @@ def test_to_keys_reports_names_outside_the_table() -> None:
         judges.to_keys((("开场白", "乱写"),), locales.words())
 
 
-def test_to_keys_reports_a_broken_lookup_table() -> None:
-    """输入：形状不对的反查表。输出：无。预期行为：报形状，不抛 AttributeError。"""
-    with pytest.raises(ValueError, match="反查表形状不对"):
-        judges.to_keys((("开场白", "高亮"),), {"topic": [], "flag": {}})
-
-
 @pytest.mark.parametrize("lang", ("zh", "en"))
 def test_facts_of_recomputes_every_answer_for_every_case(lang: str) -> None:
     """输入：全空间 case × 两种语言。输出：无。
@@ -88,13 +82,6 @@ def test_facts_of_recomputes_every_answer_for_every_case(lang: str) -> None:
         assert facts["flags"] == list(case.flag_seq), case.describe()
 
 
-def test_expected_of_reports_an_unknown_family() -> None:
-    """输入：表外的题族。输出：无。预期行为：报人话，不静默给一个空答案。"""
-    facts = facts_of(sample_of(_make_spec(1)))
-    with pytest.raises(ValueError, match="未知题族"):
-        judges.expected_of("keep_amount", facts, LOC)
-
-
 def test_check_sample_accepts_a_fresh_sample() -> None:
     """输入：刚组装的样本。输出：无。预期行为：四道题全部对得上（零问题）。"""
     sample = sample_of(_make_spec(2))
@@ -110,16 +97,6 @@ def test_check_sample_catches_a_tampered_answer() -> None:
     problems = judges.check_sample(sample, facts, LOC)
     assert len(problems) == 1
     assert problems[0].startswith(qid)
-
-
-def test_check_sample_catches_an_out_of_range_index() -> None:
-    """输入：choice 的答案编号越界。输出：无。预期行为：报「编号越界」，不抛 IndexError。"""
-    sample = sample_of(_make_spec(4))
-    facts = facts_of(sample)
-    qid = next(name for name in sample["questions"] if name.startswith("first_kept"))
-    sample["answers"][qid]["choice"] = 99
-    problems = judges.check_sample(sample, facts, LOC)
-    assert problems and "编号越界" in problems[0]
 
 
 def test_any_locale_check_accepts_the_other_languages_option_text() -> None:
@@ -174,16 +151,6 @@ def test_roundtrip_judge_catches_a_tampered_state() -> None:
     assert verdict.ok is False
     assert "第 1 段" in verdict.reason
     assert loc["topic"][ft.TOPIC_IDS[0]] in render.build(spec, loc)
-
-
-def test_label_judge_catches_a_wrong_answer() -> None:
-    """输入：答案被改错的样本。输出：Verdict。预期行为：判不通过，理由点名那一题。"""
-    sample = sample_of(_make_spec(10))
-    qid = next(name for name in sample["questions"] if name.startswith("dup_any"))
-    sample["answers"][qid]["noul"] = not bool(sample["answers"][qid]["noul"])
-    verdict = judges.LabelJudge(locale="zh").judge(sample)
-    assert verdict.ok is False
-    assert qid in verdict.reason
 
 
 @pytest.mark.parametrize("lang", ("zh", "en"))

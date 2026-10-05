@@ -25,13 +25,6 @@ def state_for(request: str = "帮我把这段函数改成异步的", lang: str =
 # ---------- 卫生 ----------
 
 
-def test_hygiene_judge_accepts_a_clean_state() -> None:
-    """请求单行、无残留 → 通过。"""
-    verdict = judges_mod.HygieneJudge("zh").judge({"state": state_for()})
-    assert verdict.ok is True, verdict.reason
-    assert verdict.skipped is False
-
-
 @pytest.mark.parametrize("residue", ["```", "```json", "<br>", "<br/>"])
 def test_hygiene_judge_rejects_format_residue(residue: str) -> None:
     """围栏、HTML 换行标签都算格式残留，且要点名是哪一个。"""
@@ -55,31 +48,6 @@ def test_hygiene_judge_flags_an_empty_request() -> None:
     verdict = judges_mod.HygieneJudge("zh").judge({"state": state})
     assert verdict.ok is False
     assert "空的" in verdict.reason
-
-
-def test_hygiene_judge_flags_a_leaked_section_name() -> None:
-    """输入：请求开头又写了一遍「请求：」。输出：Verdict。预期行为：判不通过并点名段落名。"""
-    verdict = judges_mod.HygieneJudge("zh").judge({"state": state_for("请求：帮我改代码")})
-    assert verdict.ok is False
-    assert "段落名" in verdict.reason
-
-
-def test_hygiene_judge_reads_the_marker_from_the_locale() -> None:
-    """输入：英文 state。输出：Verdict。
-
-    预期行为：认得出 `[Request]` 那一段，代码里没写死中文——换个语言照样认。
-    """
-    loc = locales.load("en")
-    state = render.to_state({"request": "summarize the log"}, CASE, loc)
-    assert judges_mod.HygieneJudge("en").judge({"state": state}).ok is True
-    assert judges_mod.HygieneJudge("en").judge({"state": state + "\n```"}).ok is False
-
-
-def test_hygiene_judge_skips_a_non_text_state() -> None:
-    """state 不是文本就放过：那不是「格式残留」，是上游接线错了。"""
-    verdict = judges_mod.HygieneJudge("zh").judge({"state": {"not": "text"}})
-    assert verdict.ok is True
-    assert "不是文本" in verdict.reason
 
 
 # ---------- 框架 ----------

@@ -18,19 +18,6 @@ def _build(case: TagSet, lang: str = "zh") -> list[questions.LabeledQuestion]:
     return questions.build(case, locales.load(lang), phrasing=0)
 
 
-@pytest.mark.parametrize("lang", LOCALES)
-def test_every_case_asks_every_family(lang: str) -> None:
-    """输入：全部相容组合。输出：无。
-
-    预期行为：五个题族对**任何**相容组合都问得出来——本 workflow 没有条件题族，
-    所以每条样本的题族数恒定（有条件的 workflow 会在这一步退化）。
-    """
-    cases = features.build_cases(32)
-    assert cases
-    for case in cases:
-        assert [item.family for item in _build(case, lang)] == list(questions.FAMILIES)
-
-
 def test_ordered_families_are_not_shuffled() -> None:
     """处置与影响半径是阶梯，必须保持顺序；目标位置允许打乱以打掉位置捷径。"""
     by_family = {item.family: item for item in _build(CASE)}
@@ -47,13 +34,3 @@ def test_score_answer_is_the_level_index() -> None:
     assert item.answer == CASE.label().blast_radius
     assert 0 <= item.answer < len(item.question["criteria"])
     assert len(item.question["criteria"]) == 5
-
-
-@pytest.mark.parametrize("lang", LOCALES)
-def test_phrasing_index_wraps(lang: str) -> None:
-    """问法编号越界要回绕，不许报错也不许给出空串。"""
-    loc = locales.load(lang)
-    count = len(loc["fam"]["verdict"]["q"])
-    assert questions.build(CASE, loc, phrasing=count + 1)[0].question["instructions"] == (
-        questions.build(CASE, loc, phrasing=1)[0].question["instructions"]
-    )

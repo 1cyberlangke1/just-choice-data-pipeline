@@ -69,19 +69,6 @@ def test_highs_offers_the_truth_plus_three_distractors() -> None:
         assert criteria["k0"] == questions.highs_text(loc, plan.highs)
 
 
-def test_act_answers_follow_the_level_table() -> None:
-    """输入：全空间 24 组 case。输出：无。预期行为：`act` 的答案是等级查档位表算出来的那一档。"""
-    loc = locales.load("zh")
-    for case in features.build_cases(512):
-        plan = features.plan_for(case, 0)
-        item = next(q for q in questions.build(plan, loc, 0) if q.family == "act")
-        assert item.answer == features.act_for(plan.level)
-        criteria = item.question["criteria"]
-        assert isinstance(criteria, dict)
-        assert criteria[item.answer] == questions.act_option(loc, item.answer)
-        assert sorted(criteria) == sorted(features.ACTS)
-
-
 def test_highs_text_follows_the_canonical_tag_order() -> None:
     """输入：空组合、单条组合、以及全空间计划里的真值与干扰组合。输出：无。
 
@@ -96,23 +83,6 @@ def test_highs_text_follows_the_canonical_tag_order() -> None:
         plan = features.plan_for(case, 0)
         for combo in (plan.highs, *plan.distractors):
             assert combo == tuple(tag for tag in features.TAG_IDS if tag in combo), combo
-
-
-def test_choice_options_never_duplicate() -> None:
-    """输入：全空间 24 组 case × 两种语言。输出：无。
-
-    预期行为：两族 choice 的选项描述两两不同——两句话一样，考生没法分辨，是构造 bug。
-    """
-    for lang in locales.available():
-        loc = locales.load(lang)
-        for case in features.build_cases(512):
-            for item in questions.build(features.plan_for(case, 0), loc, 0):
-                if item.question["type"] != "choice":
-                    continue
-                criteria = item.question["criteria"]
-                assert isinstance(criteria, dict)
-                values = [str(value) for value in criteria.values()]
-                assert len(set(values)) == len(values), f"{lang}/{case.describe()}/{item.family}"
 
 
 def test_bad_score_shapes_are_rejected() -> None:

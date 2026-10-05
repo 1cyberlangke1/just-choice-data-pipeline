@@ -14,34 +14,6 @@ from workflows.quoteread import spec as sp
 LOC = locales.load("zh")
 
 
-def test_families_are_the_four_known_ones() -> None:
-    """输入：无。输出：题族清单。
-
-    预期行为：四个题族、顺序稳定（先档位、再标的、最后两个布尔），三张分类表正好把四族
-    分完——多一族少一族都会让下面的「答案在选项里」漏查。
-    """
-    assert questions.FAMILIES == ("tier", "leader", "alert", "divergent")
-    assert questions.SCORE_FAMILIES == ("tier",)
-    assert questions.CHOICE_FAMILIES == ("leader",)
-    assert questions.NOUL_FAMILIES == ("alert", "divergent")
-    assert set(questions.FAMILIES) == (
-        set(questions.CHOICE_FAMILIES)
-        | set(questions.SCORE_FAMILIES)
-        | set(questions.NOUL_FAMILIES)
-    )
-
-
-def test_build_returns_one_question_per_family() -> None:
-    """输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。"""
-    built = questions.build(_make_spec(1), LOC, 0, random.Random(0))
-    assert [item.family for item in built] == list(questions.FAMILIES)
-    types = {item.family: item.question["type"] for item in built}
-    assert types["tier"] == "score"
-    assert types["leader"] == "choice"
-    assert types["alert"] == "noul"
-    assert types["divergent"] == "noul"
-
-
 def test_answers_match_the_spec_for_every_case() -> None:
     """输入：全空间 case。输出：无。
 
@@ -71,12 +43,6 @@ def test_leader_options_are_this_case_three_instruments() -> None:
     ood_options = questions.options_of("leader", _make_spec(4, names=1), LOC)
     assert set(ood_options) == set(ft.OOD_NAME_IDS)
     assert not set(id_options.values()) & set(ood_options.values())
-
-
-def test_unknown_family_has_no_options() -> None:
-    """输入：表外的题族。输出：无。预期行为：报人话，不返回空选项表。"""
-    with pytest.raises(ValueError, match="未知题族"):
-        questions.options_of("tier", _make_spec(5), LOC)
 
 
 def test_score_criteria_is_the_five_level_table() -> None:

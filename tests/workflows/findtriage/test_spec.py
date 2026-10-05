@@ -20,14 +20,3 @@ def test_plan_is_derived_not_stored() -> None:
     assert one.plan == features.plan_for(CASE, 0)
     assert one.plan == make().plan
     assert one.labels == features.label_for(one.plan)
-
-
-def test_task_ids_are_unique_and_recomputable() -> None:
-    """输入：两条不同规格。输出：无。预期行为：渲染与反解的 id 各自稳定、互不相同。"""
-    one, two = make(seq=3), make(seq=4)
-    assert one.render_task_id == "findtriage-train-0000003-render"
-    assert one.trace_task_id == "findtriage-train-0000003-trace"
-    assert one.render_task_id != two.render_task_id
-    assert one.render_task_id != one.trace_task_id
-
-

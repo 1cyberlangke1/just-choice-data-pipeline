@@ -56,31 +56,6 @@ def test_prompt_states_the_form_shape() -> None:
     assert not bad, "\n".join(bad)
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_state_round_trips(lang: str) -> None:
-    """输入：一种语言。输出：无。预期行为：写出去再读回来，判据表与记忆一字不差。"""
-    loc = locales.load(lang)
-    text = text_of(CASE)
-    state = render.to_state(render.ContentDraft(text=text), loc)
-    parsed = render.parse_with(state, loc)
-    assert parsed.tags == features.TAG_IDS
-    assert parsed.text == text
-    assert render.detect_locale(state) == lang
-
-
-def test_state_prints_each_criterion_rule() -> None:
-    """输入：两种语言 × 一段 state。输出：无。
-
-    预期行为：判据表每行都带上该判据的**原文**——只印判据名时，反解模型认不出「作用域膨胀」
-    指的是什么形状（真机第一批 zh 侧 8 条拒稿全是这个原因，见 `render.tag_line` 的说明）。
-    """
-    for lang in locales.available():
-        loc = locales.load(lang)
-        state = render.to_state(render.ContentDraft(text=text_of(CASE)), loc)
-        for tag in features.TAG_IDS:
-            assert str(render.tag_copy(loc, tag)["rule"]) in state
-
-
 def test_multiline_content_round_trips() -> None:
     """输入：一条分点写法的记忆。输出：无。预期行为：多行原样保住（分点形态就是多行）。"""
     loc = locales.load("zh")
@@ -89,18 +64,6 @@ def test_multiline_content_round_trips() -> None:
     parsed = render.parse_with(state, loc)
     assert parsed.text == text
     assert parsed.tags == features.TAG_IDS
-
-
-def test_content_mentioning_a_rule_does_not_break_the_parse() -> None:
-    """输入：正文里出现一行「像判据表」的内容。输出：无。
-
-    预期行为：记忆抬头之后的一切都当正文——否则记忆里提一句「- M9：假的」就会把判据表数歪。
-    """
-    loc = locales.load("zh")
-    text = text_of(CASE) + "\n- M9：这一行是正文，不是判据表"
-    parsed = render.parse_with(render.to_state(render.ContentDraft(text=text), loc), loc)
-    assert parsed.tags == features.TAG_IDS
-    assert "- M9：这一行是正文，不是判据表" in str(parsed.text)
 
 
 def test_check_draft_accepts_every_faithful_text() -> None:

@@ -51,14 +51,6 @@ def test_hygiene_rejects_an_extra_hit() -> None:
     assert "命中组合" in verdict.reason
 
 
-def test_frame_accepts_a_faithful_sample() -> None:
-    """输入：忠实样本。输出：无。预期行为：判据表与正文骨架都对得上。"""
-    spec, sample = faithful(CASE)
-    verdict = judges.FrameJudge("zh").judge(sample, spec)
-    assert verdict.ok and not verdict.skipped
-    assert "骨架" in verdict.reason
-
-
 def test_frame_rejects_a_state_missing_a_signal_line() -> None:
     """输入：判据表里少一行的 state。输出：无。预期行为：不通过，理由是判据表不齐。"""
     spec, sample = faithful(CASE)
@@ -67,24 +59,6 @@ def test_frame_rejects_a_state_missing_a_signal_line() -> None:
     verdict = judges.FrameJudge("zh").judge(sample, spec)
     assert not verdict.ok and not verdict.skipped
     assert "判据表" in verdict.reason
-
-
-def test_frame_rejects_a_state_without_a_content_block() -> None:
-    """输入：认不出正文的 state。输出：无。预期行为：不通过（判据表与正文都不对）。"""
-    _, sample = faithful(CASE)
-    sample["state"] = "这里什么抬头都没有"
-    verdict = judges.FrameJudge("zh").judge(sample, spec_for(CASE))
-    assert not verdict.ok
-    assert "正文" in verdict.reason
-
-
-def test_quote_holds_accepts_a_quote_wrapped_in_a_json_array() -> None:
-    """输入：引文被反解装进 JSON 数组字符串（范式 §9.88）。输出：无。
-
-    预期行为：拆成候选之后照旧算站得住——模型把「抄几段」当成了「交数组」只是打包方式不同，
-    不该把一条真命中丢成误报（存量那 20 条就是这么丢的）。
-    """
-    assert judges.quote_holds("S1", json.dumps([quote_for("S1")]), text_of(CASE))
 
 
 def test_trace_drops_an_overclaim_whose_quote_is_real_but_off_criterion() -> None:

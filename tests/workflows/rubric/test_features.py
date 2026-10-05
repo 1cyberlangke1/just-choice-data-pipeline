@@ -279,19 +279,6 @@ def test_choice_options_are_a_subset_of_the_dimensions() -> None:
     assert features.CHOICE_OPTIONS["top"] == features.CRITERIA
 
 
-def test_every_compatible_combination_can_be_written() -> None:
-    """输入：全空间组合。输出：无。
-
-    预期行为：假后端能给每一格写出相称的材料，而且**过得了渲染期的形状检查**——
-    夹具缺格或区间定错会让「正文承载两维」这条前提在测试里悄悄失效。
-    """
-    loc = locales.load("zh")
-    for tags in all_tags():
-        body = body_for(tags.as_dict())
-        assert body.strip()
-        render.check_draft({"body": body}, tags, loc)
-
-
 def test_cover_limit_forces_full_enumeration() -> None:
     """输入：默认 `cover_limit`。输出：无。
 

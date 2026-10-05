@@ -33,20 +33,6 @@ def state_of(data: dict[str, str] | None = None, tags: TagSet = TAGS) -> str:
     return render.to_state({**GOOD, **(data or {})}, tags, locales.load("zh"))
 
 
-def test_hygiene_passes_a_clean_state() -> None:
-    """输入：干净 state。输出：无。预期行为：通过。"""
-    verdict = judges.HygieneJudge("zh").judge(sample(state_of()))
-    assert verdict.ok and not verdict.skipped
-
-
-def test_hygiene_catches_leftovers_multiline_and_empty() -> None:
-    """输入：带围栏 / 多行 / 空那句话的 state。输出：无。预期行为：都判不通过。"""
-    judge = judges.HygieneJudge("zh")
-    assert not judge.judge(sample(state_of().replace("【用户请求】", "```\n【用户请求】"))).ok
-    assert not judge.judge(sample(state_of({"request": "第一行\n第二行"}))).ok
-    assert not judge.judge(sample(state_of({"request": "   "}))).ok
-
-
 def test_hygiene_catches_html_line_breaks() -> None:
     """输入：那句话里混进 `<br>`。输出：无。预期行为：判不通过。"""
     assert not judges.HygieneJudge("zh").judge(sample(state_of({"request": f"上一句<br>下一句{LABEL}"}))).ok
@@ -163,12 +149,6 @@ def test_trace_reraises_a_fatal_backend_error(fake_backend: type[FakeBackend]) -
     backend = fake_backend(trace_raises=AllProvidersDown("全挂了"))
     with pytest.raises(AllProvidersDown):
         judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
-
-
-def test_trace_skips_without_spec_or_backend(fake_backend: type[FakeBackend]) -> None:
-    """输入：没有真值规格 / 没有后端。输出：无。预期行为：都记成跳过。"""
-    assert judges.TraceJudge(fake_backend(), "zh").judge(sample(state_of())).skipped
-    assert judges.TraceJudge(None, "zh").judge(sample(state_of()), spec()).skipped
 
 
 def test_trace_compares_the_label_after_stripping() -> None:

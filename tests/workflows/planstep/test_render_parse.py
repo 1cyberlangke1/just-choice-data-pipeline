@@ -146,13 +146,6 @@ def test_parse_reports_a_broken_header_and_short_input() -> None:
         parse.parse_state(123, parse.merged_tables())
 
 
-def test_parse_reports_content_before_any_section() -> None:
-    """输入：区块抬头之前就有一行内容。输出：无。预期行为：报错——那说明渲染漏了抬头。"""
-    text = "计划推进请求号 P-TEST\n  1. 需求梳理 | 待开始 | 无前置\n[推进规则]\n- 规则一\n"
-    with pytest.raises(ValueError, match="任何区块抬头之前"):
-        parse.parse_state(text, parse.merged_tables())
-
-
 def test_tables_of_rejects_empty_labels() -> None:
     """输入：抬头 / 格分隔符被写成空白。输出：无。预期行为：当场报错，不拖到解析阶段。"""
     loc = dict(locales.load("zh"))

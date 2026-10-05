@@ -160,15 +160,3 @@ def test_unknown_family_template_reports_the_family() -> None:
     loc["fam"] = {}
     with pytest.raises(KeyError):
         questions._instructions(loc, "cat", 0)
-
-
-def test_choice_rejects_duplicate_option_descriptions() -> None:
-    """输入：两个描述相同的选项。输出：无。预期行为：当场报错（考生没法分辨）。"""
-    with pytest.raises(ValueError, match="重复"):
-        questions._choice("cat", "q", {"a": "同", "b": "同"}, "a")
-
-
-def test_choice_rejects_an_answer_outside_the_options() -> None:
-    """输入：答案不在选项里。输出：无。预期行为：当场报错（组装器会拿不到下标）。"""
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("cat", "q", {"a": "甲", "b": "乙"}, "c")

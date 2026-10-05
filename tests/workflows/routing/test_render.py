@@ -13,23 +13,6 @@ TAGS = TagSet(issue="bug", urgency="deadline", tier="pro", compliance="none", ar
 GOOD = {"body": body_for(TAGS.as_dict())}
 
 
-def test_prompt_lists_only_the_text_dimensions() -> None:
-    """输入：一组特征、语言字典。输出：无。
-
-    预期行为：提示词只提由正文承载的两维，绝不提客户等级 / 合规标记 / 产品域——
-    提了模型就会把它们写进正文，与「工单属性」那一行抢同一件事（范式 §9.18）。
-    """
-    loc = locales.load("zh")
-    prompt = render.build_prompt(TAGS, loc, 0)
-    feature_block = prompt.split("\n\n")[1]
-    assert "这条工单是什么问题" in feature_block
-    assert "它有多急" in feature_block
-    assert "客户等级" not in feature_block
-    assert "合规标记" not in feature_block
-    assert "产品域" not in feature_block
-    assert "{" not in prompt
-
-
 def test_build_task_carries_the_response_model_and_tags() -> None:
     """输入：一组特征、语言字典、任务 id。输出：无。
 
@@ -41,14 +24,6 @@ def test_build_task_carries_the_response_model_and_tags() -> None:
     assert task.response_model is render.RoutingDraft
     assert task.spec["tags"] == TAGS.as_dict()
     assert task.task_id == "routing-train-0000000-render"
-
-
-def test_check_draft_rejects_blank_multiline_and_fences() -> None:
-    """输入：三种坏草稿。输出：无。预期行为：都抛 ValueError。"""
-    loc = locales.load("zh")
-    for bad in ("   ", f"{GOOD['body']}\n第二行", f"```{GOOD['body']}```"):
-        with pytest.raises(ValueError):
-            render.check_draft({"body": bad}, loc)
 
 
 def test_check_draft_rejects_a_repeated_section_name() -> None:

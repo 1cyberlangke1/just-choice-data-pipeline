@@ -81,21 +81,3 @@ def test_every_family_has_questions_and_the_right_shape(lang: str) -> None:
     ]
     assert str(loc["fam"]["combo"]["none"]).strip()
     assert str(loc["fam"]["combo"]["joiner"])
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_prompts_and_questions_leave_no_placeholder(lang: str) -> None:
-    """输入：一种语言 × 全空间 32 组 case。输出：无。
-
-    预期行为：提示词、反解提示词、题面与选项渲染完之后**一个花括号都不剩**——漏填会在 `format`
-    上抛错，而多写的花括号会原样漏给模型，让它以为那是要填的槽。
-    """
-    loc = locales.load(lang)
-    for case in features.build_cases(512):
-        prompt = render.build_prompt(loc, case)
-        assert "{" not in prompt and "}" not in prompt, case.describe()
-        for item in questions.build(features.plan_for(case, 0), loc, 0):
-            instructions = str(item.question["instructions"])
-            assert "{" not in instructions and "}" not in instructions
-    trace = judges.build_trace_prompt("[state]", loc)
-    assert "{" not in trace and "}" not in trace

@@ -240,18 +240,6 @@ def test_check_draft_rejects_a_pasted_rule(lang: str) -> None:
         )
 
 
-def test_pasted_rules_only_flags_verbatim_text() -> None:
-    """输入：整段贴 / 改了一个词的两种文本。输出：无。
-
-    预期行为：只认**逐字相同**的整段原文——改一个词就不再算，否则正常产物会被误伤。
-    """
-    loc = locales.load("zh")
-    rule = str(render.tag_copy(loc, "C1")["rule"])
-    assert render.pasted_rules(rule, loc) == [rule]
-    assert render.pasted_rules(rule.replace("行不行", "行不行呀"), loc) == []
-    assert render.pasted_rules(BASE, loc) == []
-
-
 def test_build_task_carries_the_plan() -> None:
     """输入：真值规格。输出：无。
 

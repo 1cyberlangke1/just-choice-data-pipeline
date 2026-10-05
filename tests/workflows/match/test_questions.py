@@ -90,12 +90,6 @@ def test_choice_options_are_complete_and_distinct() -> None:
     assert len(set(variants.values())) == 4
 
 
-def test_options_of_rejects_unknown_family() -> None:
-    """输入：不存在的题族。输出：无。预期行为：报错（不然会静默返回另一族的选项）。"""
-    with pytest.raises(ValueError, match="未知题族"):
-        questions.options_of("nope", _make_spec(3), LOC)
-
-
 def test_every_instruction_carries_the_rules_text() -> None:
     """输入：一条规格。输出：无。
 

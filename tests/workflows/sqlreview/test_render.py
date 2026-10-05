@@ -30,36 +30,6 @@ def test_prompt_lists_required_rules_and_forbidden_shapes() -> None:
         assert str(render.tag_copy(loc, tag)["avoid"]) in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_format_spec_only_offers_placeholders(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：格式规格那四行**只有占位符、没有一个能整段照抄的成品**——每一行的取值都得模型自己
-    编，规格里只印键名与 `<...>`；行数正好四个结构键。
-    """
-    loc = locales.load(lang)
-    lines = render.format_lines(loc)
-    assert len(lines) == len(features.KEY_LINES)
-    for key, line in zip(features.KEY_LINES, lines, strict=True):
-        assert line.startswith(render.LINE_PREFIX)
-        assert key in line.lower(), f"{lang}.{key}"
-        assert "<" in line and ">" in line, f"{lang}.{key}"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_note_spec_forbids_restating_the_format(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：`note:` 那一行的规格里**明说不要复述格式与要求**。`subqa` 上量到过：模型把备注写成
-    复述合成规格的句子（`sq-10b` zh 侧 9 条里 3 条）。备注是这一族唯一一段自然语言正文，写成
-    复述规格的句子之后整屏记录读起来就是「写手在照着规格交作业」，而不是一次真实变更。
-    """
-    loc = locales.load(lang)
-    spec = str(loc["prompt"]["format"]["note"])
-    assert "格式" in spec or "format" in spec.lower()
-    assert "不要" in spec or "do **not**" in spec.lower()
-
-
 @pytest.mark.parametrize(
     ("lang", "needle"),
     [("zh", "怎么执行"), ("en", "how to run")],

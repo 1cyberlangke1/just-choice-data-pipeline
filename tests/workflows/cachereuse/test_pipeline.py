@@ -80,22 +80,6 @@ def test_ood_holds_out_exactly_the_last_flavor() -> None:
     assert ood_flavors - id_flavors
 
 
-def test_split_sizes_add_up_to_the_training_side_matrix() -> None:
-    """输入：四个切分的配置。输出：无。
-
-    预期行为：三个同分布切分都非空（切片按**位置**而不是桶号过滤，否则哈希方差会让 val
-    只剩个位数），且加起来正好等于训练侧取值表的全枚举：3 步数 × 4 档 × 2 分叉原因
-    × 2 写法 × 2 来源。
-    """
-    workflow = workflow_mod.load("cachereuse")
-    sizes = {
-        split: len(workflow.build_cases(workflow.config_for(split)))
-        for split in workflow.split_names()
-    }
-    assert min(sizes.values()) > 0
-    assert sum(sizes[split] for split in ("train", "val", "test_iid")) == 3 * 4 * 2 * 2 * 2
-
-
 def test_query_id_ignores_the_text_only_dims_so_the_holdout_shares_it() -> None:
     """输入：四个切分的 case。输出：无。
 

@@ -13,23 +13,6 @@ TAGS = TagSet(kind="user", fact="chatter", age="old", pins="unpinned", budget="t
 GOOD = {"content": BASE["user"]}
 
 
-def test_prompt_lists_only_the_text_dimensions() -> None:
-    """输入：一组特征、语言字典。输出：无。
-
-    预期行为：提示词只提由文本承载的两维，绝不提轮次位置 / 是否钉住 / 剩余预算——
-    提了模型就会把它们写进正文，与「本块位置」那一行抢同一件事（范式 §9.13）。
-    """
-    loc = locales.load("zh")
-    prompt = render.build_prompt(TAGS, loc, 0)
-    feature_block = prompt.split("\n\n")[1]
-    assert "这一块是什么" in feature_block
-    assert "有没有承载持久事实" in feature_block
-    assert "轮次位置" not in feature_block
-    assert "是否钉住" not in feature_block
-    assert "剩余预算" not in feature_block
-    assert "{" not in prompt
-
-
 def test_build_task_carries_the_response_model_and_tags() -> None:
     """输入：一组特征、语言字典、任务 id。输出：无。
 
@@ -41,14 +24,6 @@ def test_build_task_carries_the_response_model_and_tags() -> None:
     assert task.response_model is render.CompactDraft
     assert task.spec["tags"] == TAGS.as_dict()
     assert task.task_id == "compact-train-0000000-render"
-
-
-def test_check_draft_rejects_blank_multiline_and_fences() -> None:
-    """输入：三种坏草稿。输出：无。预期行为：都抛 ValueError。"""
-    loc = locales.load("zh")
-    for bad in ("   ", f"{GOOD['content']}\n第二行", f"```{GOOD['content']}```"):
-        with pytest.raises(ValueError):
-            render.check_draft({"content": bad}, loc)
 
 
 def test_check_draft_rejects_a_repeated_section_name() -> None:

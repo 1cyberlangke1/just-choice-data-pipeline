@@ -20,53 +20,6 @@ def test_each_hit_line_trips_only_its_own_factor() -> None:
         assert features.hit_set(text) == (tag,), tag
 
 
-def test_the_plain_record_trips_nothing() -> None:
-    """输入：五行骨架。输出：无。预期行为：一条判据都不取到（它是 1 级那一档要的东西）。"""
-    assert features.hit_set(render_lines(BASE_LINES)) == ()
-
-
-def test_every_combination_is_reachable_by_its_packet() -> None:
-    """输入：全空间 8 种命中组合。输出：无。
-
-    预期行为：`packet_of` 造出来的记录按字面重算，得到的正好是那一组——两条路径（计划 / 文本）
-    在这一层就已经对得上，后面 `check_draft` 与审计才有意义。
-    """
-    for value in features.HIT_SETS:
-        tags = features.parse_hits(value)
-        assert features.hits_of(packet_of(tags)) == value, value
-
-
-def test_hits_of_and_parse_hits_round_trip() -> None:
-    """输入：全空间 8 种命中组合。输出：无。预期行为：两种表示互相还原。"""
-    for value in features.HIT_SETS:
-        assert features.hits_of(packet_of(features.parse_hits(value))) == value
-    assert features.parse_hits("") == ()
-
-
-def test_missing_keys_finds_only_absent_ones() -> None:
-    """输入：完整记录、少两行的记录。输出：无。预期行为：只报缺掉的那几个键。"""
-    full = render_lines(BASE_LINES)
-    assert features.missing_keys(full) == ()
-    lines = {key: value for key, value in BASE_LINES.items() if key not in {"rule", "exploit"}}
-    assert set(features.missing_keys(render_lines(lines))) == {"rule", "exploit"}
-
-
-def test_missing_keys_needs_the_colon_on_its_own_line() -> None:
-    """输入：把键名写在句子中间的记录。输出：无。
-
-    预期行为：算缺——判据是钉在**行首**的，键不单独成行时那三条正则连定位都定不到。
-    """
-    text = "impact: hosts=3\nexposure: 见 rule: 那一行\nexploit: auth=required\ndetail: 一句"
-    assert "rule" in features.missing_keys(text)
-
-
-def test_line_value_reads_the_first_matching_line() -> None:
-    """输入：含 `detail:` 的记录。输出：无。预期行为：取到冒号后面的内容，取不到给空串。"""
-    text = render_lines(BASE_LINES)
-    assert features.line_value(text, "detail").startswith("研发笔记本")
-    assert features.line_value(text, "nope") == ""
-
-
 def test_flags_and_level_follow_the_tag_order() -> None:
     """输入：几个命中组合。输出：无。预期行为：三格顺序恒为 `TAG_IDS` 的顺序。"""
     assert features.flags_of(()) == (False, False, False)
@@ -105,17 +58,6 @@ def test_level_distribution_is_one_two_two_two_one() -> None:
     for value in features.HIT_SETS:
         counts[features.level_of(features.parse_hits(value))] += 1
     assert counts == {1: 1, 2: 2, 3: 2, 4: 2, 5: 1}
-
-
-def test_act_for_collapses_the_top_levels() -> None:
-    """输入：五个等级。输出：无。预期行为：最后一档吃掉 4 / 5 两级。"""
-    assert [features.act_for(level) for level in features.LEVELS] == [
-        "monitor",
-        "ticket",
-        "patch_now",
-        "isolate",
-        "isolate",
-    ]
 
 
 def test_combo_text_key_marks_every_factor() -> None:

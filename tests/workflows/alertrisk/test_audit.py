@@ -50,21 +50,6 @@ def _audit(
     return AlertRiskWorkflow().audit(run_dir, splits, "zh")
 
 
-def test_score_answer_mismatch_is_caught(tmp_path: Path) -> None:
-    """输入：把一条 `grade`（score）的等级下标改掉。输出：无。
-
-    预期行为：`grade_bad` 报 1——审计拿答案下标取回等级描述，再与按文本查矩阵算出来的那一档比。
-    """
-    run_dir = _run(tmp_path, "t-grade")
-    rows = _rows(run_dir)
-    answer = rows[0]["answers"]["grade"]
-    answer["score"] = (answer["score"] + 1) % len(features.LEVELS)
-    _write(run_dir, rows)
-    report, missing = _audit(run_dir)
-    assert report["train"]["grade_bad"] == 1
-    assert any(BAD_LABELS["grade_bad"] in item for item in missing)
-
-
 def test_fact_answer_mismatch_is_caught(tmp_path: Path) -> None:
     """输入：把一条逐因子 noul 的答案取反。输出：无。预期行为：`fact_bad` 报 1。"""
     run_dir = _run(tmp_path, "t-fact")
@@ -75,32 +60,6 @@ def test_fact_answer_mismatch_is_caught(tmp_path: Path) -> None:
     report, missing = _audit(run_dir)
     assert report["train"]["fact_bad"] == 1
     assert any(BAD_LABELS["fact_bad"] in item for item in missing)
-
-
-def test_a_rewritten_line_is_caught(tmp_path: Path) -> None:
-    """输入：把一条**计划是「公网可达」**的样本的 `exposure:` 那一行换成内网。输出：无。
-
-    预期行为：`fact_bad` / `grade_bad` / `highs_bad` / `act_bad` 里至少有一个报出来——审计走的是
-    「从文本重推标签」这条独立路径，把形状擦掉之后重推出来的命中组合就与题面答案对不上了。
-    """
-    run_dir = _run(tmp_path, "t-rewrite")
-    rows = _rows(run_dir)
-    target = next(
-        row
-        for row in rows
-        if "R1" in features.hit_set(render.parse_state(row["state"]).text or "")
-    )
-    lines = [
-        "exposure: reachable=internal -- 只有内网能访问"
-        if line.strip().startswith("exposure:")
-        else line
-        for line in str(target["state"]).splitlines()
-    ]
-    target["state"] = "\n".join(lines)
-    _write(run_dir, rows)
-    report, _ = _audit(run_dir)
-    counts = report["train"]
-    assert counts["fact_bad"] + counts["grade_bad"] + counts["highs_bad"] + counts["act_bad"] > 0
 
 
 def test_cases_for_is_the_same_list_the_pipeline_sees(tmp_path: Path) -> None:

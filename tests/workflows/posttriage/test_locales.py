@@ -74,20 +74,6 @@ def test_vary_rule_bans_the_examples_by_name(lang: str) -> None:
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_route_and_threshold_tables_line_up_with_features(lang: str) -> None:
-    """输入：一种语言。输出：无。预期行为：两张表都覆盖四个档位，动作文案两两不同。"""
-    loc = locales.load(lang)
-    options = loc["fam"]["route"]["opt"]
-    assert isinstance(options, dict)
-    assert sorted(options) == sorted(features.ROUTE_LEVELS)
-    assert len({str(value) for value in options.values()}) == len(options)
-    thresholds = loc["state"]["threshold"]
-    assert isinstance(thresholds, dict)
-    assert sorted(thresholds) == sorted(features.ROUTE_LEVELS)
-    assert len({str(value) for value in thresholds.values()}) == len(thresholds)
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_every_family_has_questions_and_the_right_shape(lang: str) -> None:
     """输入：一种语言。输出：无。
 

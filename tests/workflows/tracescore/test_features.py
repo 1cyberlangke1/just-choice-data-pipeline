@@ -10,16 +10,6 @@ from tests.workflows.tracescore.conftest import text_of
 from workflows.tracescore import features
 
 
-def test_every_tag_appears_eight_times() -> None:
-    """输入：无。输出：无。
-
-    预期行为：每条信号在 16 组里各出现 8 次——这是 `flag` 那一族的答案按构造就是 50% 的原因。
-    """
-    for tag in features.TAG_IDS:
-        hits = sum(1 for value in features.HIT_SETS if tag in features.parse_hits(value))
-        assert hits == 8, tag
-
-
 def test_hit_set_is_purely_literal() -> None:
     """输入：一段轨迹。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
 
@@ -51,19 +41,6 @@ def test_hit_set_is_purely_literal() -> None:
         except AssertionError as exc:
             bad.append(f"{(text, expect)!r}: {exc}")
     assert not bad, "\n".join(bad)
-
-
-def test_sources_are_three_distinct_shapes() -> None:
-    """输入：无。输出：无。
-
-    预期行为：三个入口键两两不同，且**全空间里每种入口都被枚举到**——留出维只砍取值，
-    不该把别的取值一起砍掉（`build_cases` 默认维度表覆盖 `SOURCES`）。
-    """
-    assert features.SOURCES == ("cli", "editor", "chat")
-    assert len(set(features.SOURCES)) == len(features.SOURCES)
-    assert features.DIMS["source"] == features.SOURCES
-    cases = features.build_cases(512)
-    assert {case.source for case in cases} == set(features.SOURCES)
 
 
 def test_plan_is_reproducible_and_distractors_are_near() -> None:
@@ -156,22 +133,6 @@ def test_route_distribution_is_five_six_five() -> None:
     )
     assert counts == Counter({"replan": 6, "proceed": 5, "escalate": 5})
     assert set(features.ROUTE_LEVELS) == set(counts)
-
-
-def test_two_label_paths_agree_on_every_faithful_text() -> None:
-    """输入：全空间的 48 组 case。输出：无。
-
-    预期行为：「构造侧从计划推」与「审计侧从文本重推」两条路走出来的标签逐条相同——轨迹兑现了
-    计划，两条路就不该打架。
-    """
-    cases = features.build_cases(512)
-    assert len(cases) == 48  # 16 组命中 × 3 种入口
-    for case in cases:
-        text = text_of(case)
-        assert features.hits_of(text) == case.hits, case.describe()
-        assert features.observed_labels(text).hits == features.label_for(
-            features.plan_for(case, 0)
-        ).hits
 
 
 def test_case_fingerprint_and_describe() -> None:

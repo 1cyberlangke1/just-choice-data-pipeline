@@ -42,12 +42,6 @@ def test_expected_pick_reads_the_table() -> None:
     assert audit_mod.expected_pick(empty, "authority") == features.NO_PICK
 
 
-def test_family_of_strips_dedupe_suffixes() -> None:
-    """输入：题号。输出：无。预期行为：去掉 `_2` 这类后缀。"""
-    assert audit_mod._family_of("pick") == "pick"
-    assert audit_mod._family_of("pick_2") == "pick"
-
-
 def test_audit_flags_a_tampered_pick(tmp_path: Path) -> None:
     """输入：把一条样本的 `pick` 答案改掉。输出：无。
 

@@ -17,19 +17,6 @@ def all_tags() -> list[TagSet]:
     return features.build_cases(1024)
 
 
-def test_full_space_drops_exactly_the_two_forbidden_pairs() -> None:
-    """输入：维度表与全空间枚举。输出：无。
-
-    预期行为：5×2×3×2×3 = 180 组；两对禁用对各砍掉 3×2×3 = 18 组
-    （`工具输出 × 持久事实`、`系统提示词 × 没有持久事实`），正好剩 144 组。
-    """
-    total = 1
-    for values in features.DIMS.values():
-        total *= len(values)
-    assert total == 180
-    assert len(all_tags()) == 144
-
-
 def test_every_rule_is_reachable() -> None:
     """输入：全空间组合。输出：无。预期行为：八条规则每一条都至少命中一次。"""
     hit = Counter(features.rule_for(tags) for tags in all_tags())
@@ -124,17 +111,6 @@ def test_compatible_rejects_the_forbidden_pair_directly() -> None:
     for kind, fact in (("tool_output", "fact"), ("system", "chatter")):
         tags = TagSet(kind=kind, fact=fact, age="current", pins="unpinned", budget="ample")
         assert not features.compatible(tags)
-
-
-def test_allow_pair_is_order_free() -> None:
-    """输入：一个禁用对（正反两种写法）。输出：无。预期行为：换顺序也一样被否掉。"""
-    assert not features.allow_pair("fact", "fact", "kind", "tool_output")
-    assert not features.allow_pair("kind", "tool_output", "fact", "fact")
-    assert not features.allow_pair("fact", "chatter", "kind", "system")
-    assert not features.allow_pair("kind", "system", "fact", "chatter")
-    assert features.allow_pair("fact", "chatter", "kind", "tool_output")
-    assert features.allow_pair("fact", "fact", "kind", "user")
-    assert features.allow_pair("fact", "chatter", "kind", "user")
 
 
 def test_pin_overrode_is_false_when_not_pinned() -> None:

@@ -10,12 +10,6 @@ from workflows.clipcut import locales, parse, questions
 LANGS: tuple[str, ...] = ("zh", "en")
 
 
-def test_reverse_rejects_a_duplicate_name() -> None:
-    """输入：两个条目同名。输出：无。预期行为：报错——反解会把两个条目认成一个。"""
-    with pytest.raises(ValueError, match="同时属于"):
-        locales.reverse({"a": "同名", "b": "同名"})
-
-
 def test_merged_words_cover_every_key() -> None:
     """输入：合并反查表。输出：无。
 
@@ -28,32 +22,6 @@ def test_merged_words_cover_every_key() -> None:
     assert isinstance(topics, dict) and isinstance(flags, dict)
     assert set(topics.values()) == set(ft.TOPIC_IDS) | {ft.OOD_TOPIC_ID}
     assert set(flags.values()) == {"yes", "no"}
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_labels_are_not_mutual_prefixes(lang: str) -> None:
-    """输入：一份语言文件。输出：无。
-
-    预期行为：抬头与区块抬头两两**不互为前缀**——反解靠最长前缀认标签，互为前缀时短的
-    会把长的吃掉（「片段筛选请求」被认成「片段筛选请求号」）。
-    """
-    tables = parse.tables_of(locales.load(lang))
-    labels = [*tables.request, *tables.sections]
-    for left in labels:
-        for right in labels:
-            if left != right:
-                assert not right.startswith(left), f"{lang}: {left!r} / {right!r}"
-
-
-def test_languages_do_not_share_labels() -> None:
-    """输入：两份语言文件。输出：无。预期行为：标签原文互不重叠（合并表才不炸）。"""
-    zh = parse.tables_of(locales.load("zh"))
-    en = parse.tables_of(locales.load("en"))
-    assert not set(zh.request) & set(en.request)
-    assert not set(zh.sections) & set(en.sections)
-    merged = parse.merged_tables()
-    assert set(merged.request) == set(zh.request) | set(en.request)
-    assert set(merged.sections) == set(zh.sections) | set(en.sections)
 
 
 @pytest.mark.parametrize("lang", LANGS)

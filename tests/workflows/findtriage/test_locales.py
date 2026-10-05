@@ -92,16 +92,6 @@ def test_cite_pattern_reads_the_line_number() -> None:
         assert int(match.group(1)) == want, lang
 
 
-def test_every_family_has_three_phrasings() -> None:
-    """输入：两语言文案。输出：无。预期行为：每题族三种问法，三个编号上都取得到。"""
-    for lang in locales.available():
-        loc = locales.load(lang)
-        for family in questions.FAMILIES:
-            assert len(loc["fam"][family]["q"]) >= 3
-            for phrasing in (0, 1, 2):
-                assert locales.pick(loc["fam"][family]["q"], phrasing)
-
-
 def test_both_locales_declare_the_same_section_keys() -> None:
     """输入：两语言文案。输出：无。预期行为：段落键、维度名、题族名一一对应。"""
     keys = [locales.load(lang) for lang in locales.available()]

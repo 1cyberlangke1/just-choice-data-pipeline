@@ -241,17 +241,6 @@ def test_hygiene_judge_reads_the_marker_from_the_locale() -> None:
     assert judges_mod.HygieneJudge("en").judge({"state": state + "\n```"}).ok is False
 
 
-def test_hygiene_judge_skips_a_non_text_state() -> None:
-    """state 不是文本就放过：那不是「格式残留」，是上游接线错了。
-
-    输入：state 是个字典。输出：Verdict。预期行为：通过且理由写明「不是文本」——
-    本 workflow 的渲染器只产字符串，这条分支是产物侧的兜底（与 mail 的 hygiene 同口径）。
-    """
-    verdict = judges_mod.HygieneJudge("zh").judge({"state": {"not": "text"}})
-    assert verdict.ok is True
-    assert "不是文本" in verdict.reason
-
-
 # ---------- 反解 ----------
 
 

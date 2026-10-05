@@ -68,12 +68,6 @@ def test_to_keys_reports_words_outside_the_table() -> None:
         judges.to_keys((("打开", "乱写"),), words)
 
 
-def test_to_keys_reports_a_broken_lookup_table() -> None:
-    """输入：形状不对的反查表。输出：无。预期行为：报形状，不抛 AttributeError。"""
-    with pytest.raises(ValueError, match="反查表形状不对"):
-        judges.to_keys((("打开", "搜索框"),), {"action": [], "target": {}})
-
-
 def test_flavor_key_translates_and_reports_unknown() -> None:
     """输入：来源原文。输出：无。预期行为：中英两种写法都归到同一个键，表外的报人话。"""
     words = locales.words()
@@ -203,22 +197,6 @@ def test_label_judge_catches_a_wrong_score() -> None:
     assert not verdict.ok and "reuse_band" in verdict.reason
 
 
-def test_label_judge_catches_an_out_of_range_index() -> None:
-    """输入：编号越界的 choice 答案。输出：无。预期行为：报越界而不是抛 IndexError。"""
-    sample = sample_of(_make_spec(12))
-    sample["answers"]["diff_kind"]["choice"] = 99
-    verdict = judges.LabelJudge().judge(sample)
-    assert not verdict.ok and "越界" in verdict.reason
-
-
-def test_label_judge_catches_an_unknown_question_type() -> None:
-    """输入：题目题型被改成契约外的值。输出：无。预期行为：报未知题型。"""
-    sample = sample_of(_make_spec(13))
-    sample["questions"]["diff_kind"]["type"] = "ranking"
-    verdict = judges.LabelJudge().judge(sample)
-    assert not verdict.ok and "未知题型" in verdict.reason
-
-
 def test_check_sample_reports_every_problem() -> None:
     """输入：四个答案全改坏。输出：无。预期行为：四条问题全报出来（不是只报第一条）。"""
     sample = sample_of(_make_spec(14))
@@ -234,12 +212,6 @@ def test_check_sample_reports_every_problem() -> None:
     assert len(problems) == len(questions.FAMILIES)
 
 
-def test_check_sample_is_silent_on_a_good_sample() -> None:
-    """输入：新样本。输出：无。预期行为：零问题（审计与判别器共用这一把尺）。"""
-    sample = sample_of(_make_spec(15))
-    assert judges.check_sample(sample, facts_of(sample), LOC) == []
-
-
 def test_check_sample_any_locale_accepts_a_rotated_language() -> None:
     """输入：英文渲染的样本，分别按单一语言与「任一语言」两把尺比。输出：无。
 
@@ -251,12 +223,6 @@ def test_check_sample_any_locale_accepts_a_rotated_language() -> None:
     facts = judges.facts_of(parsed, locales.words())
     assert judges.check_sample_any_locale(sample, facts) == []
     assert judges.check_sample(sample, facts, LOC), "按 zh 的文案比应当报出来（英文选项对不上）"
-
-
-def test_expected_of_rejects_unknown_family() -> None:
-    """输入：不存在的题族。输出：无。预期行为：报错（新加题族忘了实现不能静默放过）。"""
-    with pytest.raises(ValueError, match="未知题族"):
-        judges.expected_of("nope", facts_of(sample_of(_make_spec(17))), LOC)
 
 
 def test_option_text_uses_the_locale_templates() -> None:

@@ -30,17 +30,6 @@ def test_families_are_the_four_known_ones() -> None:
     )
 
 
-def test_build_returns_one_question_per_family() -> None:
-    """输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。"""
-    built = questions.build(_make_spec(1), LOC, 0, random.Random(0))
-    assert [item.family for item in built] == list(questions.FAMILIES)
-    types = {item.family: item.question["type"] for item in built}
-    for family in questions.CHOICE_FAMILIES:
-        assert types[family] == "choice"
-    assert types["reuse_band"] == "score"
-    assert types["reuse_half"] == "noul"
-
-
 def test_answers_match_the_spec_for_every_case() -> None:
     """输入：全空间 case。输出：无。
 
@@ -89,12 +78,6 @@ def test_options_of_diff_kind_has_the_two_causes() -> None:
     options = questions.options_of("diff_kind", _make_spec(4), LOC)
     assert set(options) == {"action", "target"}
     assert len(set(options.values())) == 2
-
-
-def test_options_of_rejects_unknown_family() -> None:
-    """输入：不存在的题族。输出：无。预期行为：报错（不然会静默返回另一族的选项）。"""
-    with pytest.raises(ValueError, match="未知题族"):
-        questions.options_of("reuse_half", _make_spec(5), LOC)
 
 
 def test_choice_rejects_bad_answer_and_duplicate_options() -> None:

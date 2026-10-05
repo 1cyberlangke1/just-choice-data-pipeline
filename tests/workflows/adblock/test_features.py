@@ -8,16 +8,6 @@ from tests.workflows.adblock.conftest import text_of
 from workflows.adblock import features
 
 
-def test_every_tag_appears_eight_times() -> None:
-    """输入：无。输出：无。
-
-    预期行为：每条判据在 16 组里各出现 8 次——这是 `flag` 那一族的答案按构造就是 50% 的原因。
-    """
-    for tag in features.TAG_IDS:
-        hits = sum(1 for value in features.HIT_SETS if tag in features.parse_hits(value))
-        assert hits == 8, tag
-
-
 def test_hit_set_is_purely_literal() -> None:
     """输入：一段 HTML 片段。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
 

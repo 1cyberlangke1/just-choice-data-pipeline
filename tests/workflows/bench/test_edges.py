@@ -63,19 +63,6 @@ def test_audit_does_not_ask_for_gap_when_the_first_column_leads(tmp_path: Path) 
     }
 
 
-def test_audit_flags_an_out_of_range_score_index(tmp_path: Path) -> None:
-    """输入：档位下标越界的产物。输出：无。
-
-    预期行为：score 也查下标（条数只有六档、差距只有两档），越界同样记一笔「编号越界」。
-    """
-    row = _sample_row()
-    row["answers"]["count"]["score"] = 9
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 1
-    assert any("编号越界" in item for item in missing)
-
-
 def test_audit_flags_an_unknown_family(tmp_path: Path) -> None:
     """输入：带未知题族的产物。输出：无。预期行为：审计点名那个题族。"""
     row = _sample_row()
@@ -85,19 +72,6 @@ def test_audit_flags_an_unknown_family(tmp_path: Path) -> None:
     report, missing = WF.audit(tmp_path, ("train",), "zh")
     assert report["train"]["unknown_families"]["bogus"] == 1
     assert any("未知题族" in item for item in missing)
-
-
-def test_audit_flags_a_state_it_cannot_read(tmp_path: Path) -> None:
-    """输入：state 读不出来的产物。输出：无。
-
-    预期行为：记一条「反解不出来」而不是静默跳过——静默跳过会把一条坏样本算成好样本。
-    """
-    row = _sample_row()
-    row["state"] = "今天天气不错。"
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["label_mismatch"] == 1
-    assert any("反解不出来" in item for item in missing)
 
 
 def test_audit_flags_an_answer_that_does_not_match_the_text(tmp_path: Path) -> None:

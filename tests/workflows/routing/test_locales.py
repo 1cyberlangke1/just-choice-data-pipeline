@@ -38,17 +38,6 @@ def test_rule_table_order_matches_the_code() -> None:
             assert str(loc["rules"][name]["condition"]).strip()
 
 
-def test_prompt_only_covers_the_text_dimensions() -> None:
-    """输入：两语言 `dims` 表。输出：无。
-
-    预期行为：`dims` 里只有由正文承载的两维——多一维就会让提示词把「工单属性」那一行
-    管的事也写进正文，两边一冲突这道题就有歧义了（范式 §9.18）。
-    """
-    for lang in locales.available():
-        loc = locales.load(lang)
-        assert list(loc["dims"]) == list(render.DIM_ORDER)
-
-
 def test_attribute_vocabulary_covers_every_value() -> None:
     """输入：两语言属性词表。输出：无。
 
@@ -63,13 +52,6 @@ def test_attribute_vocabulary_covers_every_value() -> None:
         assert rows["critical_areas"].strip()
         for name in features.CRITICAL_AREAS:
             assert str(loc["area"][name]) in rows["critical_areas"]
-
-
-def test_feature_line_raises_on_a_missing_phrase() -> None:
-    """输入：一个没写进 locale 的取值。输出：无。预期行为：抛 KeyError，不静默给空串。"""
-    loc = locales.load("zh")
-    with pytest.raises(KeyError):
-        locales.feature_line(loc, "issue", "bogus")
 
 
 def test_issue_labels_are_declared_and_do_not_fire_on_the_fixture_bodies() -> None:

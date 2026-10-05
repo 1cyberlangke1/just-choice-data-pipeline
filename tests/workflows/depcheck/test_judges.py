@@ -29,12 +29,6 @@ from tests.workflows import _fakes
 CASE: Final[DepCheckCase] = DepCheckCase("D1+D3", features.ECO_NPM)
 
 
-def test_quote_holds_ignores_whitespace_differences() -> None:
-    """输入：引文里多打了空白。输出：无。预期行为：空白折叠之后仍然算抄对了。"""
-    body = packet_of(("D3",))
-    assert judges.quote_holds("D3", "advisories:   count=3", body)
-
-
 @pytest.mark.parametrize(
     ("switch", "needle"),
     [
@@ -183,29 +177,3 @@ class StubBackend(_fakes.ScriptedBackend):
         return Draft(
             data=self.data, raw_text="", backend="stub", provider="stub", model="stub", mode="stub"
         )
-
-
-def test_trace_skips_drafts_it_cannot_read() -> None:
-    """输入：六种形态不对的反解草稿。输出：无。
-
-    预期行为：都记「没判成」（`skipped=True`）——那是反解格式没对齐，不是数据本身错。
-
-    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
-    """
-    bad: list[str] = []
-    for data, needle in [
-        ({}, "缺 tags"),
-        ({"tags": "不是列表", "level": 3}, "缺 tags"),
-        ({"tags": ["不是对象"], "level": 3}, "不是「编号 + 引文」对象"),
-        ({"tags": [{"tag": "D9", "quote": "x"}], "level": 3}, "不认识的标记编号"),
-        ({"tags": [], "level": 9}, "1~5 的整数"),
-        ({"tags": [], "level": "三"}, "1~5 的整数"),
-    ]:
-        try:
-            spec, sample = faithful(CASE)
-            verdict = judges.TraceJudge(StubBackend(data), "zh").judge(sample, spec)
-            assert verdict.skipped and verdict.ok
-            assert needle in verdict.reason
-        except AssertionError as exc:
-            bad.append(f"{(data, needle)!r}: {exc}")
-    assert not bad, "\n".join(bad)

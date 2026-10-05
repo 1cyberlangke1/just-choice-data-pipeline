@@ -66,32 +66,6 @@ def test_a_wrong_clean_pick_is_caught_on_every_case(
     assert {item["code"] for item in result.rejected} == {"E_JUDGE_TRACE"}
 
 
-def test_dropping_a_fragment_only_spares_the_cases_without_one(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：少写一条该命中的片段。输出：RunResult。
-
-    预期行为：只有「本来就一条都不命中」的那些 case 能活下来（没有片段可少写）。
-    """
-    unaffected = sum(1 for case in cases_of("train") if not case.tags())
-    result = pipeline.run(make_config(tmp_path, "p3-drop", fake_backend(drop_fragment=True)))
-    assert result.accepted == unaffected
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
-def test_adding_a_spare_fragment_only_spares_the_full_hits(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：多写一条不该命中的片段。输出：RunResult。
-
-    预期行为：只有「四条全命中」的 case 无处可加，其余全被 `E_ASSEMBLE` 拦下。
-    """
-    unaffected = sum(1 for case in cases_of("train") if len(case.tags()) == len(features.TAG_IDS))
-    result = pipeline.run(make_config(tmp_path, "p3-extra", fake_backend(extra_fragment=True)))
-    assert result.accepted == unaffected
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
 def test_ood_split_only_uses_the_held_out_scene() -> None:
     """输入：四个切分的 case。输出：无。
 

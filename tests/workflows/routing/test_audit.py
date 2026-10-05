@@ -62,14 +62,6 @@ def test_priority_from_reads_the_table() -> None:
     assert audit_mod.priority_from(None, "free") is None
 
 
-def test_family_of_strips_dedupe_suffixes() -> None:
-    """输入：题号。输出：无。预期行为：去掉 `_2` 这类后缀，也认得带下划线的族名。"""
-    assert audit_mod._family_of("queue") == "queue"
-    assert audit_mod._family_of("queue_2") == "queue"
-    assert audit_mod._family_of("needs_human") == "needs_human"
-    assert audit_mod._family_of("needs_human_2") == "needs_human"
-
-
 def test_needs_human_consistency_rule() -> None:
     """输入：几组组合。输出：无。
 

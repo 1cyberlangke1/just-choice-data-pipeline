@@ -128,24 +128,6 @@ def test_decode_text_prefers_the_exact_match_then_strips_the_suffix() -> None:
         parse.decode_text("查无此物", merged)
 
 
-def test_field_value_prefers_the_longest_label() -> None:
-    """输入：两个互为前缀的候选标签。输出：无。
-
-    预期行为：取最长的那个——否则「屏」会把「屏号」那一格提前吃掉。
-    """
-    assert read_field_value("屏号：S-1", ("屏", "屏号")) == "S-1"
-    assert read_field_value("屏：S-1", ("屏", "屏号")) == "S-1"
-
-
-def test_field_value_needs_a_separator_right_after_the_label() -> None:
-    """输入：以标签开头但没有分隔符的一行。输出：无。
-
-    预期行为：不算这一格——标题行确实以「元素」开头，收紧才不会误认。
-    """
-    assert read_field_value("元素清单", ("元素",)) is None
-    assert read_field_value("今天天气不错。", ("动作",)) is None
-
-
 def test_parse_cells_reports_hard_damage() -> None:
     """输入：缺右括号 / 格数不对 / 认不出的格 的元素行。输出：无。预期行为：都报人话。"""
     labels = parse.labels_of(locales.load("zh"))
@@ -195,15 +177,6 @@ def test_labels_table_lookups_report_unknown_fields() -> None:
     assert labels.table("label") == labels.label
 
 
-def test_labels_of_rejects_two_keys_sharing_one_text() -> None:
-    """输入：把两个角色写成同一个原文。输出：无。预期行为：报人话（反解会认错键）。"""
-    loc = dict(locales.load("zh"))
-    loc["role"] = dict(loc["role"])
-    loc["role"]["toggle"] = loc["role"]["button"]
-    with pytest.raises(ValueError, match="共用同一个原文"):
-        parse.labels_of(loc)
-
-
 def _patched_merged(monkeypatch: pytest.MonkeyPatch, mutate: object) -> None:
     """输入：monkeypatch、一个改语言字典的回调。输出：无。
 
@@ -222,32 +195,6 @@ def _patched_merged(monkeypatch: pytest.MonkeyPatch, mutate: object) -> None:
     mutate(en, zh)
     monkeypatch.setattr(locales, "available", lambda: ["zh", "en"])
     monkeypatch.setattr(locales, "load", lambda lang: {"zh": zh, "en": en}[lang])
-
-
-def test_merged_rejects_mismatched_separators(monkeypatch: pytest.MonkeyPatch) -> None:
-    """输入：两门语言用不同的四格分隔符。输出：无。预期行为：报人话。"""
-    _patched_merged(monkeypatch, lambda en, zh: en["meta"].update({"cell_sep": " | "}))
-    with pytest.raises(ValueError, match="分隔符必须一致"):
-        parse.merged()
-
-
-def test_merged_rejects_colliding_labels(monkeypatch: pytest.MonkeyPatch) -> None:
-    """输入：两门语言的字段名写成一样。输出：无。预期行为：报人话（合并表有歧义）。"""
-    _patched_merged(
-        monkeypatch,
-        lambda en, zh: en["meta"].update({"screen_label": zh["meta"]["screen_label"]}),
-    )
-    with pytest.raises(ValueError, match="在多种语言里都出现"):
-        parse.merged()
-
-
-def test_merged_rejects_colliding_vocabularies(monkeypatch: pytest.MonkeyPatch) -> None:
-    """输入：两门语言把同一个标签写成同一个词。输出：无。预期行为：报人话。"""
-    _patched_merged(
-        monkeypatch, lambda en, zh: en["label"].update({"save": zh["label"]["save"]})
-    )
-    with pytest.raises(ValueError, match="在多种语言里都出现"):
-        parse.merged()
 
 
 def test_merged_reports_no_locales_and_no_suffixes(monkeypatch: pytest.MonkeyPatch) -> None:

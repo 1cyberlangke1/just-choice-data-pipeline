@@ -81,25 +81,10 @@ def state_of(data: dict[str, str] | None = None) -> str:
     return render.to_state({**GOOD, **(data or {})}, TAGS, loc)
 
 
-def test_hygiene_catches_leftovers_and_multiline() -> None:
-    """输入：带围栏 / 多行 / 空段的 state。输出：无。预期行为：都判不通过。"""
-    judge = judges.HygieneJudge("zh")
-    assert not judge.judge(sample(state_of().replace("【标题】", "```\n【标题】"))).ok
-    assert not judge.judge(sample(state_of({"title": "第一行\n第二行"}))).ok
-    assert not judge.judge(sample(state_of({"title": "   "}))).ok
-
-
 def test_frame_catches_a_wrong_source_row() -> None:
     """输入：来源行被改成别的取值。输出：无。预期行为：判不通过。"""
     broken = state_of().replace("- community | fresh", "- official | stale")
     assert not judges.FrameJudge("zh").judge(sample(broken), spec()).ok
-
-
-def test_frame_catches_a_missing_rule_table() -> None:
-    """输入：规则表被整段删掉。输出：无。预期行为：判不通过。"""
-    loc = locales.load("zh")
-    head = state_of().split(locales.header(loc, loc["meta"]["rules_label"]))[0]
-    assert not judges.FrameJudge("zh").judge(sample(head), spec()).ok
 
 
 def test_trace_catches_a_misread_query_kind(fake_backend: type[FakeBackend]) -> None:

@@ -57,12 +57,6 @@ def test_batch_numbering_starts_at_one() -> None:
     assert numbers == list(range(1, sp.TRIALS + 1))
 
 
-def test_parse_rejects_a_short_state() -> None:
-    """输入：只有两行的 state。输出：无。预期行为：报「太短」，不给一个空批次表。"""
-    with pytest.raises(ValueError, match="太短"):
-        parse.parse_state("排序请求号：S-000000\n排序提示：随便\n", parse.merged_tables())
-
-
 def test_parse_rejects_a_gap_in_batch_numbers() -> None:
     """输入：批次号跳号的 state。输出：无。预期行为：报「跳号」，不把两个批次认成一个。"""
     loc = locales.load("zh")

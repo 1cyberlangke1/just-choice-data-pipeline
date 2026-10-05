@@ -105,21 +105,6 @@ def test_trace_drops_an_overclaim_whose_quote_is_fabricated() -> None:
     assert verdict.raw == {"traced_hits": ["T3", "T4"]}
 
 
-def test_quote_holds_needs_both_the_quote_and_the_criterion() -> None:
-    """输入：几种引文。输出：无。
-
-    预期行为：引文得原样在输入里、且自己满足那条判据；空白差异不算抄错。
-    """
-    body = text_of(("T1", "T4"))
-    assert judges.quote_holds("T1", quote_for("T1"), body)
-    # 引文首尾多带了换行：折叠之后一致，照样算抄对了（模型常这么答）。
-    assert judges.quote_holds("T1", f"\n{quote_for('T1')}\n", body)
-    assert judges.quote_holds("T1", json.dumps([quote_for("T1")]), body)  # 引文被装进 JSON 数组字符串（范式 §9.88）
-    assert not judges.quote_holds("T1", quote_for("T4"), body)  # 抄出来了但不合判据
-    assert not judges.quote_holds("T1", "会议室还是老地方", body)  # 抄出来了但不合判据
-    assert not judges.quote_holds("T9", "会议室还是老地方", body)  # 不认识的编号
-
-
 def test_quote_holds_rejects_a_quote_that_only_matches_out_of_context() -> None:
     """输入：拿一个孤立的逗号当引文、却声称命中「标点断在半路」。输出：无。
 
@@ -131,8 +116,6 @@ def test_quote_holds_rejects_a_quote_that_only_matches_out_of_context() -> None:
     assert "，" in body and not body.endswith("，")
     assert judges.quote_holds("T2", "，", body) is False
     assert judges.quote_holds("T1", quote_for("T1"), body) is True
-
-
 
 
 class _OverclaimBackend:

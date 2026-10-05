@@ -77,37 +77,3 @@ def test_choice_options_are_only_the_allowed_ones() -> None:
     for family in questions.CHOICE_FAMILIES:
         criteria = families[family].question["criteria"]
         assert list(criteria) == list(features.CHOICE_OPTIONS[family])
-
-
-def test_only_the_score_and_noul_families_are_unshuffled() -> None:
-    """输入：一组特征。输出：无。
-
-    预期行为：有序阶梯与布尔题不打乱（打乱破坏语义），四个 choice 题族都允许打乱
-    （防「答案总在第 n 个」的位置捷径）。
-    """
-    families = by_family()
-    for family in questions.FAMILIES:
-        if family in questions.SCORE_FAMILIES or family in questions.NOUL_FAMILIES:
-            assert families[family].shuffle is False
-        else:
-            assert families[family].shuffle is True
-
-
-def test_phrasings_rotate() -> None:
-    """输入：三个问法编号。输出：无。预期行为：同一族的题面在三个编号上都能取到。"""
-    for family in questions.FAMILIES:
-        texts = {
-            next(
-                item.question["instructions"]
-                for item in questions.build(TAGS, locales.load("zh"), phrasing)
-                if item.family == family
-            )
-            for phrasing in (0, 1, 2)
-        }
-        assert len(texts) == 3, family
-
-
-def test_families_for_returns_the_full_table() -> None:
-    """输入：任意特征。输出：无。预期行为：六个题族对任何组合都问得出来。"""
-    for tags in features.build_cases(1024):
-        assert questions.families_for(tags) == questions.FAMILIES

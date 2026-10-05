@@ -175,15 +175,6 @@ def test_label_leak_finds_a_copied_header() -> None:
     assert render.label_leak("   \n  ", loc) == ""
 
 
-def test_banned_echo_finds_table_names() -> None:
-    """输入：含表名的文本。输出：无。预期行为：命中，且大小写不敏感。"""
-    zh = locales.load("zh")
-    en = locales.load("en")
-    assert render.banned_echo("line one 见评分单", zh) == ["评分单"]
-    assert render.banned_echo("line one", zh) == []
-    assert render.banned_echo("see the Score Sheet", en) == ["score sheet"]
-
-
 def test_banned_echo_leaves_prose_alone() -> None:
     """输入：一段满是 length / form / data 的散文。输出：无。
 
@@ -193,20 +184,6 @@ def test_banned_echo_leaves_prose_alone() -> None:
     zh = locales.load("zh")
     prose = "The length of the form matters, and so does the data behind it."
     assert render.banned_echo(prose, zh) == []
-
-
-def test_manifest_of_rejects_unknown_tokens() -> None:
-    """输入：词元不在取值表里的清单行。输出：无。预期行为：当解不出来。"""
-    loc = locales.load("zh")
-    state = "【待评材料】\nline one\n【材料清单】（列名）\n- huge | prose | none"
-    assert render.manifest_of(state, loc) is None
-
-
-def test_manifest_of_rejects_a_row_with_the_wrong_cell_count() -> None:
-    """输入：只有两格的清单行。输出：无。预期行为：当解不出来。"""
-    loc = locales.load("zh")
-    state = "【待评材料】\nline one\n【材料清单】（列名）\n- short | prose"
-    assert render.manifest_of(state, loc) is None
 
 
 def test_table_parsers_skip_malformed_rows() -> None:

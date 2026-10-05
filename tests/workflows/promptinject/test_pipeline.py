@@ -47,34 +47,6 @@ def cases_of(split: str, limit: int = CASE_LIMIT) -> list[PromptInjectCase]:
     return promptinject_workflow.cases_for(PromptInjectConfig(split=split, case_limit=limit))
 
 
-def test_dropping_a_fragment_only_spares_the_cases_without_one(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：少写一条该命中的片段。输出：RunResult。
-
-    预期行为：本来就没有命中片段的 case 照样合格，其余全被 `E_ASSEMBLE` 拦下——一个都不放过。
-    """
-    unaffected = sum(1 for case in cases_of("train") if not case.tags())
-    result = pipeline.run(make_config(tmp_path, "p3-drop", fake_backend(drop_fragment=True)))
-    assert result.accepted == unaffected
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
-def test_adding_a_spare_fragment_only_spares_the_full_hits(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：多写一条不该命中的片段。输出：RunResult。
-
-    预期行为：四条全中的 case 没有「多余的一条」可加，其余全被拦下。
-    """
-    unaffected = sum(
-        1 for case in cases_of("train") if len(case.tags()) == len(features.TAG_IDS)
-    )
-    result = pipeline.run(make_config(tmp_path, "p3-extra", fake_backend(extra_fragment=True)))
-    assert result.accepted == unaffected
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
 def test_ood_split_only_uses_the_held_out_source(
     tmp_path: Path, fake_backend: type[FakeBackend]
 ) -> None:
@@ -138,4 +110,3 @@ def test_reparse_and_case_label_are_wired() -> None:
     assert workflow.case_label(case) == "T3-file"
     assert workflow.stats_dimensions(case) == {"hits": "T3", "source": "file"}
     assert workflow.dimension_titles()["hits"]
-

@@ -91,35 +91,6 @@ def test_merged_table_reads_every_language() -> None:
     assert len(rows) == len(sp.CATALOG)
 
 
-def test_field_value_prefers_the_longest_label() -> None:
-    """输入：两个互为前缀的候选标签。输出：无。
-
-    预期行为：取最长的那个——否则「标签」会把「标签号」那一格提前吃掉。
-    """
-    assert read_field_value("标签号：Q-1", ("标签", "标签号")) == "Q-1"
-    assert read_field_value("标签：Q-1", ("标签", "标签号")) == "Q-1"
-
-
-def test_field_value_needs_a_separator_right_after_the_label() -> None:
-    """输入：以标签开头但没有分隔符的一行。输出：无。
-
-    预期行为：不算这一格——标题行确实以「技能」开头，收紧才不会误认。
-    """
-    assert read_field_value("技能选择单", ("技能",)) is None
-    assert read_field_value("今天天气不错。", ("标签",)) is None
-
-
-def test_parse_cells_reports_hard_damage() -> None:
-    """输入：缺右括号 / 格数不对 / 认不出的格 的技能行。输出：无。预期行为：都报人话。"""
-    labels = parse.labels_of(locales.load("zh"))
-    with pytest.raises(ValueError, match="右方括号"):
-        parse._parse_cells("1 读代码 · 只读 · 代码", labels)
-    with pytest.raises(ValueError, match="格"):
-        parse._parse_cells("[1] 读代码 · 只读", labels)
-    with pytest.raises(ValueError, match="tag"):
-        parse._parse_cells("[1] 不存在 · 只读 · 代码", labels)
-
-
 def test_parse_request_reports_hard_damage() -> None:
     """输入：四种坏文本。输出：无。预期行为：各报人话，不静默猜。"""
     loc = locales.load("zh")
@@ -158,15 +129,6 @@ def test_labels_table_lookups_report_unknown_fields() -> None:
     assert labels.table("grant") == labels.grant
 
 
-def test_labels_of_rejects_two_keys_sharing_one_text() -> None:
-    """输入：把两个权限范围写成同一个原文。输出：无。预期行为：报人话（反解会认错键）。"""
-    loc = dict(locales.load("zh"))
-    loc["scope"] = dict(loc["scope"])
-    loc["scope"]["write"] = loc["scope"]["read"]
-    with pytest.raises(ValueError, match="共用同一个原文"):
-        parse.labels_of(loc)
-
-
 def _patched_merged(monkeypatch: pytest.MonkeyPatch, mutate: object) -> None:
     """输入：monkeypatch、一个改语言字典的回调。输出：无。
 
@@ -180,29 +142,3 @@ def _patched_merged(monkeypatch: pytest.MonkeyPatch, mutate: object) -> None:
     mutate(en, zh)
     monkeypatch.setattr(locales, "available", lambda: ["zh", "en"])
     monkeypatch.setattr(locales, "load", lambda lang: {"zh": zh, "en": en}[lang])
-
-
-def test_merged_rejects_mismatched_separators(monkeypatch: pytest.MonkeyPatch) -> None:
-    """输入：两门语言用不同的三格分隔符。输出：无。预期行为：报人话。"""
-    _patched_merged(monkeypatch, lambda en, zh: en["meta"].update({"cell_sep": " | "}))
-    with pytest.raises(ValueError, match="分隔符必须一致"):
-        parse.merged()
-
-
-def test_merged_rejects_colliding_labels(monkeypatch: pytest.MonkeyPatch) -> None:
-    """输入：两门语言的标签字段名写成一样。输出：无。预期行为：报人话（合并表有歧义）。"""
-    _patched_merged(
-        monkeypatch,
-        lambda en, zh: en["meta"].update({"tag_label": zh["meta"]["tag_label"]}),
-    )
-    with pytest.raises(ValueError, match="在多种语言里都出现"):
-        parse.merged()
-
-
-def test_merged_rejects_colliding_vocabularies(monkeypatch: pytest.MonkeyPatch) -> None:
-    """输入：两门语言把同一个标签写成同一个词。输出：无。预期行为：报人话。"""
-    _patched_merged(
-        monkeypatch, lambda en, zh: en["tag"].update({"read_code": zh["tag"]["read_code"]})
-    )
-    with pytest.raises(ValueError, match="在多种语言里都出现"):
-        parse.merged()

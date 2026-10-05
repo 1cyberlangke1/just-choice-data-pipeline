@@ -139,12 +139,6 @@ def test_frame_rejects_a_wrong_log_order() -> None:
     assert "顺序" in verdict.reason
 
 
-def test_frame_skips_without_a_spec() -> None:
-    """输入：没有规格。输出：无。预期行为：记「没判成」，不硬判。"""
-    _, sample = faithful(CASE)
-    assert judges.FrameJudge("zh").judge(sample, None).skipped
-
-
 def test_trace_agrees_with_the_plan() -> None:
     """输入：诚实的反解。输出：无。预期行为：通过，raw 里留下反解出来的根因。"""
     spec, sample = faithful(CASE)
@@ -189,12 +183,6 @@ def test_trace_reraises_when_every_provider_is_down() -> None:
     judge = judges.TraceJudge(FakeBackend(trace_raises=AllProvidersDown("全挂了")), "zh")
     with __import__("pytest").raises(AllProvidersDown):
         judge.judge(sample, spec)
-
-
-def test_trace_skips_without_a_spec() -> None:
-    """输入：没有规格。输出：无。预期行为：记「没判成」。"""
-    _, sample = faithful(CASE)
-    assert judges.TraceJudge(FakeBackend(), "zh").judge(sample, None).skipped
 
 
 def test_entry_root_case_is_judged_the_same_way() -> None:

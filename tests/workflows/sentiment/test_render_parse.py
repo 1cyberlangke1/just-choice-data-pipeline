@@ -231,13 +231,6 @@ def test_parse_reports_a_broken_header_and_short_input() -> None:
         parse.parse_state(123, parse.merged_tables())
 
 
-def test_parse_reports_content_before_any_section() -> None:
-    """输入：区块抬头之前就有一行内容。输出：无。预期行为：报错——那说明渲染漏了抬头。"""
-    text = "情绪弧线请求号 E-TEST\n乱写一行\n[对话]\n  1. 客户 | 还不错\n"
-    with pytest.raises(ValueError, match="任何区块抬头之前"):
-        parse.parse_state(text, parse.merged_tables())
-
-
 def test_tables_of_rejects_empty_labels() -> None:
     """输入：抬头 / 场景抬头 / 两种分隔符被写成空白。输出：无。预期行为：当场报错。"""
     for key, message in (

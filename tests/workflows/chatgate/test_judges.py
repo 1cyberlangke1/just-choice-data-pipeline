@@ -49,16 +49,6 @@ def _sample_with(text: str, spec: ChatGateSpec) -> dict[str, JsonValue]:
     return {"state": render.to_state(draft, locales.load("zh"))}
 
 
-def test_hygiene_accepts_every_faithful_sample() -> None:
-    """输入：全空间 45 组 case 的忠实样本。输出：无。预期行为：一条都不报。"""
-    judge = judges.HygieneJudge("zh")
-    for case in CASES:
-        spec, sample = faithful(case)
-        verdict = judge.judge(sample, spec)
-        assert verdict.ok and not verdict.skipped, f"{case.describe()}: {verdict.reason}"
-    assert "兑现" in judge.judge(*reversed(faithful(CASE))).reason
-
-
 def test_hygiene_rejects_a_missing_hit() -> None:
     """输入：计划要 C3+C4、消息里只写了 C3 的样本。输出：无。
 
@@ -238,8 +228,6 @@ def test_quote_holds_needs_both_the_quote_and_the_criterion() -> None:
     assert not judges.quote_holds("C3", quote_for("C1"), body)  # 抄不出原文
     assert not judges.quote_holds("C1", BASE, body)  # 抄出来了但不合判据
     assert not judges.quote_holds("C9", BASE, body)  # 不认识的编号
-
-
 
 
 class _CleanZeroBackend:

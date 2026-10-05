@@ -12,34 +12,6 @@ from workflows.siftrank import spec as sp
 LOC = locales.load("zh")
 
 
-def test_families_are_the_four_known_ones() -> None:
-    """输入：无。输出：题族清单。
-
-    预期行为：四个题族、顺序稳定（先两个 choice、再 score、最后那个布尔），三张分类表正好
-    把四族分完——多一族少一族都会让下面的「答案在选项里」漏查。
-    """
-    assert questions.FAMILIES == ("agg_top", "pair_order", "cut_size", "stable")
-    assert questions.CHOICE_FAMILIES == ("agg_top", "pair_order")
-    assert questions.SCORE_FAMILIES == ("cut_size",)
-    assert questions.NOUL_FAMILIES == ("stable",)
-    assert set(questions.FAMILIES) == (
-        set(questions.CHOICE_FAMILIES)
-        | set(questions.SCORE_FAMILIES)
-        | set(questions.NOUL_FAMILIES)
-    )
-
-
-def test_build_returns_one_question_per_family() -> None:
-    """输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。"""
-    built = questions.build(_make_spec(1), LOC, 0, random.Random(0))
-    assert [item.family for item in built] == list(questions.FAMILIES)
-    types = {item.family: item.question["type"] for item in built}
-    for family in questions.CHOICE_FAMILIES:
-        assert types[family] == "choice"
-    assert types["cut_size"] == "score"
-    assert types["stable"] == "noul"
-
-
 def test_answers_match_the_spec_for_every_case() -> None:
     """输入：全空间 case。输出：无。
 

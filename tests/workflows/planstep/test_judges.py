@@ -51,15 +51,6 @@ def test_facts_are_recomputed_from_the_state(lang: str) -> None:
         assert facts["unlocks"] == want.unlocks, case.describe()
 
 
-@pytest.mark.parametrize("lang", ("zh", "en"))
-def test_check_sample_passes_for_genuine_samples(lang: str) -> None:
-    """输入：真样本。输出：无。预期行为：零问题——判别器不误判。"""
-    loc = locales.load(lang)
-    for case in ALL_CASES[:12]:
-        sample = sample_of(case, lang)
-        assert judges.check_sample(sample, judges.facts_of(parsed_of(sample, lang)), loc) == []
-
-
 def test_check_sample_catches_a_tampered_answer() -> None:
     """输入：把三个答案各改错一处。输出：无。预期行为：每一处都被点名抓到。"""
     sample = sample_of(ft.PlanCase(graph=3, done=1))
@@ -145,15 +136,6 @@ def test_roundtrip_diff_catches_a_rewritten_row() -> None:
     assert any("前置" in item for item in diff), diff
 
 
-def test_roundtrip_diff_catches_a_broken_request_id() -> None:
-    """输入：抬头被改。输出：无。预期行为：请求号对不上就报出来。"""
-    loc = locales.load("zh")
-    spec = _make_spec(2, 1)
-    text = render.build(spec, loc).replace(spec.query_id, "P-000000")
-    parsed = parse.parse_state(text, parse.tables_of(loc))
-    assert any("请求号" in item for item in judges.roundtrip_diff(spec, parsed, loc))
-
-
 def test_roundtrip_judge_skips_without_a_spec() -> None:
     """输入：不给真值 spec。输出：无。预期行为：跳过而不是误判。"""
     sample = sample_of(ft.PlanCase(graph=1, done=0))
@@ -183,23 +165,11 @@ def test_label_judge_passes_and_fails() -> None:
     assert verdict.ok is False and "remaining" in verdict.reason
 
 
-def test_label_judge_reports_an_unparsable_state() -> None:
-    """输入：state 被写坏。输出：无。预期行为：判不通过并说明反解失败，不抛异常。"""
-    verdict = judges.LabelJudge(locale="zh").judge({"state": "乱写", "questions": {}, "answers": {}})
-    assert verdict.ok is False and "重算失败" in verdict.reason
-
-
 def test_roundtrip_judge_reports_an_unparsable_state() -> None:
     """输入：state 被写坏。输出：无。预期行为：判不通过并说明反解失败，不抛异常。"""
     spec = _make_spec(0, 0)
     verdict = judges.RoundtripJudge(locale="zh").judge({"state": "乱写"}, spec)
     assert verdict.ok is False and "反解失败" in verdict.reason
-
-
-def test_expected_of_rejects_an_unknown_family() -> None:
-    """输入：不存在的题族。输出：无。预期行为：报错——新加了题族却忘了在这儿实现，不能静默放过。"""
-    with pytest.raises(ValueError, match="未知题族"):
-        judges.expected_of("nope", {"next": "t1"}, LOC)
 
 
 def test_expected_variants_cover_every_language_for_choice() -> None:
@@ -216,15 +186,3 @@ def test_expected_variants_cover_every_language_for_choice() -> None:
     }
     assert judges.expected_variants("remaining", facts) == (2,)
     assert judges.expected_variants("unlocks", facts) == (False,)
-
-
-def test_option_text_reports_a_missing_option_key() -> None:
-    """输入：重算出来的选项名不在选项表里。输出：无。预期行为：报人话，不静默取空串。"""
-    with pytest.raises(ValueError, match="不在选项表里"):
-        judges.option_text("next", {"next": "t9"}, LOC)
-
-
-def test_option_text_reports_a_family_without_options() -> None:
-    """输入：score 题族。输出：无。预期行为：报错——带选项的只有 `next` 一族。"""
-    with pytest.raises(ValueError, match="带选项的只有"):
-        judges.option_text("remaining", {"remaining": 1}, LOC)

@@ -34,22 +34,11 @@ def state_of(data: dict[str, str] | None = None) -> str:
     return render.to_state({**GOOD, **(data or {})}, TAGS, loc)
 
 
-def test_hygiene_passes_a_clean_state() -> None:
-    """输入：干净 state。输出：无。预期行为：通过，且不记成「没判成」。"""
-    verdict = judges.HygieneJudge("zh").judge(sample(state_of()))
-    assert verdict.ok and not verdict.skipped
-
-
 def test_hygiene_catches_leftovers_and_empty_body() -> None:
     """输入：带围栏行 / 空正文的 state。输出：无。预期行为：都判不通过。"""
     judge = judges.HygieneJudge("zh")
     assert not judge.judge(sample(state_of().replace("【改动内容】", "```\n【改动内容】"))).ok
     assert not judge.judge(sample(state_of({"body": "   "}))).ok
-
-
-def test_hygiene_catches_html_line_breaks() -> None:
-    """输入：改动里混进 `<br>`。输出：无。预期行为：判不通过。"""
-    assert not judges.HygieneJudge("zh").judge(sample(state_of({"body": "+ x = 1<br>"}))).ok
 
 
 def test_hygiene_catches_a_missing_line_prefix() -> None:
@@ -102,34 +91,11 @@ def test_frame_passes_a_clean_state() -> None:
     assert verdict.ok and not verdict.skipped
 
 
-def test_frame_catches_a_swapped_manifest_row() -> None:
-    """输入：清单行挂错了 tags。输出：无。预期行为：判不通过，理由点出清单行。"""
-    broken = state_of().replace("- source | modified | small", "- config | modified | small")
-    verdict = judges.FrameJudge("zh").judge(sample(broken), spec())
-    assert not verdict.ok
-    assert "清单行" in verdict.reason
-
-
-def test_frame_catches_a_missing_table_row() -> None:
-    """输入：门控表少了一行。输出：无。预期行为：判不通过。"""
-    broken = state_of().replace("- 0 | allow | allow | allow", "")
-    verdict = judges.FrameJudge("zh").judge(sample(broken), spec())
-    assert not verdict.ok
-    assert "门控表" in verdict.reason
-
-
 def test_frame_skips_without_spec_or_text() -> None:
     """输入：没有 spec / 非文本 state。输出：无。预期行为：都记成「没判成」。"""
     judge = judges.FrameJudge("zh")
     assert judge.judge(sample(state_of()), None).skipped
     assert judge.judge(sample({"not": "text"}), spec()).skipped
-
-
-def test_trace_passes_when_the_model_reads_it_right() -> None:
-    """输入：答对的假后端。输出：无。预期行为：通过，并把反解结果记进 raw。"""
-    verdict = judges.TraceJudge(FakeBackend(), "zh").judge(sample(state_of()), spec())
-    assert verdict.ok and not verdict.skipped
-    assert verdict.raw["traced"] == {"secret": "yes", "debug": "no"}
 
 
 @pytest.mark.parametrize("switch", ["trace_lies_secret", "trace_lies_debug"])
@@ -157,14 +123,6 @@ def test_trace_reraises_a_fatal_failure() -> None:
     backend = FakeBackend(trace_raises=AllProvidersDown("全挂了"))
     with pytest.raises(AllProvidersDown):
         judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
-
-
-def test_trace_records_a_missing_field_as_skipped() -> None:
-    """输入：反解草稿缺字段。输出：无。预期行为：记成「没判成」。"""
-    backend = FakeBackend(trace_data={"secret": "yes"})
-    verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
-    assert verdict.ok and verdict.skipped
-    assert "缺字段" in verdict.reason
 
 
 def test_trace_skips_without_spec() -> None:

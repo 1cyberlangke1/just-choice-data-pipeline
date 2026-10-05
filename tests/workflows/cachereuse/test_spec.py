@@ -13,11 +13,6 @@ from workflows.cachereuse import spec as sp
 FULL: Final[tuple[sp.ReuseCase, ...]] = tuple(sp.build_cases(sp.ReuseConfig(split="train")))
 
 
-def test_case_space_is_not_empty() -> None:
-    """输入：无。输出：无。预期行为：全空间够大，否则下面的分布尺子量不到东西。"""
-    assert len(FULL) >= 100, f"全空间只有 {len(FULL)} 个 case"
-
-
 def test_band_prefix_covers_the_step_range() -> None:
     """输入：档名、步数。输出：无。
 

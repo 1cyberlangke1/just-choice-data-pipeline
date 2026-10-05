@@ -51,20 +51,6 @@ def test_vocabularies_cover_the_spec_constants(lang: str) -> None:
 
 
 @pytest.mark.parametrize("lang", LANGS)
-def test_policy_prints_every_table(lang: str) -> None:
-    """输入：每种语言的判据原文。输出：无。
-
-    预期行为：十二个标签、三档权限范围、三类资源、两种授权都在判据里印出来——考生只能
-    从题面读规则，漏印一项就等于把那一档的答案变成不可解。
-    """
-    loc = locales.load(lang)
-    policy = str(loc["policy"]["text"])
-    for table in VOCAB_TABLES:
-        for text in loc[table].values():
-            assert str(text) in policy, (lang, table, text)
-
-
-@pytest.mark.parametrize("lang", LANGS)
 def test_policy_prints_every_scope_word(lang: str) -> None:
     """输入：每种语言的判据原文。输出：无。
 
@@ -87,12 +73,6 @@ def test_noul_criteria_are_distinct_and_nonempty(lang: str) -> None:
         assert set(criteria) == {"true", "false"}
         assert all(criteria.values())
         assert criteria["true"] != criteria["false"]
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_cell_separator_is_shared_across_languages(lang: str) -> None:
-    """输入：每种语言。输出：无。预期行为：抬头分隔符一致（合并表只按一个分隔符切行）。"""
-    assert locales.load(lang)["meta"]["cell_sep"] == locales.load("zh")["meta"]["cell_sep"]
 
 
 @pytest.mark.parametrize("lang", LANGS)

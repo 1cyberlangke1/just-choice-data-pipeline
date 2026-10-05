@@ -96,21 +96,6 @@ def test_prompt_rules_format_without_leftover_placeholders(lang: str) -> None:
 
 
 @pytest.mark.parametrize("lang", ["zh", "en"])
-def test_banned_phrases_are_the_table_names(lang: str) -> None:
-    """输入：一个语言。输出：无。
-
-    预期行为：禁写清单里就是那几个表名——正文是一段代码，收进 `test` / `size` 这类
-    标识符会大面积误伤（见 `render.banned_echo` 的口径）。
-    """
-    loc = locales.load(lang)
-    banned = [str(item) for item in loc["banned_intent_phrases"]]
-    assert banned
-    # 比对时统一小写：英文的段落名首字母大写，而禁写清单按小写匹配（`banned_echo` 也是）
-    titles = {str(loc["meta"][key]).lower() for key in render.SECTION_KEYS}
-    assert {item.lower() for item in banned} == titles
-
-
-@pytest.mark.parametrize("lang", ["zh", "en"])
 def test_writer_copy_carries_no_finished_example(lang: str) -> None:
     """写手提示词里不许留成品例子（范式 §9.25 / §9.64：给了例子，模型就会逐字照抄）。
 

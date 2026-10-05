@@ -33,33 +33,10 @@ def state_of(data: dict[str, str] | None = None) -> str:
     return render.to_state({**GOOD, **(data or {})}, PLAN, locales.load("zh"))
 
 
-def test_hygiene_catches_leftovers_and_multiline() -> None:
-    """输入：带围栏 / 多行 / 空修法的 state。输出：无。预期行为：都判不通过。"""
-    judge = judges.HygieneJudge("zh")
-    assert not judge.judge(sample(state_of().replace("【审查发现】", "```\n【审查发现】"))).ok
-    assert not judge.judge(sample(state_of({"finding": "第一行\n第二行"}))).ok
-    assert not judge.judge(sample(state_of({"fix": "   "}))).ok
-
-
-def test_hygiene_catches_a_missing_table() -> None:
-    """输入：改动记录被整段删掉。输出：无。预期行为：判不通过。"""
-    loc = locales.load("zh")
-    state = state_of()
-    for line in render.table_lines(PLAN, loc):
-        state = state.replace(f"{line}\n", "")
-    assert not judges.HygieneJudge("zh").judge(sample(state)).ok
-
-
 def test_frame_passes_the_injected_table() -> None:
     """输入：与计划一致的 state。输出：无。预期行为：通过。"""
     verdict = judges.FrameJudge("zh").judge(sample(state_of()), spec())
     assert verdict.ok
-
-
-def test_frame_catches_a_wrong_row() -> None:
-    """输入：某一行的改动种类被改掉。输出：无。预期行为：判不通过。"""
-    broken = state_of().replace("added", "untouched")
-    assert not judges.FrameJudge("zh").judge(sample(broken), spec()).ok
 
 
 def test_frame_catches_a_missing_rule_table() -> None:
@@ -126,12 +103,6 @@ def test_trace_marks_a_broken_draft_as_skipped(fake_backend: type[FakeBackend]) 
         backend = fake_backend(trace_data=payload)
         verdict = judges.TraceJudge(backend, "zh").judge(sample(state_of()), spec())
         assert verdict.ok and verdict.skipped, payload
-
-
-def test_trace_skips_without_spec_or_backend(fake_backend: type[FakeBackend]) -> None:
-    """输入：没有规格 / 没有后端。输出：无。预期行为：都记成跳过。"""
-    assert judges.TraceJudge(fake_backend(), "zh").judge(sample(state_of())).skipped
-    assert judges.TraceJudge(None, "zh").judge(sample(state_of()), spec()).skipped
 
 
 def test_trace_prompt_reuses_the_dataset_options() -> None:

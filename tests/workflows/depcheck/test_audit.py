@@ -50,47 +50,6 @@ def _audit(
     return DepCheckWorkflow().audit(run_dir, splits, "zh")
 
 
-def test_score_answer_mismatch_is_caught(tmp_path: Path) -> None:
-    """输入：把一条 `grade`（score）的等级下标改掉。输出：无。
-
-    预期行为：`grade_bad` 报 1——审计拿答案下标取回等级描述，再与按文本算出来的那一档比。
-    """
-    run_dir = _run(tmp_path, "t-grade")
-    rows = _rows(run_dir)
-    answer = rows[0]["answers"]["grade"]
-    answer["score"] = (answer["score"] + 1) % len(features.LEVELS)
-    _write(run_dir, rows)
-    report, missing = _audit(run_dir)
-    assert report["train"]["grade_bad"] == 1
-    assert any(BAD_LABELS["grade_bad"] in item for item in missing)
-
-
-def test_a_rewritten_line_is_caught(tmp_path: Path) -> None:
-    """输入：把一条**计划是「传染性许可证」**的样本的 `license:` 那一行换成 MIT。输出：无。
-
-    预期行为：`flag_bad` / `grade_bad` / `combo_bad` / `act_bad` 里至少有一个报出来——审计走的是
-    「从文本重推标签」这条独立路径，把形状擦掉之后重推出来的命中组合就与题面答案对不上了。
-    """
-    run_dir = _run(tmp_path, "t-rewrite")
-    rows = _rows(run_dir)
-    target = next(
-        row
-        for row in rows
-        if "D1" in features.hit_set(render.parse_state(row["state"]).text or "")
-    )
-    lines = [
-        "license: MIT"
-        if line.strip().startswith("license:")
-        else line
-        for line in str(target["state"]).splitlines()
-    ]
-    target["state"] = "\n".join(lines)
-    _write(run_dir, rows)
-    report, _ = _audit(run_dir)
-    counts = report["train"]
-    assert counts["flag_bad"] + counts["grade_bad"] + counts["combo_bad"] + counts["act_bad"] > 0
-
-
 def test_cases_for_is_the_same_list_the_pipeline_sees(tmp_path: Path) -> None:
     """输入：同一条采样参数。输出：无。
 

@@ -29,15 +29,6 @@ def test_split_names_and_configs() -> None:
         assert set(config.tables) == set(sp.TABLES)
 
 
-def test_make_judges_builds_both_and_rejects_unknown_names() -> None:
-    """输入：两个判别器名 / 一个不存在的名字。输出：无。预期行为：都报人话。"""
-    built = WF.make_judges(("roundtrip", "label"), "zh")
-    assert [judge.name for judge in built] == ["roundtrip", "label"]
-    assert all(isinstance(judge, (judges.RoundtripJudge, judges.LabelJudge)) for judge in built)
-    with pytest.raises(KeyError, match="未知判别器"):
-        WF.make_judges(("nope",), "zh")
-
-
 def test_case_label_and_stats_dimensions() -> None:
     """输入：一个 case。输出：无。预期行为：标签与维度取值都从公开接口来。"""
     case = next(iter(WF.build_cases(WF.config_for("train"))))

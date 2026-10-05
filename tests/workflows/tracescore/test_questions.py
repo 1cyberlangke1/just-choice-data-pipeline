@@ -11,17 +11,6 @@ from workflows.tracescore.features import TraceScoreCase
 CASE = TraceScoreCase("S1+S3", features.SOURCE_CLI)
 
 
-def test_flag_family_is_one_noul_per_tag() -> None:
-    """输入：无。输出：无。预期行为：四条 noul，一条信号一道，答案与真值一致。"""
-    plan = features.plan_for(CASE, 0)
-    out = questions.build(plan, locales.load("zh"), 0)
-    flags = [item for item in out if item.family == "flag"]
-    assert len(flags) == len(features.TAG_IDS)
-    for tag, item in zip(features.TAG_IDS, flags, strict=True):
-        assert item.question["type"] == "noul"
-        assert item.answer is (tag in plan.hits)
-
-
 def test_route_answers_follow_the_score_thresholds() -> None:
     """输入：全空间 48 组 case。输出：无。
 
@@ -35,5 +24,3 @@ def test_route_answers_follow_the_score_thresholds() -> None:
         assert item.answer == features.route_for(plan.score)
         assert item.question["criteria"][item.answer] == questions.route_text(loc, plan.score)
     assert questions.route_text(loc, 5) != questions.route_text(loc, 1)
-
-

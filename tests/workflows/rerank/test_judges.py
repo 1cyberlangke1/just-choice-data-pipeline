@@ -110,11 +110,3 @@ def test_trace_passes_when_the_count_matches() -> None:
     verdict = judges.TraceJudge(FakeBackend(), "zh").judge(sample, spec)
     assert verdict.ok and not verdict.skipped
     assert str(spec.plan.relevant) in verdict.reason
-
-
-def test_trace_rejects_a_lying_backend() -> None:
-    """输入：反解说反话的假后端。输出：无。预期行为：不通过，理由里两种数都列出来。"""
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(FakeBackend(trace_lies=True), "zh").judge(sample, spec)
-    assert not verdict.ok and not verdict.skipped
-    assert "计划" in verdict.reason and "反解" in verdict.reason

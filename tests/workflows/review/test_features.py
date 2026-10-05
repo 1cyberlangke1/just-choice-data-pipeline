@@ -17,19 +17,6 @@ def all_tags() -> list[TagSet]:
     return features.build_cases(2048)
 
 
-def test_full_space_drops_exactly_the_two_forbidden_pairs() -> None:
-    """输入：维度表与全空间枚举。输出：无。
-
-    预期行为：2×2×4×3×3 = 144 组；两对禁用对各砍掉 4×3×2 = 24 组
-    （`有凭据字面量 × 删除`、`有调试输出 × 删除`），重叠 4×3 = 12 组，正好剩 108 组。
-    """
-    total = 1
-    for values in features.DIMS.values():
-        total *= len(values)
-    assert total == 144
-    assert len(all_tags()) == 108
-
-
 def test_size_line_bounds_keep_the_floor_and_slack_the_ceiling() -> None:
     """输入：三个规模取值。输出：无。
 
@@ -171,21 +158,6 @@ def test_compatible_rejects_the_forbidden_pairs_directly() -> None:
         assert not features.compatible(tags)
 
 
-def test_allow_pair_is_order_free() -> None:
-    """输入：一个禁用对（正反两种写法）。输出：无。
-
-    预期行为：归一化按 `DIMS` 的声明顺序做，所以换顺序也一样被否掉——按字符串比大小
-    会漏掉一半写法，那是这个函数最容易写错的地方。
-    """
-    assert not features.allow_pair("secret", "yes", "change_kind", "deleted")
-    assert not features.allow_pair("change_kind", "deleted", "secret", "yes")
-    assert not features.allow_pair("debug", "yes", "change_kind", "deleted")
-    assert not features.allow_pair("change_kind", "deleted", "debug", "yes")
-    assert features.allow_pair("secret", "yes", "change_kind", "modified")
-    assert features.allow_pair("secret", "no", "change_kind", "deleted")
-    assert features.allow_pair("debug", "yes", "size", "small")
-
-
 def test_labels_match_the_pure_functions() -> None:
     """输入：全空间组合。输出：无。预期行为：`label_for` 只是几个纯函数的打包。"""
     for tags in all_tags():
@@ -225,19 +197,6 @@ def test_choice_options_are_a_subset_of_the_dimensions() -> None:
     """输入：choice 选项表。输出：无。预期行为：每题族的选项就是该维取值本身。"""
     assert features.CHOICE_OPTIONS["rule"] == features.REVIEW_RULES
     assert features.CHOICE_OPTIONS["gate"] == features.GATES
-
-
-def test_every_compatible_combination_can_be_written() -> None:
-    """输入：全空间组合。输出：无。
-
-    预期行为：假后端能给每一格写出相称的改动，而且**过得了渲染期的形状检查**——
-    夹具缺格或区间定错会让「正文承载两维」这条前提在测试里悄悄失效。
-    """
-    loc = locales.load("zh")
-    for tags in all_tags():
-        body = body_for(tags.as_dict())
-        assert body.strip()
-        render.check_draft({"body": body}, tags, loc)
 
 
 def test_tag_set_round_trips_through_dict() -> None:

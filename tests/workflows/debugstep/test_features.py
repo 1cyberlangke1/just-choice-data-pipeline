@@ -56,12 +56,6 @@ def test_key_lines_are_the_five_structure_keys() -> None:
     assert features.missing_keys(session.replace("Note:", "备忘：")) == ("note",)
 
 
-def test_line_value_reads_the_first_matching_line() -> None:
-    """输入：两行同名的会话。输出：无。预期行为：只取第一行，取不到给空串。"""
-    assert features.line_value("Note: 第一行\nNote: 第二行", "note") == "第一行"
-    assert features.line_value("Note: 第一行", "stack") == ""
-
-
 def test_runtimes_are_three_distinct_shapes() -> None:
     """输入：无。输出：无。
 

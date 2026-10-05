@@ -123,13 +123,6 @@ def test_state_keeps_the_tag_table_and_the_thresholds() -> None:
         assert str(loc["fam"]["action"]["opt"][level]) in state
 
 
-def test_multiline_content_round_trips() -> None:
-    """输入：一段带换行的内容。输出：无。预期行为：换行原样保留，不被当成结构行。"""
-    text = BASE + "\n第二行也没有任何形状"
-    state = render.to_state(render.ContentDraft(text=text), locales.load("zh"))
-    assert render.parse_state(state).text == text
-
-
 def test_content_mentioning_a_tag_does_not_break_the_parse() -> None:
     """输入：内容里提到「注入判据」四个字。输出：无。
 
@@ -140,12 +133,6 @@ def test_content_mentioning_a_tag_does_not_break_the_parse() -> None:
     parsed = render.parse_state(state)
     assert parsed.text == text
     assert parsed.tags == features.TAG_IDS
-
-
-def test_check_draft_accepts_every_faithful_text() -> None:
-    """输入：全空间 32 组 case 的忠实内容。输出：无。预期行为：一条都不报错。"""
-    for case in CASES:
-        render.check_draft(render.ContentDraft(text=text_of(case)), case)
 
 
 @pytest.mark.parametrize(

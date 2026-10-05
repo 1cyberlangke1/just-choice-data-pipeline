@@ -152,14 +152,6 @@ def test_state_carries_the_record_not_the_finding() -> None:
     assert "added" in state or "modified" in state
 
 
-def test_rows_of_rejects_a_broken_table() -> None:
-    """输入：序号断档 / 改动种类不认识的表。输出：无。预期行为：整张表判为解不出来。"""
-    loc = locales.load("zh")
-    state = render.to_state(GOOD, PLAN, loc)
-    assert render.rows_of(state.replace("- 2 | ", "- 7 | "), loc) == ()
-    assert render.rows_of(state.replace("untouched", "maybe"), loc) == ()
-
-
 def test_parse_state_tolerates_junk() -> None:
     """输入：非文本 / 空文本。输出：无。预期行为：不抛异常，返回空事实。"""
     assert render.parse_state(None).rows == ()

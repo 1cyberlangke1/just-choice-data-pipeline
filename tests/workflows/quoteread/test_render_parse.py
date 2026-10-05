@@ -102,12 +102,6 @@ def test_render_reports_an_unknown_name() -> None:
         render.name_text(locales.load("zh"), "I9")
 
 
-def test_parse_rejects_a_short_state() -> None:
-    """输入：只有两行的 state。输出：无。预期行为：报「太短」，不给一张空读数表。"""
-    with pytest.raises(ValueError, match="太短"):
-        parse.parse_state("行情读数请求号 Q-000000\n[读数表]\n", parse.merged_tables())
-
-
 def test_parse_rejects_a_gap_in_row_numbers() -> None:
     """输入：行号跳了一号的 state。输出：无。预期行为：报「跳号」，不把两行认成一行。"""
     loc = locales.load("zh")

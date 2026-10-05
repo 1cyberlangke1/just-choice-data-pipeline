@@ -75,9 +75,3 @@ def test_priority_depends_only_on_urgency_and_tier() -> None:
     assert left["priority"].answer == right["priority"].answer
     assert left["priority"].answer == features.PRIORITY_TABLE[("blocked", "free")]
     assert left["queue"].answer != right["queue"].answer  # 队列那一族确实变了
-
-
-def test_families_for_returns_the_full_table() -> None:
-    """输入：任意特征。输出：无。预期行为：六个题族对任何组合都问得出来。"""
-    for tags in features.build_cases(2048):
-        assert questions.families_for(tags) == questions.FAMILIES

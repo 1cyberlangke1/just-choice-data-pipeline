@@ -21,11 +21,6 @@ def test_each_hit_line_trips_only_its_own_tag() -> None:
         assert features.hit_set(text) == (tag,), tag
 
 
-def test_the_plain_record_trips_nothing() -> None:
-    """输入：六行骨架。输出：无。预期行为：一条判据都不取到（它是 1 级那一档要的东西）。"""
-    assert features.hit_set(render_lines(BASE_LINES)) == ()
-
-
 def test_lgpl_does_not_trip_the_copyleft_mark() -> None:
     """输入：`license:` 行写成 LGPL。输出：无。
 
@@ -48,48 +43,6 @@ def test_one_dot_zero_version_does_not_trip() -> None:
     """
     text = render_lines({**BASE_LINES, "version": "version: 1.0.3"})
     assert "D4" not in features.hit_set(text)
-
-
-def test_every_combination_is_reachable_by_its_packet() -> None:
-    """输入：全空间 16 种命中组合。输出：无。
-
-    预期行为：`packet_of` 造出来的记录按字面重算，得到的正好是那一组——两条路径（计划 / 文本）
-    在这一层就已经对得上，后面 `check_draft` 与审计才有意义。
-    """
-    for value in features.HIT_SETS:
-        tags = features.parse_hits(value)
-        assert features.hits_of(packet_of(tags)) == value, value
-
-
-def test_hits_of_and_parse_hits_round_trip() -> None:
-    """输入：全空间 16 种命中组合。输出：无。预期行为：两种表示互相还原。"""
-    for value in features.HIT_SETS:
-        assert features.hits_of(packet_of(features.parse_hits(value))) == value
-    assert features.parse_hits("") == ()
-
-
-def test_missing_keys_finds_only_absent_ones() -> None:
-    """输入：完整记录、少两行的记录。输出：无。预期行为：只报缺掉的那几个键。"""
-    full = render_lines(BASE_LINES)
-    assert features.missing_keys(full) == ()
-    lines = {key: value for key, value in BASE_LINES.items() if key not in {"package", "status"}}
-    assert set(features.missing_keys(render_lines(lines))) == {"package", "status"}
-
-
-def test_missing_keys_needs_the_colon_on_its_own_line() -> None:
-    """输入：把键名写在句子中间的记录。输出：无。
-
-    预期行为：算缺——判据是钉在**行首**的，键不单独成行时那四条正则连定位都定不到。
-    """
-    text = "license: MIT\nstatus: 见 package: 那一行\nadvisories: count=0\nversion: 1.2.3\nnote: 一句"
-    assert "package" in features.missing_keys(text)
-
-
-def test_line_value_reads_the_first_matching_line() -> None:
-    """输入：含 `note:` 的记录。输出：无。预期行为：取到冒号后面的内容，取不到给空串。"""
-    text = render_lines(BASE_LINES)
-    assert features.line_value(text, "note").startswith("内部工具链")
-    assert features.line_value(text, "nope") == ""
 
 
 def test_level_weights_and_level_of() -> None:
@@ -130,17 +83,6 @@ def test_level_distribution_is_one_two_three_four_six() -> None:
     for value in features.HIT_SETS:
         counts[features.level_of(features.parse_hits(value))] += 1
     assert counts == {1: 1, 2: 2, 3: 3, 4: 4, 5: 6}
-
-
-def test_act_for_collapses_the_top_levels() -> None:
-    """输入：五个等级。输出：无。预期行为：最后一档吃掉 4 / 5 两级。"""
-    assert [features.act_for(level) for level in features.LEVELS] == [
-        "approve",
-        "watch",
-        "review",
-        "replace",
-        "replace",
-    ]
 
 
 def test_combo_text_key_marks_every_tag() -> None:

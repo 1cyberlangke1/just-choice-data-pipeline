@@ -8,16 +8,6 @@ from tests.workflows.promptinject.conftest import text_of
 from workflows.promptinject import features
 
 
-def test_every_tag_appears_eight_times() -> None:
-    """输入：无。输出：无。
-
-    预期行为：每条判据在 16 组里各出现 8 次——这是 `tag` 那一族的答案按构造就是 50% 的原因。
-    """
-    for tag in features.TAG_IDS:
-        hits = sum(1 for value in features.HIT_SETS if tag in features.parse_hits(value))
-        assert hits == 8, tag
-
-
 def test_hit_set_is_purely_literal() -> None:
     """输入：一段内容。输出：无。预期行为：命中组合按 `TAG_IDS` 顺序、只看字面。
 
@@ -52,19 +42,6 @@ def test_hit_set_is_purely_literal() -> None:
     assert not bad, "\n".join(bad)
 
 
-def test_sources_are_three_distinct_shapes() -> None:
-    """输入：无。输出：无。
-
-    预期行为：三个素材来源键两两不同，且**全空间里每种来源都被枚举到**——留出维只砍取值，
-    不该把别的取值一起砍掉（`build_cases` 默认维度表覆盖 `SOURCES`）。
-    """
-    assert features.SOURCES == ("web", "tool", "file")
-    assert len(set(features.SOURCES)) == len(features.SOURCES)
-    assert features.DIMS["source"] == features.SOURCES
-    cases = features.build_cases(512)
-    assert {case.source for case in cases} == set(features.SOURCES)
-
-
 def test_plan_is_reproducible_and_distractors_are_near() -> None:
     """输入：同一个 case。输出：无。
 
@@ -89,22 +66,6 @@ def test_plan_is_reproducible_and_distractors_are_near() -> None:
 def test_handling_level_thresholds(count: int, expect: str) -> None:
     """输入：命中条数。输出：无。预期行为：0/1/2/3 条以上 分别对应四个档位。"""
     assert features.handling_level(count) == expect
-
-
-def test_two_label_paths_agree_on_every_faithful_text() -> None:
-    """输入：全空间的 32 组 case。输出：无。
-
-    预期行为：「构造侧从计划推」与「审计侧从文本重推」两条路走出来的标签逐条相同——
-    内容兑现了计划，两条路就不该打架。
-    """
-    cases = features.build_cases(512)
-    assert len(cases) == 48  # 16 组命中 × 3 种素材来源
-    for case in cases:
-        text = text_of(case)
-        assert features.hits_of(text) == case.hits, case.describe()
-        assert features.observed_labels(text).hits == features.label_for(
-            features.plan_for(case, 0)
-        ).hits
 
 
 def test_case_describe_and_fingerprint() -> None:

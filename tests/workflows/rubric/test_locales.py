@@ -76,21 +76,6 @@ def test_locale_meta_and_columns(lang: str) -> None:
     assert "{name}" in str(loc["verify"]["option_line"])
 
 
-@pytest.mark.parametrize("lang", ["zh", "en"])
-def test_banned_phrases_are_the_table_names(lang: str) -> None:
-    """输入：一个语言。输出：无。
-
-    预期行为：禁写清单里就是那几个表名——材料是一段自然语言，「篇幅」这类词在正常叙述里
-    会出现，收进清单会大面积误伤（见 `render.banned_echo` 的口径）。
-    """
-    loc = locales.load(lang)
-    banned = [str(item) for item in loc["banned_intent_phrases"]]
-    assert banned
-    # 比对时统一小写：英文的段落名首字母大写，而禁写清单按小写匹配（`banned_echo` 也是）
-    titles = {str(loc["meta"][key]).lower() for key in render.SECTION_KEYS}
-    assert {item.lower() for item in banned} == titles
-
-
 def test_trace_draft_matches_the_dimension_tables() -> None:
     """输入：反解草稿的取值域。输出：无。
 

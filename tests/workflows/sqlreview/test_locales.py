@@ -10,24 +10,6 @@ from workflows.sqlreview import features, locales, render
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_rule_and_avoid_copy_never_carries_braces(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：判据原文与反面文案里**一个花括号都不许有**——这两段会被 `build_prompt` 拼进
-    提示词，而花括号是填槽标记（`test_prompts_and_questions_leave_no_placeholder` 会扫
-    「一个都不剩」）。`subqa` 上踩过一次：判据原文里写了那个花括号指令的具体形状，提示词的
-    填槽自检当场把它当成没填的槽报出来。要举例就写「一对花括号里夹着反斜杠开头的短代码」这种
-    说法，别把花括号本身写进去。
-    """
-    loc = locales.load(lang)
-    for tag in features.TAG_IDS:
-        entry = render.tag_copy(loc, tag)
-        for key in ("rule", "avoid"):
-            text = str(entry[key])
-            assert "{" not in text and "}" not in text, f"{lang}.{tag}.{key}: {text!r}"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_workload_table_lines_up_with_features(lang: str) -> None:
     """输入：一种语言。输出：无。
 

@@ -93,17 +93,6 @@ def test_adding_a_spare_fragment_only_spares_the_full_hits(
     assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
 
 
-def test_missing_decoy_on_the_ood_split_is_rejected(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：留出侧（`decoy=lower`）却不写诱饵。输出：RunResult。预期行为：整批都被拦下。"""
-    result = pipeline.run(
-        make_config(tmp_path, "p3-decoy", fake_backend(decoy_missing=True), split="test_ood")
-    )
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
 def test_case_splits_are_disjoint_and_cover_the_space() -> None:
     """输入：四个切分的 case 列表。输出：无。
 

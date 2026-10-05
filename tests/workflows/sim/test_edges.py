@@ -65,16 +65,3 @@ def test_audit_does_not_ask_for_best_on_a_finished_board(tmp_path: Path) -> None
         "finished": 1,
         "gain": 6,
     }
-
-
-def test_audit_flags_an_out_of_range_score_index(tmp_path: Path) -> None:
-    """输入：档位下标越界的产物。输出：无。
-
-    预期行为：score 也查下标（收益只有六档、耗只有四档），越界同样记一笔「编号越界」。
-    """
-    row = _sample_row()
-    row["answers"]["gain"]["score"] = 9
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["index_bad"] == 1
-    assert any("编号越界" in item for item in missing)

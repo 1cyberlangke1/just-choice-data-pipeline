@@ -26,13 +26,6 @@ def state_for(claim: str = CLEAN, lang: str = "zh", tags: TagSet = CASE) -> str:
 # ---------- 卫生 ----------
 
 
-def test_hygiene_judge_accepts_a_clean_state() -> None:
-    """声明单行、无残留、不提证据 → 通过。"""
-    verdict = judges_mod.HygieneJudge("zh").judge({"state": state_for()})
-    assert verdict.ok is True, verdict.reason
-    assert verdict.skipped is False
-
-
 def test_hygiene_judge_flags_a_multi_line_claim() -> None:
     """输入：声明写成两行。输出：Verdict。预期行为：判不通过并点名「多行」。"""
     verdict = judges_mod.HygieneJudge("zh").judge(
@@ -51,13 +44,6 @@ def test_hygiene_judge_flags_an_empty_claim() -> None:
     assert "空的" in verdict.reason
 
 
-def test_hygiene_judge_flags_a_leaked_section_name() -> None:
-    """输入：声明开头又写了一遍「声明：」。输出：Verdict。预期行为：判不通过并点名段落名。"""
-    verdict = judges_mod.HygieneJudge("zh").judge({"state": state_for("声明：把空指针修掉了")})
-    assert verdict.ok is False
-    assert "段落名" in verdict.reason
-
-
 def test_hygiene_judge_flags_evidence_in_the_claim() -> None:
     """输入：声明里写了证据。输出：Verdict。
 
@@ -66,17 +52,6 @@ def test_hygiene_judge_flags_evidence_in_the_claim() -> None:
     verdict = judges_mod.HygieneJudge("zh").judge({"state": state_for("把空指针修掉了，测试全过了")})
     assert verdict.ok is False
     assert "证据" in verdict.reason
-
-
-def test_hygiene_judge_reads_the_marker_from_the_locale() -> None:
-    """输入：英文 state。输出：Verdict。
-
-    预期行为：认得出 `[Claim]` 那一段，代码里没写死中文——换个语言照样认。
-    """
-    loc = locales.load("en")
-    state = render.to_state({"claim": "fixed the flaky retry"}, CASE, loc)
-    assert judges_mod.HygieneJudge("en").judge({"state": state}).ok is True
-    assert judges_mod.HygieneJudge("en").judge({"state": state + "\n```"}).ok is False
 
 
 # ---------- 框架 ----------

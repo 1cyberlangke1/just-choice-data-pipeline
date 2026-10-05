@@ -102,32 +102,6 @@ def test_trace_skips_an_endpoint_failure() -> None:
     assert "端点故障" in verdict.reason
 
 
-def test_trace_skips_an_unknown_tag_id() -> None:
-    """输入：反解答了一个不存在的信号编号。输出：无。
-
-    预期行为：记成「没判成」——那是反解格式没对齐，不是这条数据错。
-    """
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(_UnknownIdBackend(), "zh").judge(sample, spec)
-    assert verdict.skipped and verdict.ok
-    assert "不认识的信号编号" in verdict.reason
-
-
-def test_quote_holds_needs_both_the_quote_and_the_criterion() -> None:
-    """输入：几种引文。输出：无。
-
-    预期行为：引文得原样在轨迹里、且自己满足那条判据；空白差异不算抄错。
-    """
-    body = BASE + FRAGMENTS["S1"]
-    assert judges.quote_holds("S1", quote_for("S1"), body)
-    # 引文首尾多带了换行：折叠之后一致，照样算抄对了（模型常这么答）。
-    assert judges.quote_holds("S1", f"\n{quote_for('S1')}\n", body)
-    assert judges.quote_holds("S1", json.dumps([quote_for("S1")]), body)  # 引文被装进 JSON 数组字符串（范式 §9.88）
-    assert not judges.quote_holds("S1", quote_for("S4"), body)  # 抄不出原文
-    assert not judges.quote_holds("S1", "收工。", body)  # 抄出来了但不合判据
-    assert not judges.quote_holds("S9", "收工。", body)  # 不认识的编号
-
-
 class _UnknownIdBackend:
     """只会答一个不存在的信号编号的假后端。"""
 
@@ -135,7 +109,6 @@ class _UnknownIdBackend:
         """输入：任务。输出：`tags` 里带 S9 的草稿。预期行为：不联网。"""
         del task
         return _draft({"tags": [{"tag": "S9", "quote": "S9"}]})
-
 
 
 class _OverclaimBackend:

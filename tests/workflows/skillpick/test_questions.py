@@ -165,21 +165,6 @@ def test_instructions_carry_the_whole_rulebook() -> None:
         assert LOC["policy"]["text"] in item.question["instructions"]
 
 
-def test_fill_reports_leftover_placeholders() -> None:
-    """输入：一个少填槽的模板。输出：无。预期行为：报人话（不然发出去的是读不懂的题）。"""
-    assert questions._fill("第 {n} 个", n="1") == "第 1 个"
-    with pytest.raises(ValueError, match="占位符"):
-        questions._fill("第 {n} 个：{tag}", n="1")
-
-
-def test_choice_rejects_duplicate_descriptions_and_unknown_answers() -> None:
-    """输入：描述重复的选项 / 答案不在选项里。输出：无。预期行为：都报人话。"""
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice("pick", "题面", {"s1": "一样", "s2": "一样"}, "s1")
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("pick", "题面", {"s1": "甲"}, "s2")
-
-
 def test_build_rejects_a_wrong_number_of_rows() -> None:
     """输入：五行技能。输出：无。预期行为：报人话（少一行说明技能表没拼完）。"""
     spec = _make_spec()

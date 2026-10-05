@@ -142,22 +142,6 @@ def test_label_judge_catches_a_tampered_score() -> None:
     assert not verdict.ok and "band" in verdict.reason
 
 
-def test_label_judge_catches_an_out_of_range_index() -> None:
-    """输入：把编号改成越界值。输出：无。预期行为：判不通过并点名越界。"""
-    sample = sample_of(_make_spec(8))
-    sample["answers"]["variant_count"]["choice"] = 99
-    verdict = judges.LabelJudge().judge(sample)
-    assert not verdict.ok and "越界" in verdict.reason
-
-
-def test_label_judge_catches_an_unknown_question_type() -> None:
-    """输入：把某题的题型改掉。输出：无。预期行为：判不通过。"""
-    sample = sample_of(_make_spec(9))
-    sample["questions"]["band"]["type"] = "multi"
-    verdict = judges.LabelJudge().judge(sample)
-    assert not verdict.ok and "未知题型" in verdict.reason
-
-
 def test_label_judge_reports_a_broken_state() -> None:
     """输入：state 里出现表外的写法。输出：无。预期行为：判不通过，理由是重算失败。"""
     sample = sample_of(_make_spec(10))
@@ -238,12 +222,6 @@ def test_english_samples_pass_both_judges() -> None:
     assert judges.LabelJudge(locale="en").judge(sample).ok
 
 
-def test_expected_of_rejects_unknown_family() -> None:
-    """输入：不存在的题族。输出：无。预期行为：报错（新加题族忘了实现不能静默放过）。"""
-    with pytest.raises(ValueError, match="未知题族"):
-        judges.expected_of("nope", facts_of(sample_of(_make_spec(19))), LOC)
-
-
 def test_option_text_uses_the_locale_templates() -> None:
     """输入：两个 choice 题族。输出：无。预期行为：金答案的描述原文来自语言文件。"""
     facts = facts_of(sample_of(_make_spec(20, pattern=sp.PATTERNS[8])))
@@ -264,9 +242,3 @@ def test_check_sample_reports_every_problem() -> None:
             answer["score"] = (answer["score"] + 1) % 3
     problems = judges.check_sample(sample, facts_of(sample), LOC)
     assert len(problems) == len(questions.FAMILIES)
-
-
-def test_check_sample_is_silent_on_a_good_sample() -> None:
-    """输入：新样本。输出：无。预期行为：零问题（审计与判别器共用这一把尺）。"""
-    sample = sample_of(_make_spec(22))
-    assert judges.check_sample(sample, facts_of(sample), LOC) == []

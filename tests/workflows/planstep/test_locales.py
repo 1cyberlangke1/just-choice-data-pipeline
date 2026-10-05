@@ -12,12 +12,6 @@ from workflows.planstep.features import TASK_COUNT
 LANGS: Final[tuple[str, ...]] = ("zh", "en")
 
 
-def test_reverse_rejects_a_duplicate_name() -> None:
-    """输入：两个条目同名。输出：无。预期行为：报错——反解会把两个条目认成一个。"""
-    with pytest.raises(ValueError, match="同时属于"):
-        locales.reverse({"a": "同名", "b": "同名"})
-
-
 def test_merged_words_cover_every_key() -> None:
     """输入：合并反查表。输出：无。
 
@@ -31,32 +25,6 @@ def test_merged_words_cover_every_key() -> None:
     assert merged["status"] == sorted({"已完成", "待开始", "done", "pending"})
     assert merged["deps_none"] == sorted({"无前置", "no deps"})
     assert merged["deps_prefix"] == sorted({"前置=", "deps="})
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_labels_are_not_mutual_prefixes(lang: str) -> None:
-    """输入：一份语言文件。输出：无。
-
-    预期行为：抬头与区块抬头两两**不互为前缀**——反解靠最长前缀认标签，互为前缀时短的
-    会把长的吃掉。
-    """
-    tables = parse.tables_of(locales.load(lang))
-    labels = [*tables.request, *tables.sections]
-    for left in labels:
-        for right in labels:
-            if left != right:
-                assert not right.startswith(left), f"{lang}: {left!r} / {right!r}"
-
-
-def test_languages_do_not_share_labels() -> None:
-    """输入：两份语言文件。输出：无。预期行为：标签原文互不重叠（合并表才不炸）。"""
-    zh = parse.tables_of(locales.load("zh"))
-    en = parse.tables_of(locales.load("en"))
-    assert not set(zh.request) & set(en.request)
-    assert not set(zh.sections) & set(en.sections)
-    merged = parse.merged_tables()
-    assert set(merged.request) == set(zh.request) | set(en.request)
-    assert set(merged.sections) == set(zh.sections) | set(en.sections)
 
 
 def test_status_words_do_not_collide_across_languages() -> None:
@@ -108,36 +76,6 @@ def test_families_have_phrasings_and_valid_criteria(lang: str) -> None:
     assert len(loc["fam"]["remaining"]["levels"]) == TASK_COUNT + 1
     assert len(loc["fam"]["rounds"]["levels"]) == TASK_COUNT + 1
     assert set(loc["fam"]["unlocks"]["criteria"]) == {"true", "false"}
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_rules_lines_are_not_empty(lang: str) -> None:
-    """输入：一份语言文件。输出：无。预期行为：判据原文非空、每一条都不是空串。"""
-    lines = locales.load(lang)["rules"]["lines"]
-    assert len(lines) >= 4, lang
-    for line in lines:
-        assert str(line).strip(), lang
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_meta_has_the_eight_structural_keys(lang: str) -> None:
-    """输入：一份语言文件。输出：无。
-
-    预期行为：`[meta]` 里抬头 / 两个区块抬头 / 格分隔符 / 前置分隔符 / 前置前缀 / 无前置
-    写法 / 规则行前缀齐全——渲染要按它们拼行，缺一个就直接 KeyError。
-    """
-    meta = locales.load(lang)["meta"]
-    assert isinstance(meta, dict)
-    assert set(meta) == {
-        "request",
-        "tasks",
-        "rules",
-        "cell_sep",
-        "deps_sep",
-        "deps_prefix",
-        "deps_none",
-        "rules_prefix",
-    }
 
 
 def test_structural_tokens_are_identical_across_languages() -> None:

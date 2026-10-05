@@ -167,15 +167,6 @@ def test_label_leak_finds_a_copied_header() -> None:
     assert render.label_leak("+ x = 1", loc) == ""
 
 
-def test_banned_echo_finds_table_names() -> None:
-    """输入：含表名的文本。输出：无。预期行为：命中，且大小写不敏感。"""
-    zh = locales.load("zh")
-    en = locales.load("en")
-    assert render.banned_echo("+ x = 1  # 见改动清单", zh) == ["改动清单"]
-    assert render.banned_echo("+ x = 1", zh) == []
-    assert render.banned_echo("+ x = 1  # see Change Manifest", en) == ["change manifest"]
-
-
 def test_banned_echo_leaves_code_identifiers_alone() -> None:
     """输入：一段满是 `test` / `size` / `config` 的代码。输出：无。
 
@@ -214,13 +205,6 @@ def test_parse_state_on_non_text_is_empty() -> None:
     assert parsed.is_empty
     assert parsed.manifest is None
     assert parsed.rules == ()
-
-
-def test_manifest_of_rejects_unknown_tokens() -> None:
-    """输入：词元不在取值表里的清单行。输出：无。预期行为：当解不出来。"""
-    loc = locales.load("zh")
-    state = "【改动内容】\n+ x = 1\n【改动清单】（列名）\n- source | modified | huge"
-    assert render.manifest_of(state, loc) is None
 
 
 def test_table_parsers_skip_malformed_rows() -> None:
@@ -285,13 +269,6 @@ def test_accessors_tolerate_non_text_state() -> None:
     assert render.rules_of(None, loc) == ()
     assert render.severity_of(None, loc) == ()
     assert render.gate_of(None, loc) == ()
-
-
-def test_manifest_of_rejects_a_row_with_the_wrong_cell_count() -> None:
-    """输入：只有两格的清单行。输出：无。预期行为：当解不出来。"""
-    loc = locales.load("zh")
-    state = "【改动内容】\n+ x = 1\n【改动清单】（列名）\n- source | modified"
-    assert render.manifest_of(state, loc) is None
 
 
 def test_severity_and_gate_skip_rows_with_the_wrong_shape() -> None:

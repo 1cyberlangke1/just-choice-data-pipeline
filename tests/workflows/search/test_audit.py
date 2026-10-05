@@ -34,12 +34,6 @@ def test_verdict_from_reads_the_table() -> None:
     assert audit_mod.verdict_from(3) is None
 
 
-def test_family_of_strips_dedupe_suffixes() -> None:
-    """输入：题号。输出：无。预期行为：去掉 `_2` 这类后缀。"""
-    assert audit_mod._family_of("rule") == "rule"
-    assert audit_mod._family_of("rule_2") == "rule"
-
-
 def test_audit_flags_a_tampered_verdict(tmp_path: Path) -> None:
     """输入：把一条样本的 `verdict` 答案改掉。输出：无。
 

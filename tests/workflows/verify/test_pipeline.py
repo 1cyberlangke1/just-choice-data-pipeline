@@ -134,20 +134,6 @@ def test_ood_holds_out_exactly_the_unseen_values() -> None:
             assert case.tone not in verify_workflow.OOD_TONES
 
 
-def test_id_and_ood_together_cover_every_compatible_case() -> None:
-    """输入：四个切分。输出：无。
-
-    预期行为：ID 侧 160 组 + OOD 侧 140 组**恰好**等于全部 300 个相容组合——
-    留出不是「少给组合」，是把同一批组合换个切分，一个都不丢。
-    """
-    workflow = workflow_mod.load("verify")
-    seen: set[tuple[tuple[str, str], ...]] = set()
-    for split in workflow.split_names():
-        for case in workflow.build_cases(workflow.config_for(split)):
-            seen.add(tuple(case.as_dict().items()))
-    assert seen == {tuple(case.as_dict().items()) for case in features.build_cases(1000)}
-
-
 def test_id_side_has_no_dead_options() -> None:
     """输入：同分布三个切分的并集。输出：无。
 

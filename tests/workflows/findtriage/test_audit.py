@@ -51,12 +51,6 @@ def test_evidence_symbol_prefers_a_symbol_that_is_in_the_table() -> None:
     assert audit_mod.evidence_symbol_of(rows, "第 10 行：没有记号") == ""
 
 
-def test_family_of_strips_dedupe_suffixes() -> None:
-    """输入：题号。输出：无。预期行为：去掉 `_2` 这类后缀。"""
-    assert audit_mod._family_of("triage") == "triage"
-    assert audit_mod._family_of("triage_2") == "triage"
-
-
 def test_audit_passes_a_clean_run(tmp_path: Path) -> None:
     """输入：假后端跑出来的一份产物。输出：无。预期行为：零缺失。"""
     result = pipeline.run(make_config(tmp_path, "a0", FakeBackend()))

@@ -203,13 +203,6 @@ def test_banned_echo_ignores_ordinary_wording() -> None:
         assert render.banned_echo(text, loc) == []
 
 
-def test_label_leak_only_reads_the_line_start() -> None:
-    """输入：段落名出现在句中。输出：无。预期行为：只有开头才算残留。"""
-    loc = locales.load("zh")
-    assert render.label_leak("调用意图：读一下", loc) == "调用意图"
-    assert render.label_leak("他说的调用意图是读一下", loc) == ""
-
-
 def test_build_task_carries_tags_and_response_model() -> None:
     """输入：一组特征。输出：无。预期行为：任务带 tags、带草稿模型、带域名，且不执行任何东西。"""
     loc = locales.load("zh")

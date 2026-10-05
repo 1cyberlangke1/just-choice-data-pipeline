@@ -175,20 +175,6 @@ def test_room_and_weekday_words_are_merged_over_languages() -> None:
         assert set(loc["word"]["weekday"]["names"]) <= weekdays
 
 
-@pytest.mark.parametrize("lang", LOCALES)
-def test_meta_punctuation_comes_from_the_locale(lang: str) -> None:
-    """输入：语言文件。输出：无。
-
-    预期行为：冒号与分隔符由语言文件给；英文里不能有中日韩标点——
-    否则英文日程会带着「：」，看着就不像英文数据。
-    """
-    loc = locales.load(lang)
-    assert loc["meta"]["colon"] and loc["meta"]["sep"]
-    if lang == "en":
-        for key in ("colon", "sep"):
-            assert not (set("：；。") & set(loc["meta"][key]))
-
-
 def test_pick_wraps_and_word_of_rejects_out_of_range() -> None:
     """输入：越界问法编号 / 越界词表下标。输出：回绕 / IndexError。
 

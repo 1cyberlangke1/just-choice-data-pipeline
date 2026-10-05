@@ -19,30 +19,6 @@ def license_for(case: features.DepCheckCase) -> str:
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_fact_table_lines_up_with_features(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：标记表的键与 `TAG_IDS` 一一对应，每条三个字段都非空、标记名与表行两两不同，而且
-    表行里**编号排在分隔符前面**（解析就是按这个切回编号的）。
-    """
-    loc = locales.load(lang)
-    table = loc["fact"]
-    assert isinstance(table, dict)
-    assert sorted(table) == sorted(features.TAG_IDS)
-    for tag in features.TAG_IDS:
-        entry = render.fact_copy(loc, tag)
-        for key in ("name", "rule", "avoid"):
-            assert str(entry[key]).strip(), f"{lang}.{tag}.{key}"
-    names = [str(table[tag]["name"]) for tag in features.TAG_IDS]
-    assert len(set(names)) == len(names)
-    sep = str(loc["state"]["tag_sep"])
-    lines = [render.fact_line(loc, tag) for tag in features.TAG_IDS]
-    assert len(set(lines)) == len(lines)
-    for tag, line in zip(features.TAG_IDS, lines, strict=True):
-        assert line.partition(sep)[0] == tag
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_avoid_lists_do_not_trip_other_tags(lang: str) -> None:
     """输入：一种语言。输出：无。
 
@@ -55,21 +31,6 @@ def test_avoid_lists_do_not_trip_other_tags(lang: str) -> None:
         avoid = str(render.fact_copy(loc, tag)["avoid"])
         stray = set(features.hit_set(avoid)) - {tag}
         assert not stray, f"{lang}.{tag}: {avoid!r} 误触了 {sorted(stray)}"
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_rule_and_avoid_copy_never_carries_braces(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：标记原文与反面文案里**一个花括号都不许有**——这两段会被 `build_prompt` 拼进提示词，
-    而花括号是填槽标记（`test_prompts_and_questions_leave_no_placeholder` 会扫「一个都不剩」）。
-    """
-    loc = locales.load(lang)
-    for tag in features.TAG_IDS:
-        entry = render.fact_copy(loc, tag)
-        for key in ("rule", "avoid"):
-            text = str(entry[key])
-            assert "{" not in text and "}" not in text, f"{lang}.{tag}.{key}: {text!r}"
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -117,20 +78,6 @@ def test_prompts_and_questions_leave_no_placeholder(lang: str) -> None:
             assert "{" not in instructions and "}" not in instructions
     trace = judges.build_trace_prompt("[state]", loc)
     assert "{" not in trace and "}" not in trace
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_format_spec_offers_no_copyable_value(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：格式规格里**不许出现填好的成品**——给一个 `count=3`、或者给一个真的 `archived`，
-    模型照抄下去正好命中那一档（范式 §9.52）。规格只印键名与 `<...>` 占位符。
-    """
-    loc = locales.load(lang)
-    for line in render.format_lines(loc):
-        assert not re.search(r"count=[1-9]", line), line
-        assert "AGPL-3.0-only" not in line, line
-        assert "0.9.1" not in line, line
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])

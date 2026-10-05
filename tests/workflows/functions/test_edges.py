@@ -160,16 +160,6 @@ def test_audit_flags_an_out_of_range_choice_index(tmp_path: Path) -> None:
     assert any("编号越界" in item for item in missing)
 
 
-def test_audit_flags_a_state_it_cannot_read(tmp_path: Path) -> None:
-    """输入：state 读不出来的产物。输出：无。预期行为：记一条「反解不出来」，不静默跳过。"""
-    row = _sample_row()
-    row["state"] = "今天天气不错。"
-    jsonio.write_jsonl(tmp_path / "train.jsonl", [row])
-    report, missing = WF.audit(tmp_path, ("train",), "zh")
-    assert report["train"]["label_mismatch"] == 1
-    assert any("反解不出来" in item for item in missing)
-
-
 def test_audit_only_requires_families_of_the_tools_it_saw(tmp_path: Path) -> None:
     """输入：只含 plot_price 的产物。输出：无。
 

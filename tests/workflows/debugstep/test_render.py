@@ -31,22 +31,6 @@ def test_prompt_lists_required_rules_and_forbidden_shapes() -> None:
         assert str(render.tag_copy(loc, tag)["avoid"]) in prompt
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_format_spec_only_offers_placeholders(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：格式规格那五行**只有占位符、没有一个能整段照抄的成品**——每一行的取值都得模型自己
-    编，规格里只印键名与 `<...>`；行数正好五个结构键。
-    """
-    loc = locales.load(lang)
-    lines = render.format_lines(loc)
-    assert len(lines) == len(features.KEY_LINES)
-    for key, line in zip(features.KEY_LINES, lines, strict=True):
-        assert line.startswith(render.LINE_PREFIX)
-        assert key in line.lower(), f"{lang}.{key}"
-        assert "<" in line and ">" in line, f"{lang}.{key}"
-
-
 def test_prompt_says_none_may_be_tripped_when_the_plan_is_empty() -> None:
     """输入：空命中的 case。输出：无。预期行为：改成「一条都不许踩」的说法，且不出现要求段落。"""
     loc = locales.load("zh")

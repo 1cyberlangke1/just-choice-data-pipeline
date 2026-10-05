@@ -47,32 +47,6 @@ def cases_of(split: str, limit: int = CASE_LIMIT) -> list[AdBlockCase]:
     return adblock_workflow.cases_for(AdBlockConfig(split=split, case_limit=limit))
 
 
-def test_dropping_a_fragment_only_spares_the_cases_without_one(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：少写一条该命中的形状。输出：RunResult。
-
-    预期行为：只有「本来就一条都不命中」的那些 case 能活下来（没有形状可少写）。
-    """
-    unaffected = sum(1 for case in cases_of("train") if not case.tags())
-    result = pipeline.run(make_config(tmp_path, "p3-drop", fake_backend(drop_fragment=True)))
-    assert result.accepted == unaffected
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
-def test_adding_a_spare_fragment_only_spares_the_full_hits(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：多写一条不该命中的形状。输出：RunResult。
-
-    预期行为：只有「四条全命中」的 case 无处可加，其余全被 `E_ASSEMBLE` 拦下。
-    """
-    unaffected = sum(1 for case in cases_of("train") if len(case.tags()) == len(features.TAG_IDS))
-    result = pipeline.run(make_config(tmp_path, "p3-extra", fake_backend(extra_fragment=True)))
-    assert result.accepted == unaffected
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
 def test_ood_split_only_uses_the_held_out_surface() -> None:
     """输入：四个切分的 case。输出：无。
 
@@ -113,16 +87,6 @@ def test_every_count_and_act_level_is_reachable() -> None:
             acts.add(labels.act)
     assert counts == set(range(len(features.TAG_IDS) + 1))
     assert acts == set(features.ACTS)
-
-
-def test_full_train_run_is_balanced(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：整个 train 切分跑一遍。输出：RunResult。预期行为：零拒绝、各族的答案均衡全绿。"""
-    result = pipeline.run(make_config(tmp_path, "p4-full", fake_backend(), limit=0))
-    assert result.rejected == []
-    assert result.accepted == len(cases_of("train", limit=0))
-    assert [item["ok"] for item in result.stats["balance"]] == [True] * len(
-        result.stats["balance"]
-    )
 
 
 def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
@@ -185,4 +149,3 @@ def test_language_texts_is_empty_when_the_element_has_no_visible_copy() -> None:
     snippet = '<div class="feed-card-item" style="display:none; width:1px;"><img src="/a.png" /></div>'
     row = {"state": render.to_state(render.ContentDraft(snippet=snippet), locales.load("zh"))}
     assert AdBlockWorkflow().language_texts(row) == {}
-

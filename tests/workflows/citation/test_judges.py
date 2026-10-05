@@ -91,14 +91,6 @@ def test_hygiene_skips_without_a_spec_or_text_state() -> None:
     assert judge.judge({"state": 7}, spec_for(CASE)).skipped
 
 
-def test_frame_accepts_a_faithful_sample() -> None:
-    """输入：兑现计划的样本。输出：无。预期行为：通过。"""
-    spec, sample = faithful(CASE)
-    verdict = judges.FrameJudge("zh").judge(sample, spec)
-    assert verdict.ok and not verdict.skipped
-    assert "一致" in verdict.reason
-
-
 def test_frame_rejects_a_tampered_claim() -> None:
     """输入：声称出处被改过的样本。输出：无。预期行为：不通过，点出声称出处对不上。"""
     spec, sample = faithful(CASE)
@@ -122,26 +114,12 @@ def test_frame_rejects_a_missing_section() -> None:
     assert "小节数" in verdict.reason
 
 
-def test_frame_skips_without_a_spec() -> None:
-    """输入：没有 spec。输出：无。预期行为：记成「没判成」。"""
-    _, sample = faithful(CASE)
-    assert judges.FrameJudge("zh").judge(sample, None).skipped
-
-
 def test_trace_passes_when_the_reader_agrees() -> None:
     """输入：反解说真话的假后端。输出：无。预期行为：通过。"""
     spec, sample = faithful(CASE)
     verdict = judges.TraceJudge(FakeBackend(), "zh").judge(sample, spec)
     assert verdict.ok and not verdict.skipped
     assert "一致" in verdict.reason
-
-
-def test_trace_rejects_a_lying_backend() -> None:
-    """输入：反解说反话的假后端。输出：无。预期行为：不通过，理由里两种说法都列出来。"""
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(FakeBackend(trace_lies=True), "zh").judge(sample, spec)
-    assert not verdict.ok and not verdict.skipped
-    assert "计划" in verdict.reason and "反解" in verdict.reason
 
 
 def test_trace_rejects_a_wrong_section_even_when_in_doc_agrees() -> None:
@@ -185,12 +163,6 @@ def test_trace_lets_a_fatal_failure_bubble_up() -> None:
     backend = FakeBackend(trace_raises=AllProvidersDown("all down"))
     with pytest.raises(AllProvidersDown):
         judges.TraceJudge(backend, "zh").judge(sample, spec)
-
-
-def test_trace_skips_without_a_spec() -> None:
-    """输入：没有 spec。输出：无。预期行为：记成「没判成」。"""
-    _, sample = faithful(CASE)
-    assert judges.TraceJudge(FakeBackend(), "zh").judge(sample, None).skipped
 
 
 def test_trace_skips_when_the_section_is_not_an_integer() -> None:

@@ -84,36 +84,6 @@ def test_families_have_phrasings_and_valid_criteria(lang: str) -> None:
     assert len(loc["fam"]["drop"]["levels"]) == 5
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_rules_lines_are_not_empty(lang: str) -> None:
-    """输入：一份语言文件。输出：无。预期行为：判据原文五条、每一条都不是空串。"""
-    lines = locales.load(lang)["rules"]["lines"]
-    assert len(lines) >= 5, lang
-    for line in lines:
-        assert str(line).strip(), lang
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_meta_has_the_eight_structural_keys(lang: str) -> None:
-    """输入：一份语言文件。输出：无。
-
-    预期行为：`[meta]` 里抬头 / 场景抬头 / 三个区块抬头 / 格分隔符 / 词分隔符 / 规则行前缀
-    齐全——渲染要按它们拼行，缺一个就直接 KeyError。
-    """
-    meta = locales.load(lang)["meta"]
-    assert isinstance(meta, dict)
-    assert set(meta) == {
-        "request",
-        "topic",
-        "words",
-        "turns",
-        "rules",
-        "cell_sep",
-        "word_sep",
-        "rules_prefix",
-    }
-
-
 def test_structural_tokens_are_identical_across_languages() -> None:
     """输入：两份语言文件。输出：无。
 

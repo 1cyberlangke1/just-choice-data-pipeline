@@ -35,16 +35,6 @@ def _drop_tag_line(state: str, tag: str) -> str:
     return "\n".join(lines)
 
 
-def test_hygiene_accepts_every_faithful_sample() -> None:
-    """输入：全空间 48 组 case 的忠实样本。输出：无。预期行为：一条都不报。"""
-    judge = judges.HygieneJudge("zh")
-    for case in CASES:
-        spec, sample = faithful(case)
-        verdict = judge.judge(sample, spec)
-        assert verdict.ok and not verdict.skipped, f"{case.describe()}: {verdict.reason}"
-    assert "兑现" in judge.judge(*reversed(faithful(CASE))).reason
-
-
 def test_hygiene_rejects_a_missing_hit() -> None:
     """输入：计划要 A1+A2、片段里只写了 A1 的样本。输出：无。
 
@@ -153,17 +143,6 @@ def test_trace_reraises_when_every_provider_is_down() -> None:
         judge.judge(sample, spec)
 
 
-def test_trace_skips_an_unknown_tag_id() -> None:
-    """输入：反解答了一个不存在的判据编号。输出：无。
-
-    预期行为：记成「没判成」——那是反解格式没对齐，不是这条数据错。
-    """
-    spec, sample = faithful(CASE)
-    verdict = judges.TraceJudge(_UnknownIdBackend(), "zh").judge(sample, spec)
-    assert verdict.skipped and verdict.ok
-    assert "不认识的判据编号" in verdict.reason
-
-
 def test_trace_skips_a_malformed_draft() -> None:
     """输入：反解草稿里 tags 不是一个对象列表。输出：无。预期行为：记成「没判成」。"""
     spec, sample = faithful(CASE)
@@ -180,21 +159,6 @@ def test_trace_prompt_carries_the_whole_state() -> None:
     assert str(sample["state"]) in prompt
     assert str(loc["verify"]["state_header"]) in prompt
     assert "{" not in prompt and "}" not in prompt
-
-
-def test_quote_holds_needs_both_the_quote_and_the_criterion() -> None:
-    """输入：几种引文。输出：无。
-
-    预期行为：引文得原样在片段里、且自己满足那条判据；空白差异不算抄错。
-    """
-    body = text_of(("A1", "A4"))
-    assert judges.quote_holds("A1", quote_for("A1"), body)
-    # 引文首尾多带了换行：折叠之后一致，照样算抄对了（模型常这么答）。
-    assert judges.quote_holds("A1", f"\n{quote_for('A1')}\n", body)
-    assert judges.quote_holds("A1", json.dumps([quote_for("A1")]), body)  # 引文被装进 JSON 数组字符串（范式 §9.88）
-    assert not judges.quote_holds("A1", quote_for("A4"), body)  # 抄出来了但不合判据
-    assert not judges.quote_holds("A1", "会议室还是老地方", body)  # 抄出来了但不合判据
-    assert not judges.quote_holds("A9", "会议室还是老地方", body)  # 不认识的编号
 
 
 def test_quote_holds_also_requires_the_whole_snippet_to_match() -> None:

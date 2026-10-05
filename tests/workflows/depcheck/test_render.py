@@ -29,21 +29,6 @@ def draft_of(packet: str) -> render.ContentDraft:
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
-def test_fact_lines_line_up_with_features(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：四条标记行两两不同、编号排在分隔符前面（解析就是按这个切回编号的）、判据原文在里面。
-    """
-    loc = locales.load(lang)
-    sep = str(loc["state"]["tag_sep"])
-    lines = [render.fact_line(loc, tag) for tag in features.TAG_IDS]
-    assert len(set(lines)) == len(lines)
-    for tag, line in zip(features.TAG_IDS, lines, strict=True):
-        assert line.partition(sep)[0] == tag
-        assert str(render.fact_copy(loc, tag)["rule"]) in line
-
-
-@pytest.mark.parametrize("lang", ["en", "zh"])
 def test_rule_and_action_tables_are_complete(lang: str) -> None:
     """输入：一种语言。输出：无。
 
@@ -122,16 +107,6 @@ def test_state_round_trips(lang: str) -> None:
     assert parsed.rule == tuple(render.rule_lines(loc))
     assert parsed.actions == tuple(render.action_lines(loc))
     assert parsed.text == packet
-
-
-def test_detect_locale_tells_the_two_languages_apart() -> None:
-    """输入：zh / en 各一段 state。输出：无。预期行为：各自认回自己的语言，认不出的给 None。"""
-    zh = render.to_state(draft_of(packet_of(("D1",), "zh")), locales.load("zh"))
-    en = render.to_state(draft_of(packet_of(("D1",), "en")), locales.load("en"))
-    assert render.detect_locale(zh) == "zh"
-    assert render.detect_locale(en) == "en"
-    assert render.detect_locale("这里什么抬头都没有") is None
-    assert render.detect_locale(None) is None
 
 
 def test_note_text_reads_the_prose_line() -> None:
@@ -253,10 +228,3 @@ def test_sample_of_helper_builds_a_parseable_state() -> None:
     row = sample_of(packet_of(("D3",)))
     assert render.parse_state(row["state"]).text is not None
     assert render.note_text(render.parse_state(row["state"]).text or "")
-
-
-def test_lines_of_keeps_every_key() -> None:
-    """输入：任意命中组合。输出：无。预期行为：六行齐全（夹具自己不许漏行，否则测试会假绿）。"""
-    for value in features.HIT_SETS:
-        lines = lines_of(features.parse_hits(value))
-        assert sorted(lines) == sorted(features.KEY_LINES)

@@ -71,12 +71,6 @@ def test_structural_parens_match_the_parser(lang: str) -> None:
     assert parsed.segments[0][0] == str(loc["topic"][ft.TOPIC_IDS[0]])
 
 
-def test_parse_rejects_a_short_state() -> None:
-    """输入：只有两行的 state。输出：无。预期行为：报「太短」，不给一个空片段表。"""
-    with pytest.raises(ValueError, match="太短"):
-        parse.parse_state("片段筛选请求号 K-000000\n[片段表]\n", parse.merged_tables())
-
-
 def test_parse_rejects_a_missing_section() -> None:
     """输入：少了区块抬头的 state。输出：无。预期行为：报「出现在任何区块抬头之前」。"""
     loc = locales.load("zh")

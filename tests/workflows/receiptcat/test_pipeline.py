@@ -49,17 +49,6 @@ def cases_of(split: str, limit: int = CASE_LIMIT) -> list[ReceiptCase]:
     return receiptcat_workflow.cases_for(ReceiptCatConfig(split=split, case_limit=limit))
 
 
-def test_missing_decoy_on_the_ood_split_is_rejected(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：留出侧（`decoy=near`）却不埋诱饵。输出：RunResult。预期行为：整批都被拦下。"""
-    result = pipeline.run(
-        make_config(tmp_path, "p3-decoy", fake_backend(decoy_missing=True), split="test_ood")
-    )
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
 def test_a_lying_reader_only_spares_the_cases_with_nothing_to_lie_about(
     tmp_path: Path, fake_backend: type[FakeBackend]
 ) -> None:

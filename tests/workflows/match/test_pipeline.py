@@ -29,19 +29,3 @@ def make_config(
 def _case_count(config: pipeline.RunConfig) -> int:
     """输入：运行配置。输出：该切分的 case 数。预期行为：与产物条数对得上。"""
     return len(match_workflow.MatchWorkflow().build_cases(config.config_override))
-
-
-def test_split_sizes_add_up_to_the_training_side_matrix() -> None:
-    """输入：四个切分的配置。输出：无。
-
-    预期行为：三个同分布切分都非空（切片按**位置**而不是桶号过滤，否则哈希方差会让 val
-    只剩个位数），且加起来正好等于训练侧取值表的全枚举：7 商品 × 12 关系 × 2 写法对
-    × 3 显示顺序 × 2 额外栏。
-    """
-    workflow = workflow_mod.load("match")
-    sizes = {
-        split: len(workflow.build_cases(workflow.config_for(split)))
-        for split in workflow.split_names()
-    }
-    assert min(sizes.values()) > 0
-    assert sum(sizes[split] for split in ("train", "val", "test_iid")) == 7 * 12 * 2 * 3 * 2

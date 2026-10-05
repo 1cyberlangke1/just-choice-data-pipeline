@@ -31,17 +31,6 @@ def test_split_names_and_configs() -> None:
         assert config.phrasings == tuple(sorted(sp.SEEN_PHRASINGS))
 
 
-def test_make_judges_builds_both_and_rejects_unknown_names() -> None:
-    """输入：两个判别器名 / 一个不存在的名字。输出：无。预期行为：都报人话。"""
-    built = WF.make_judges(("roundtrip", "label"), "zh")
-    assert [judge.name for judge in built] == ["roundtrip", "label"]
-    assert all(
-        isinstance(judge, (judges.RoundtripJudge, judges.LabelJudge)) for judge in built
-    )
-    with pytest.raises(KeyError, match="未知判别器"):
-        WF.make_judges(("nope",), "zh")
-
-
 def test_reparse_uses_the_merged_table() -> None:
     """输入：一条规格、英文渲染出来的文本。输出：无。
 

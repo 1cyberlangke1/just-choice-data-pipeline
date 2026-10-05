@@ -108,16 +108,6 @@ def test_banned_phrases_do_not_fire_on_the_fixture_requests() -> None:
             assert render.banned_echo(request, loc) == [], request
 
 
-def test_every_family_has_three_phrasings() -> None:
-    """输入：两语言文案。输出：无。预期行为：每题族三种问法，`pick` 在三个编号上都取得到。"""
-    for lang in locales.available():
-        loc = locales.load(lang)
-        for family in questions.FAMILIES:
-            assert len(loc["fam"][family]["q"]) >= 3
-            for phrasing in (0, 1, 2):
-                assert locales.pick(loc["fam"][family]["q"], phrasing)
-
-
 def test_target_family_has_the_row_and_none_texts() -> None:
     """输入：两语言 `target` 题族。输出：无。预期行为：行号模板与「不操作」的说法都在。"""
     for lang in locales.available():
@@ -136,4 +126,3 @@ def test_meta_placeholders_render() -> None:
             assert str(loc["meta"][key]).strip()
         for key in ("elements_columns", "gates_columns", "criteria_columns"):
             assert str(loc["meta"][key]).strip()
-

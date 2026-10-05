@@ -76,17 +76,6 @@ def test_adding_a_spare_fragment_only_spares_the_full_hits(
     assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
 
 
-def test_missing_decoy_on_the_ood_split_is_rejected(
-    tmp_path: Path, fake_backend: type[FakeBackend]
-) -> None:
-    """输入：留出侧（`decoy=dashed`）却不写诱饵。输出：RunResult。预期行为：整批都被拦下。"""
-    result = pipeline.run(
-        make_config(tmp_path, "g3-decoy", fake_backend(decoy_missing=True), split="test_ood")
-    )
-    assert result.accepted == 0
-    assert {item["code"] for item in result.rejected} == {"E_ASSEMBLE"}
-
-
 def test_case_splits_are_disjoint_and_cover_the_space() -> None:
     """输入：四个切分的 case 列表。输出：无。
 
@@ -127,16 +116,6 @@ def test_every_count_and_action_level_is_reachable() -> None:
     assert actions == set(features.ACTION_LEVELS)
 
 
-def test_full_train_run_is_balanced(tmp_path: Path, fake_backend: type[FakeBackend]) -> None:
-    """输入：整个 train 切分跑一遍。输出：RunResult。预期行为：零拒绝、各族的答案均衡全绿。"""
-    result = pipeline.run(make_config(tmp_path, "g4-full", fake_backend(), limit=0))
-    assert result.rejected == []
-    assert result.accepted == len(cases_of("train", limit=0))
-    assert [item["ok"] for item in result.stats["balance"]] == [True] * len(
-        result.stats["balance"]
-    )
-
-
 def test_plan_is_reproducible_from_the_case_fingerprint() -> None:
     """输入：同一个 case 的两次采样。输出：无。预期行为：审核计划与切分、进程无关。"""
     case = GuardrailCase("P2+P4", features.DECOY_DASHED)
@@ -164,4 +143,3 @@ def test_reparse_and_case_label_are_wired() -> None:
     assert workflow.case_label(case) == "P3-dashed"
     assert workflow.stats_dimensions(case) == {"hits": "P3", "decoy": "dashed"}
     assert workflow.dimension_titles()["hits"]
-

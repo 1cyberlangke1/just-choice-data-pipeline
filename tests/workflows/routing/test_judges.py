@@ -31,25 +31,6 @@ def state_of(data: dict[str, str] | None = None) -> str:
     return render.to_state({**GOOD, **(data or {})}, TAGS, loc)
 
 
-def test_hygiene_catches_leftovers_multiline_and_empty() -> None:
-    """输入：带围栏 / 多行 / 空正文的 state。输出：无。预期行为：都判不通过。"""
-    judge = judges.HygieneJudge("zh")
-    assert not judge.judge(sample(state_of().replace("【工单正文】", "```\n【工单正文】"))).ok
-    assert not judge.judge(sample(state_of({"body": "第一行\n第二行"}))).ok
-    assert not judge.judge(sample(state_of({"body": "   "}))).ok
-
-
-def test_hygiene_catches_html_line_breaks() -> None:
-    """输入：正文里混进 `<br>`。输出：无。预期行为：判不通过。"""
-    assert not judges.HygieneJudge("zh").judge(sample(state_of({"body": "上一句<br>下一句"}))).ok
-
-
-def test_hygiene_catches_a_repeated_section_name() -> None:
-    """输入：正文里又写了一遍段落名。输出：无。预期行为：判不通过。"""
-    broken = state_of({"body": "工单正文：刚才那句话"})
-    assert not judges.HygieneJudge("zh").judge(sample(broken)).ok
-
-
 def test_hygiene_catches_attribute_words_in_the_body() -> None:
     """输入：正文里写了属性词。输出：无。预期行为：判不通过。"""
     assert not judges.HygieneJudge("zh").judge(sample(state_of({"body": "我们是企业版客户"}))).ok

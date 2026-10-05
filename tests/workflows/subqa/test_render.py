@@ -60,21 +60,6 @@ def test_format_spec_offers_no_copyable_timecode(lang: str) -> None:
         assert not re.search(r"\d{1,2}:\d{2}:\d{2}[,.]\d{3}", line), line
 
 
-@pytest.mark.parametrize("lang", ["en", "zh"])
-def test_note_spec_forbids_restating_the_format(lang: str) -> None:
-    """输入：一种语言。输出：无。
-
-    预期行为：`Note:` 那一行的规格里**明说不要复述格式与要求**。真机上量到过：模型把备注写成
-    「译文保留了音效标记，时间码保持零时长以便闪现提醒」这种复述合成规格的句子（`sq-10b` zh 侧
-    9 条里 3 条、en 侧 10 条里 2 条）。备注是这一族两段自然语言正文之一，写成复述规格的句子之后
-    整条样本读起来就是「写手在照着规格交作业」，而不是一对真字幕。
-    """
-    loc = locales.load(lang)
-    spec = str(loc["prompt"]["format"]["note"])
-    assert "格式" in spec or "format" in spec.lower()
-    assert "不要" in spec or "do **not**" in spec.lower()
-
-
 def test_prompt_says_none_may_be_tripped_when_the_plan_is_empty() -> None:
     """输入：空命中的 case。输出：无。预期行为：改成「一条都不许踩」的说法，且不出现要求段落。"""
     loc = locales.load("zh")

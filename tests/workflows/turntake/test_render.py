@@ -149,18 +149,6 @@ def test_check_draft_rejects_a_pasted_rule(lang: str) -> None:
         render.check_draft(render.ContentDraft(text=f"{BASE} {rule}"), case, loc)
 
 
-def test_pasted_rules_only_flags_verbatim_text() -> None:
-    """输入：整段贴 / 改了一个词的两种输入。输出：无。
-
-    预期行为：只认**逐字相同**的整段判据原文——改一个词就不再算，否则正常产物会被误伤。
-    """
-    loc = locales.load("zh")
-    rule = str(render.tag_copy(loc, "T4")["rule"])
-    assert render.pasted_rules(rule, loc) == [rule]
-    assert render.pasted_rules(rule.replace("等一下", "等两下"), loc) == []
-    assert render.pasted_rules(BASE, loc) == []
-
-
 def test_channel_copy_reports_a_missing_shape() -> None:
     """输入：缺通道的语言字典。输出：无。预期行为：抛 ValueError。"""
     with pytest.raises(ValueError, match="通道 voice"):

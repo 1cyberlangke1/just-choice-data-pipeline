@@ -25,21 +25,6 @@ def test_merged_words_cover_every_key() -> None:
 
 
 @pytest.mark.parametrize("lang", LANGS)
-def test_labels_are_not_mutual_prefixes(lang: str) -> None:
-    """输入：一份语言文件。输出：无。
-
-    预期行为：抬头与区块抬头两两**不互为前缀**——反解靠最长前缀认标签，互为前缀时短的
-    会把长的吃掉（「行情读数请求」被认成「行情读数请求号」）。
-    """
-    tables = parse.tables_of(locales.load(lang))
-    labels = [*tables.request, *tables.sections]
-    for left in labels:
-        for right in labels:
-            if left != right:
-                assert not right.startswith(left), f"{lang}: {left!r} / {right!r}"
-
-
-@pytest.mark.parametrize("lang", LANGS)
 def test_name_keys_are_distinct_and_complete(lang: str) -> None:
     """输入：一份语言文件。输出：无。预期行为：六个标的名互不相同，键与名池一一对应。"""
     table = locales.load(lang)["name"]

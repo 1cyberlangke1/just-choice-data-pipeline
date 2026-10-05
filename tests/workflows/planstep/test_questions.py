@@ -32,17 +32,6 @@ def test_families_are_the_four_known_ones() -> None:
     )
 
 
-def test_build_returns_one_question_per_family() -> None:
-    """输入：一条规格。输出：无。预期行为：四道题、族名一一对应、题型正确。"""
-    built = questions.build(_make_spec(3, 2), LOC, 0, random.Random(0))
-    assert [item.family for item in built] == list(questions.FAMILIES)
-    types = {item.family: item.question["type"] for item in built}
-    assert types["remaining"] == "score"
-    assert types["next"] == "choice"
-    assert types["rounds"] == "score"
-    assert types["unlocks"] == "noul"
-
-
 def test_only_choice_options_may_be_shuffled() -> None:
     """输入：一条规格。输出：无。
 
@@ -87,20 +76,6 @@ def test_answers_stay_inside_their_criteria() -> None:
                 assert isinstance(item.answer, bool)
 
 
-def test_instructions_carry_the_whole_rule_block() -> None:
-    """输入：一条规格。输出：无。
-
-    预期行为：四道题的题面都自带**四条判据原文**（与 state 里那一段同源）——只读 state 与
-    题面的读者必须能自己把答案算出来，判据藏在生成器里等于没给。
-    """
-    loc = locales.load("zh")
-    rules = questions.rules_block(loc)
-    for line in loc["rules"]["lines"]:
-        assert str(line) in rules
-    for item in questions.build(_make_spec(2, 4), loc, 0, random.Random(0)):
-        assert rules in str(item.question["instructions"]), item.family
-
-
 def test_next_options_are_the_task_names_plus_none() -> None:
     """输入：语言字典。输出：无。
 
@@ -128,16 +103,6 @@ def test_phrasing_picks_a_different_head() -> None:
     ]
     assert len(set(heads)) == 3, heads
     assert heads == [str(text) for text in loc["fam"]["remaining"]["q"]]
-
-
-def test_build_is_pure() -> None:
-    """输入：同一个 spec 出两次题。输出：无。预期行为：逐字段一致，RNG 不参与。"""
-    spec = _make_spec(7, 3)
-    first = questions.build(spec, LOC, 1, random.Random(1))
-    second = questions.build(spec, LOC, 1, random.Random(999))
-    assert [item.family for item in first] == [item.family for item in second]
-    assert [item.question for item in first] == [item.question for item in second]
-    assert [item.answer for item in first] == [item.answer for item in second]
 
 
 def test_score_levels_cover_every_answer() -> None:

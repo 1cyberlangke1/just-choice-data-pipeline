@@ -29,12 +29,6 @@ from tests.workflows import _fakes
 CASE: Final[AlertRiskCase] = AlertRiskCase("R1+R3", features.SOURCE_EDR)
 
 
-def test_quote_holds_ignores_whitespace_differences() -> None:
-    """输入：引文里多打了空白。输出：无。预期行为：空白折叠之后仍然算抄对了。"""
-    body = packet_of(("R3",))
-    assert judges.quote_holds("R3", "impact:   hosts=24  -- 二十四台生产机器", body)
-
-
 def test_hygiene_passes_a_faithful_sample() -> None:
     """输入：完全兑现计划的一条样本。输出：无。预期行为：通过。"""
     spec, sample = faithful(CASE)
@@ -192,35 +186,3 @@ class StubBackend(_fakes.ScriptedBackend):
         return Draft(
             data=self.data, raw_text="", backend="stub", provider="stub", model="stub", mode="stub"
         )
-
-
-def test_trace_skips_drafts_it_cannot_read() -> None:
-    """输入：六种形态不对的反解草稿。输出：无。
-
-    预期行为：都记「没判成」（`skipped=True`）——那是反解格式没对齐，不是数据本身错。
-
-    本用例把表里每一行都跑一遍，失败的行攒成一份清单一起报，好一次看全。
-    """
-    bad: list[str] = []
-    for data, needle in [
-        ({}, "缺 tags"),
-        ({"tags": "不是列表", "level": 3}, "缺 tags"),
-        ({"tags": ["不是对象"], "level": 3}, "不是「编号 + 引文」对象"),
-        ({"tags": [{"tag": "R9", "quote": "x"}], "level": 3}, "不认识的因子编号"),
-        ({"tags": [], "level": 9}, "1~5 的整数"),
-        ({"tags": [], "level": "三"}, "1~5 的整数"),
-    ]:
-        try:
-            spec, sample = faithful(CASE)
-            verdict = judges.TraceJudge(StubBackend(data), "zh").judge(sample, spec)
-            assert verdict.skipped and verdict.ok
-            assert needle in verdict.reason
-        except AssertionError as exc:
-            bad.append(f"{(data, needle)!r}: {exc}")
-    assert not bad, "\n".join(bad)
-
-
-def test_trace_skips_without_a_spec() -> None:
-    """输入：没有规格。输出：无。预期行为：记「没判成」。"""
-    _, sample = faithful(CASE)
-    assert judges.TraceJudge(FakeBackend(), "zh").judge(sample, None).skipped

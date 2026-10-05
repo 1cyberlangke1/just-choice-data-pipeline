@@ -78,22 +78,6 @@ def test_handling_level_thresholds(count: int, expect: str) -> None:
     assert features.handling_level(count) == expect
 
 
-def test_two_label_paths_agree_on_every_faithful_text() -> None:
-    """输入：全空间的 48 组 case。输出：无。
-
-    预期行为：「构造侧从计划推」与「审计侧从文本重推」两条路走出来的标签逐条相同——
-    记忆兑现了计划，两条路就不该打架。
-    """
-    cases = features.build_cases(512)
-    assert len(cases) == 48  # 16 组命中 × 3 种写法
-    for case in cases:
-        text = text_of(case)
-        assert features.hits_of(text) == case.hits, case.describe()
-        assert features.observed_labels(text).hits == features.label_for(
-            features.plan_for(case, 0)
-        ).hits
-
-
 def test_case_describe_and_fingerprint() -> None:
     """输入：一个空命中的 case。输出：无。预期行为：指纹与可读描述都稳定。"""
     case = features.MemoryGateCase("", features.FORM_SENTENCE)

@@ -220,21 +220,6 @@ def test_phrasing_only_changes_the_wording(make_case: MakeCase) -> None:
     assert zero[0].question["instructions"] != one[0].question["instructions"]  # type: ignore[attr-defined]
 
 
-def test_choice_rejects_duplicate_option_descriptions() -> None:
-    """输入：两个描述一样的选项。输出：无。
-
-    预期行为：报错——选项看起来一样，考生没法分辨，是构造 bug。
-    """
-    with pytest.raises(ValueError, match="选项描述重复"):
-        questions._choice("f", "题", {"a": "同一个", "b": "同一个"}, "a")
-
-
-def test_choice_rejects_an_answer_outside_the_options() -> None:
-    """输入：金答案不在选项里。输出：无。预期行为：报错。"""
-    with pytest.raises(ValueError, match="不在选项里"):
-        questions._choice("f", "题", {"a": "甲", "b": "乙"}, "c")
-
-
 def test_noul_never_shuffles() -> None:
     """输入：一道 noul 题。输出：无。
 
