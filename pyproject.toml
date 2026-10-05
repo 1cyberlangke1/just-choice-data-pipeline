@@ -9,6 +9,15 @@ build-backend = "setuptools.build_meta"
 name = "just-choice"
 version = "0.1.0"
 description = "JEV 风格选择题数据合成管线：通用层（src/jc）+ workflow（workflows/）"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "赛博浪客", email = "13411627+cyberlangke@user.noreply.gitee.com" }]
+urls = { Repository = "https://github.com/1cyberlangke1/just-choice-data-pipeline" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 requires-python = ">=3.11"
 dependencies = []  # 通用层与迷宫 workflow 都只用标准库
 
